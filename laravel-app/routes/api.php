@@ -43,6 +43,11 @@ Route::prefix('v2')->group(function (): void {
     });
 });
 
+Route::prefix('v3')->group(function (): void {
+    require __DIR__ . '/v3/crm.php';
+    require __DIR__ . '/v3/solicitudes.php';
+});
+
 Route::middleware(['consultas.cors', 'cive.extension.auth'])->group(function (): void {
     foreach ([
         '/consultas/guardar',

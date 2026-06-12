@@ -66,11 +66,13 @@ class ConversationWriteService
             $previewUrl
         );
 
-        $createdMessage = DB::transaction(function () use ($conversation, $message, $transportResult, $sentAt): WhatsappMessage {
+        $createdMessage = DB::transaction(function () use ($conversation, $message, $transportResult, $sentAt, $actorUserId): WhatsappMessage {
             $created = WhatsappMessage::query()->create([
                 'conversation_id' => $conversation->id,
                 'wa_message_id' => $transportResult['wa_message_id'],
                 'direction' => 'outbound',
+                'sender_type' => 'agent',
+                'sender_id' => $actorUserId,
                 'message_type' => 'text',
                 'body' => $message,
                 'raw_payload' => $transportResult['raw'],
@@ -191,7 +193,7 @@ class ConversationWriteService
             $mediaPath
         );
 
-        $createdMessage = DB::transaction(function () use ($conversation, $type, $caption, $filename, $mimeType, $mediaUrl, $mediaDisk, $mediaPath, $transportResult, $sentAt): WhatsappMessage {
+        $createdMessage = DB::transaction(function () use ($conversation, $type, $caption, $filename, $mimeType, $mediaUrl, $mediaDisk, $mediaPath, $transportResult, $sentAt, $actorUserId): WhatsappMessage {
             $rawPayload = is_array($transportResult['raw']) ? $transportResult['raw'] : [];
             $rawPayload[$type] = array_filter([
                 'link' => $mediaUrl,
@@ -206,6 +208,8 @@ class ConversationWriteService
                 'conversation_id' => $conversation->id,
                 'wa_message_id' => $transportResult['wa_message_id'],
                 'direction' => 'outbound',
+                'sender_type' => 'agent',
+                'sender_id' => $actorUserId,
                 'message_type' => $type,
                 'body' => $caption,
                 'raw_payload' => $rawPayload,

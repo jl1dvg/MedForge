@@ -1,0 +1,410 @@
+// ============================================================
+// MedForge · Solicitudes v3 — TypeScript types
+// ============================================================
+
+export type SlaStatus = 'ok' | 'critico' | 'vencido';
+
+export type KanbanSlug =
+  | 'recibida'
+  | 'llamado'
+  | 'revision-codigos'
+  | 'espera-documentos'
+  | 'apto-oftalmologo'
+  | 'apto-anestesia'
+  | 'listo-para-agenda'
+  | 'programada'
+  | 'completado';
+
+export interface KanbanColumn {
+  slug: KanbanSlug;
+  label: string;
+  phase: string;
+}
+
+export interface Phase {
+  key: string;
+  label: string;
+  icon: string;
+}
+
+export interface Alert {
+  key: string;
+  label: string;
+  icon: string;
+  tone: 'warning' | 'danger';
+}
+
+export interface ChecklistStep {
+  slug: string;
+  label: string;
+  completed: boolean;
+  can_toggle: boolean;
+}
+
+export interface ChecklistProgress {
+  completed: number;
+  total: number;
+  percent: number;
+  next_label: string;
+}
+
+export interface CrmInfo {
+  responsable: string;
+  telefono: string;
+  email: string;
+  fuente: string;
+  notas: number;
+  adjuntos: number;
+  propuestas: number;
+  tareas_pendientes: number;
+  tareas_total: number;
+  proximo_vencimiento: string | null;
+  pipeline: string;
+}
+
+export interface Nota {
+  txt: string;
+  by: string;
+  at: string;
+}
+
+export interface Tarea {
+  titulo: string;
+  asignado: string;
+  fecha: string;
+  prioridad: string;
+  done: boolean;
+}
+
+export interface Adjunto {
+  id: number | null;
+  nombre: string;
+  icon: string;
+  peso: string;
+  at: string;
+  descripcion: string | null;
+  href: string | null;
+  mime: string | null;
+}
+
+export interface CoberturaMail {
+  id: number | null;
+  status: string;
+  subject: string;
+  to: string;
+  cc: string;
+  templateKey: string | null;
+  attachmentName: string | null;
+  sentAt: string | null;
+  createdAt: string | null;
+  errorMessage: string | null;
+}
+
+export interface DiagnosticoCIE {
+  cie: string;
+  desc: string;
+}
+
+export interface Derivacion {
+  tiene: boolean;
+  cod: string | null;
+  aseguradora: string;
+  plan: string;
+  fecha_registro: string | null;
+  fecha_vigencia: string | null;
+  vigencia_text: string;
+  vigencia_label: string;
+  dias_vigencia: number | null;
+  vencida: boolean;
+  archivo: boolean;
+  archivo_href: string | null;
+  autorizacion_pendiente: boolean;
+}
+
+export interface PreopStep {
+  slug?: string;
+  label: string;
+  done: boolean;
+}
+
+export interface PropostaItem {
+  cod: string;
+  desc: string;
+  cant: number;
+  valor: number;
+}
+
+export interface Propuesta {
+  titulo: string;
+  estado: string;
+  vigencia: string;
+  items: PropostaItem[];
+  subtotal: number;
+  iva: number;
+  total: number;
+}
+
+export interface Examen {
+  av_od: string;
+  av_oi: string;
+  pio_od: number;
+  pio_oi: number;
+  plan: string;         // consulta_data.plan
+  examen_fisico: string; // consulta_data.examen_fisico (read-only)
+}
+
+export interface Agenda {
+  sala: string;
+  fecha: string | null;
+  fecha_fin: string | null;
+  duracion: number;
+  anestesia: string;
+  doctor: string;
+  origen: string;
+  sigcenter_agenda_id: string | null;
+}
+
+export interface PacienteDetalle {
+  edad: number;
+  sexo: string;
+  cedula: string;   // maps to hc_number (patient identifier)
+  direccion: string;
+  telefono: string;
+  fecha_nacimiento: string | null;
+}
+
+export interface Detalle {
+  paciente: PacienteDetalle;
+  diagnosticos: DiagnosticoCIE[];
+  derivacion: Derivacion;
+  preop: PreopStep[];
+  notas: Nota[];
+  tareas: Tarea[];
+  propuestas: Propuesta[];
+  adjuntos: Adjunto[];
+  cobertura_mails: CoberturaMail[];
+  examen: Examen;
+  agenda: Agenda;
+}
+
+export interface Protocolo {
+  form_id: string;
+  lateralidad: string;
+  fecha_inicio: string;
+  membrete: string;
+  confirmado_at?: string;
+  confirmado_by?: string;
+}
+
+export interface Solicitud {
+  id: number;
+  form_id: string;
+  hc_number: string;
+  full_name: string;
+  avatar_initials: string;
+  doctor: string;
+  afiliacion: string;
+  afiliacion_label: string;
+  afiliacion_tone: string;
+  empresa_seguro: string;
+  plan_seguro: string;
+  procedimiento: string;
+  procedimiento_short: string;
+  ojo: string;
+  prioridad: 'urgente' | 'normal';
+  estado: KanbanSlug;
+  estado_label: string;
+  fecha: string;
+  sede: string;
+  observacion: string;
+  sla_status: SlaStatus;
+  sla_hours_remaining: number | null;
+  sla_label: string;
+  checklist: ChecklistStep[];
+  checklist_progress: ChecklistProgress;
+  protocolo_confirmado: Protocolo | null;
+  protocolo_posterior_compatible: Protocolo | null;
+  crm: CrmInfo;
+  alerts: Alert[];
+  turno: string | null;
+  detalle: Detalle;
+}
+
+// ---- API raw types (from /v2/solicitudes/kanban-data) -------------------
+
+export interface ApiSolicitud {
+  id: number;
+  form_id?: string;
+  hc_number?: string;
+  paciente?: string;
+  full_name?: string;
+  doctor?: string;
+  afiliacion?: string;
+  empresa_seguro?: string;
+  empresa_seguro_key?: string;
+  plan_seguro?: string;
+  plan_seguro_key?: string;
+  procedimiento?: string;
+  ojo?: string;
+  prioridad?: string;
+  estado?: string;
+  fecha?: string;
+  created_at?: string;
+  sede?: string;
+  observacion?: string;
+  sla_status?: string;
+  sla_label?: string;
+  turno?: string | null;
+  crm_responsable?: string;
+  crm_responsable_nombre?: string;
+  crm_responsable_email?: string;
+  crm_responsable_telefono?: string;
+  crm_responsable_avatar?: string;
+  crm_telefono?: string;
+  crm_email?: string;
+  crm_fuente?: string;
+  crm_notas?: number;
+  crm_total_notas?: number;
+  crm_adjuntos?: number;
+  crm_total_adjuntos?: number;
+  crm_propuestas?: number;
+  crm_total_propuestas?: number;
+  crm_tareas_pendientes?: number;
+  crm_tareas_total?: number;
+  crm_proximo_vencimiento?: string | null;
+  sla_hours_remaining?: number | null;
+  kanban_estado?: string;
+  kanban_estado_label?: string;
+  alert_docs?: boolean;
+  alert_auth?: boolean;
+  alert_exam?: boolean;
+  alert_documentos_faltantes?: boolean;
+  alert_autorizacion_pendiente?: boolean;
+  alert_derivacion_vencida?: boolean;
+  alert_derivacion_por_vencer?: boolean;
+  [key: string]: unknown;
+}
+
+export interface ApiKanbanResponse {
+  // API returns a flat array; each item has kanban_estado with the column slug
+  data: ApiSolicitud[] | Record<string, ApiSolicitud[]>;
+  options?: {
+    afiliaciones?: string[];
+    doctores?: string[];
+  };
+}
+
+export interface Filters {
+  search: string;
+  afiliacion: string;
+  doctor: string;
+  sede: string;
+  date_from: string;
+  date_to: string;
+}
+
+export interface TweakValues {
+  direction: 'a' | 'b' | 'c';
+  density: 'comodo' | 'compacto';
+  afilColor: boolean;
+  groupPhases: boolean;
+  showDoctorAvatar: boolean;
+  accent: string;
+}
+
+export interface CrmCaseContactState {
+  primaryPhone: string;
+  alternatePhones: string[];
+  primaryEmail: string;
+  alternateEmails: string[];
+  whatsapp: {
+    available: boolean;
+    matched: boolean;
+    search: string | null;
+    searchUrl: string | null;
+    conversationId: number | null;
+    conversationUrl: string | null;
+    waNumber: string | null;
+    displayName: string | null;
+    lastMessageAt: string | null;
+    unreadCount: number;
+  };
+}
+
+export interface CrmCaseNote {
+  id: number;
+  body: string;
+  authorName: string;
+  createdAt: string;
+  canDelete: boolean;
+}
+
+export interface CrmCaseTask {
+  id: number;
+  title: string;
+  status: 'pending' | 'done' | 'cancelled' | string;
+  priority: string;
+  assignedTo?: number | null;
+  dueAt?: string | null;
+}
+
+export interface CrmCaseActivity {
+  id: string;
+  type: string;
+  occurredAt: string;
+  author: string;
+  description: string;
+  reference: Record<string, unknown>;
+}
+
+export interface CrmCaseProposalItem {
+  id: number;
+  code: string;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  discountPercent: number;
+  total: number;
+}
+
+export interface CrmCaseProposal {
+  id: number;
+  number: string;
+  title: string;
+  status: string;
+  statusLabel: string;
+  validUntil: string | null;
+  subtotal: number;
+  taxTotal: number;
+  total: number;
+  currency: string;
+  itemsCount: number;
+  pdfUrl: string;
+  publicUrl: string | null;
+  items: CrmCaseProposalItem[];
+}
+
+export interface CrmCaseState {
+  caseId: string;
+  sourceType: string;
+  sourceId: number;
+  responsibleId: number | null;
+  responsibleName: string;
+  source: string;
+  insurancePlan: string;
+  contacts: CrmCaseContactState;
+  notes: CrmCaseNote[];
+  tasks: CrmCaseTask[];
+  activity: CrmCaseActivity[];
+  proposals: CrmCaseProposal[];
+  documents: unknown[];
+  options: {
+    responsables: Array<{
+      id: number;
+      nombre: string;
+      email?: string | null;
+      especialidad?: string | null;
+      profile_photo?: string | null;
+    }>;
+  };
+}

@@ -11,6 +11,7 @@ use App\Models\CrmActivity;
 use App\Models\CrmOpportunity;
 use App\Models\CrmStageMapping;
 use App\Modules\CRM\Services\CrmContactResolverService;
+use App\Modules\CRM\Services\CrmIntentLeadService;
 use App\Modules\CRM\Services\CrmOpportunityService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -20,6 +21,7 @@ class CrmOpportunityListener
     public function __construct(
         private readonly CrmContactResolverService $contactResolver,
         private readonly CrmOpportunityService $opportunityService,
+        private readonly CrmIntentLeadService $intentLeadService,
     ) {}
 
     public function handleWhatsappLeadQualified(WhatsappLeadQualified $event): void
@@ -33,11 +35,26 @@ class CrmOpportunityListener
             source: 'whatsapp',
         );
 
+        if (config('crm.intent_model_enabled')) {
+            // Intent model: WhatsApp signals become intent leads, not opportunities.
+            // The opportunity is created later when a solicitud arrives or the lead is converted manually.
+            $this->intentLeadService->capture(
+                contact:    $contact,
+                source:     'whatsapp',
+                sourceId:   $lead->id,
+                sourceType: 'whatsapp_lead',
+                motivo:     $lead->motivo_baja ?: null,
+                assignedTo: $event->actorUserId,
+            );
+            return;
+        }
+
+        // Legacy model: unchanged behaviour.
         $this->opportunityService->upsertFromEvent(
-            contact: $contact,
-            title: 'Lead WhatsApp: ' . ($lead->motivo_baja ?: 'sin motivo registrado'),
-            source: 'whatsapp',
-            sourceId: $lead->id,
+            contact:    $contact,
+            title:      'Lead WhatsApp: ' . ($lead->motivo_baja ?: 'sin motivo registrado'),
+            source:     'whatsapp',
+            sourceId:   $lead->id,
             sourceType: 'whatsapp_lead',
             assignedTo: $event->actorUserId,
         );
@@ -54,19 +71,30 @@ class CrmOpportunityListener
             source: 'solicitud',
         );
 
+        $episodeAt = isset($data['episode_at'])
+            ? \Carbon\Carbon::parse($data['episode_at'])
+            : null;
+
         $opp = $this->opportunityService->upsertFromEvent(
-            contact: $contact,
-            title: 'Solicitud: ' . (string) ($data['servicio'] ?? 'Servicio médico'),
-            source: 'solicitud',
-            sourceId: $event->solicitudId,
-            sourceType: 'solicitud_procedimiento',
+            contact:         $contact,
+            title:           'Solicitud: ' . (string) ($data['servicio'] ?? 'Servicio médico'),
+            source:          'solicitud',
+            sourceId:        $event->solicitudId,
+            sourceType:      'solicitud_procedimiento',
+            procedureCodigo: $data['procedimiento_codigo'] ?? null,
+            lateralidad:     $data['lateralidad']          ?? null,
+            episodeAt:       $episodeAt,
         );
 
+        if ($opp === null) {
+            return;
+        }
+
         $this->linkOperationalOpportunity(
-            sourceTable: 'solicitud_procedimiento',
-            sourceId: $event->solicitudId,
-            opportunityId: $opp->id,
-            detailsTable: 'solicitud_crm_detalles',
+            sourceTable:         'solicitud_procedimiento',
+            sourceId:            $event->solicitudId,
+            opportunityId:       $opp->id,
+            detailsTable:        'solicitud_crm_detalles',
             detailsSourceColumn: 'solicitud_id',
         );
     }

@@ -1,6 +1,7 @@
 <?php
 
 use App\Modules\Examenes\Http\Controllers\ExamenesParityController;
+use App\Modules\Examenes\Http\Controllers\ImagenesBandejaController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware([
@@ -51,6 +52,8 @@ Route::post('/imagenes/examenes-realizados/actualizar', [ExamenesParityControlle
 Route::post('/imagenes/examenes-realizados/eliminar', [ExamenesParityController::class, 'eliminarImagenRealizada']);
 Route::post('/imagenes/informes/guardar', [ExamenesParityController::class, 'informeGuardar']);
 Route::post('/imagenes/informes/autofill', [ExamenesParityController::class, 'informeAutofill']);
+Route::post('/imagenes/bandeja', [ImagenesBandejaController::class, 'store']);
+Route::delete('/imagenes/bandeja/{procedimientoId}', [ImagenesBandejaController::class, 'destroy'])->whereNumber('procedimientoId');
 
 // Clean aliases
 Route::match(['GET', 'POST'], '/api/examenes/kanban', [ExamenesParityController::class, 'kanbanData']);

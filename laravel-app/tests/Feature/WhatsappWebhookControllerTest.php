@@ -74,6 +74,8 @@ class WhatsappWebhookControllerTest extends TestCase
             $table->unsignedBigInteger('conversation_id');
             $table->string('wa_message_id', 191)->nullable();
             $table->string('direction', 16);
+            $table->string('sender_type', 16)->nullable();
+            $table->unsignedBigInteger('sender_id')->nullable();
             $table->string('message_type', 64)->default('text');
             $table->longText('body')->nullable();
             $table->json('raw_payload')->nullable();

@@ -31,10 +31,10 @@ class ProtocoloAuditorium extends Model
 
 	protected $casts = [
 		'protocolo_id' => 'int',
-		'status' => 'int',
-		'version' => 'int',
-		'usuario_id' => 'int',
-		'creado_en' => 'datetime'
+		'status'       => 'int',
+		'version'      => 'int',
+		'usuario_id'   => 'int',
+		'creado_en'    => 'datetime',
 	];
 
 	protected $fillable = [
@@ -45,6 +45,6 @@ class ProtocoloAuditorium extends Model
 		'status',
 		'version',
 		'usuario_id',
-		'creado_en'
+		'creado_en',
 	];
 }
