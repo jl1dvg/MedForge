@@ -369,7 +369,7 @@ table.cirtab tbody tr.row-alert:hover { background: linear-gradient(90deg, #fbe7
 .wiz-content { display: flex; flex-direction: column; min-height: 0; position: relative; }
 .wiz-stepframe { flex: 1; overflow-y: auto; padding: 26px 30px 0; }
 .wiz-foot { flex: none; display: flex; align-items: center; gap: 10px; padding: 13px 30px; background: var(--bg, #fff); border-top: 1px solid var(--border); }
-.wiz-stepframe { max-width: 760px; margin: 0 auto; animation: stepIn .18s ease-out; }
+.wiz-stepframe { max-width: 980px; margin: 0 auto; animation: stepIn .18s ease-out; }
 @keyframes stepIn { from { transform: translateY(8px); opacity: .6; } to { transform: none; opacity: 1; } }
 .wiz-stepframe > h3 { font-size: 19px; font-weight: 600; margin: 0 0 3px; letter-spacing: -.01em; }
 .wiz-stepframe > .step-sub { font-size: 13.5px; color: var(--fg-mute); margin-bottom: 20px; }
@@ -388,11 +388,14 @@ table.cirtab tbody tr.row-alert:hover { background: linear-gradient(90deg, #fbe7
 .ai-row .ai-txt { flex: 1; font-size: 12.5px; color: var(--fg-2); }
 .ai-row .ai-txt b { color: var(--accent); }
 
+.rep-header { display: grid; gap: 8px; padding: 0 0 4px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--fg-mute); }
+.rep-header.dx { grid-template-columns: 80px 120px 1fr 36px; }
 .rep-row { display: grid; gap: 8px; align-items: center; margin-bottom: 8px; }
-.rep-row.dx { grid-template-columns: 80px 1fr 90px 36px; }
+.rep-row.dx { grid-template-columns: 80px 120px 1fr 36px; }
 .rep-row.proc { grid-template-columns: 110px 1fr 36px; }
-@media (max-width: 620px) { .rep-row.dx, .rep-row.proc { grid-template-columns: 1fr; } }
+@media (max-width: 620px) { .rep-header.dx, .rep-row.dx, .rep-row.proc { grid-template-columns: 1fr; } .rep-header { display: none; } }
 .rep-row input, .rep-row select { height: 38px; }
+.diag-prev-row.from-scraper { border-left-color: var(--accent); background: var(--primary-fade, #eef0fb); }
 .icon-mini { width: 36px; height: 36px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--fg-3); cursor: pointer; display: grid; place-items: center; font-size: 17px; flex: none; }
 .icon-mini:hover { border-color: var(--danger); color: var(--danger); background: #fdecef; }
 .add-line { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; color: var(--accent); background: none; border: 0; cursor: pointer; padding: 4px 0; }

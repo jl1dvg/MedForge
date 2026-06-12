@@ -485,54 +485,100 @@ function StepProcedimiento({ form, set, setForm, showToast, scraped, setScraped,
   const importarPrevio = (p) => {
     setForm((f) => {
       if (f.diagnosticos.some((d) => d.cie10 === p.cie10)) return f;
-      return { ...f, diagnosticos: [...f.diagnosticos, { ojo: f.lateralidad, evidencia: 'Derivación', cie10: p.cie10, detalle: p.descripcion || '', observaciones: '' }] };
+      return { ...f, diagnosticos: [...f.diagnosticos, { ojo: f.lateralidad, cie10: p.cie10, detalle: p.descripcion || '' }] };
     });
-    showToast(`Diagnóstico ${p.cie10} importado al protocolo`, 'mdi-plus-circle-outline');
+    showToast(`Diagnóstico ${p.cie10} importado`, 'mdi-plus-circle-outline');
   };
+
+  const quitarPrevio = (idx) => {
+    setForm((f) => ({ ...f, diagnosticos_previos: f.diagnosticos_previos.filter((_, k) => k !== idx) }));
+  };
+
+  const previos = form.diagnosticos_previos || [];
+  // Show the derivation block if we already have previos from BD OR after scraping
+  const showPrevios = previos.length > 0 || scraped;
+  const previoCount = previos.length;
+  const previoOver = previoCount > 3;
 
   return (
     <div className="wiz-stepframe">
       <h3>Procedimientos, diagnósticos y lateralidad</h3>
       <div className="step-sub">Define qué se operó y por qué. La auditoría compara estos diagnósticos con los de la derivación.</div>
 
-      <div className="fieldset">
-        <legend>Procedimientos realizados</legend>
-        {(form.procedimientos || []).map((p, i) => (
-          <div className="rep-row proc" key={i}>
-            <input value={p.codigo} placeholder="Código" onChange={(e) => updArr('procedimientos', i, 'codigo', e.target.value)} />
-            <input value={p.nombre} placeholder="Nombre del procedimiento" onChange={(e) => updArr('procedimientos', i, 'nombre', e.target.value)} />
-            <button className="icon-mini" title="Quitar" onClick={() => rmRow('procedimientos', i)} disabled={(form.procedimientos || []).length === 1}><i className="mdi mdi-minus" /></button>
-          </div>
-        ))}
-        <button className="add-line" onClick={() => addRow('procedimientos', { codigo: '', nombre: '' })}><i className="mdi mdi-plus-circle-outline" /> Agregar procedimiento</button>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0 20px', alignItems: 'start' }}>
+        <div className="fieldset" style={{ marginBottom: 0 }}>
+          <legend>Procedimientos realizados</legend>
+          {/* NOTE (mejora pendiente): el dato canónico debería ser el código del tarifario_2014.
+              Por ahora se guarda {codigo, nombre} para compatibilidad con el backend actual. */}
+          {(form.procedimientos || []).map((p, i) => (
+            <div className="rep-row proc" key={i}>
+              <input value={p.codigo} placeholder="Código" style={{ maxWidth: 110, fontFamily: 'var(--font-mono)' }}
+                onChange={(e) => updArr('procedimientos', i, 'codigo', e.target.value)} />
+              <input value={p.nombre} placeholder="Descripción del procedimiento"
+                onChange={(e) => updArr('procedimientos', i, 'nombre', e.target.value)} />
+              <button className="icon-mini" title="Quitar" onClick={() => rmRow('procedimientos', i)}
+                disabled={(form.procedimientos || []).length === 1}><i className="mdi mdi-minus" /></button>
+            </div>
+          ))}
+          <button className="add-line" onClick={() => addRow('procedimientos', { codigo: '', nombre: '' })}>
+            <i className="mdi mdi-plus-circle-outline" /> Agregar procedimiento
+          </button>
+        </div>
+
+        <div className="form-row" style={{ minWidth: 200, marginBottom: 0 }}>
+          <label>Lateralidad</label>
+          <select value={form.lateralidad} onChange={(e) => set('lateralidad', e.target.value)}>
+            {LATERALIDAD.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
+          </select>
+        </div>
       </div>
 
-      <div className="form-row" style={{ maxWidth: 280 }}>
-        <label>Lateralidad</label>
-        <select value={form.lateralidad} onChange={(e) => set('lateralidad', e.target.value)}>
-          {LATERALIDAD.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
-        </select>
-      </div>
-
-      <div className="scrape-block">
-        <div className="sb-head"><i className="mdi mdi-radar" /> Diagnósticos de la derivación</div>
-        <div className="hint" style={{ marginBottom: 8 }}>Extrae los diagnósticos del Log de Admisión (CIVE) para contrastarlos con lo registrado.</div>
+      <div className="scrape-block" style={{ marginTop: 18 }}>
+        <div className="sb-head">
+          <i className="mdi mdi-radar" /> Diagnósticos de la derivación
+          {previoCount > 0 && (
+            <span className={`badge ${previoOver ? 'badge-danger' : 'badge-line'}`} style={{ marginLeft: 8 }}>
+              {previoCount} / 3{previoOver ? ' — excede el máximo' : ''}
+            </span>
+          )}
+        </div>
+        <div className="hint" style={{ marginBottom: 8 }}>
+          Diagnósticos registrados en la admisión o extraídos del Log. Máximo 3 permitidos.
+        </div>
         <button className="btn btn-ghost btn-sm" onClick={doScrape} disabled={scraping}>
           {scraping
             ? <><i className="mdi mdi-loading mdi-spin" /> Extrayendo…</>
-            : <><i className="mdi mdi-cloud-search-outline" /> Extraer desde Log de Admisión</>}
+            : <><i className="mdi mdi-cloud-search-outline" /> {previoCount > 0 ? 'Re-extraer desde Log de Admisión' : 'Extraer desde Log de Admisión'}</>}
         </button>
-        {scraped && (form.diagnosticos_previos || []).length > 0 && (
-          <div className="diag-prev">
-            {form.diagnosticos_previos.map((p, i) => {
+
+        {previoOver && (
+          <div className="faltan-banner" style={{ marginTop: 10, background: '#fde8eb', borderColor: '#f4b8c1' }}>
+            <i className="mdi mdi-alert-circle-outline" style={{ color: 'var(--danger)' }} />
+            <div>Se registraron <b>{previoCount} diagnósticos previos</b>, pero el límite es <b>3</b>. Quita los sobrantes.</div>
+          </div>
+        )}
+
+        {showPrevios && (
+          <div className="diag-prev" style={{ marginTop: 10 }}>
+            {previos.length === 0 && scraped && (
+              <div className="proto-empty">No se encontraron diagnósticos en la derivación.</div>
+            )}
+            {previos.map((p, i) => {
               const yaEsta = (form.diagnosticos || []).some((d) => d.cie10 === p.cie10);
               return (
-                <div className="diag-prev-row" key={i}>
+                <div className={`diag-prev-row${p.from_scraper ? ' from-scraper' : ''}`} key={i}>
                   <span className="cie">{p.cie10}</span>
-                  <span className="desc">{p.descripcion}</span>
-                  {yaEsta
-                    ? <span className="badge badge-success"><i className="mdi mdi-check" /> En protocolo</span>
-                    : <button className="btn btn-outline-primary btn-sm" onClick={() => importarPrevio(p)}><i className="mdi mdi-plus" /> Importar</button>}
+                  <span className="desc">{p.descripcion || p.detalle || '—'}</span>
+                  <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                    {yaEsta
+                      ? <span className="badge badge-success"><i className="mdi mdi-check" /> En protocolo</span>
+                      : <button className="btn btn-outline-primary btn-sm" onClick={() => importarPrevio(p)}>
+                          <i className="mdi mdi-plus" /> Importar
+                        </button>}
+                    <button className="btn btn-ghost btn-sm" title="Quitar de la lista" onClick={() => quitarPrevio(i)}>
+                      <i className="mdi mdi-close" />
+                    </button>
+                  </div>
                 </div>
               );
             })}
@@ -540,18 +586,39 @@ function StepProcedimiento({ form, set, setForm, showToast, scraped, setScraped,
         )}
       </div>
 
-      <div className="fieldset">
-        <legend>Diagnósticos del protocolo (CIE-10)</legend>
-        {(form.diagnosticos || []).length === 0 && <div className="proto-empty" style={{ marginBottom: 10 }}>Sin diagnósticos. Importa desde la derivación o agrégalos manualmente.</div>}
+      <div className="fieldset" style={{ marginTop: 18 }}>
+        <legend>
+          Diagnósticos del protocolo (CIE-10)
+          <span style={{ marginLeft: 8, fontWeight: 400, fontSize: 11, color: 'var(--fg-mute)' }}>
+            {(form.diagnosticos || []).length} registrado(s)
+          </span>
+        </legend>
+        <div className="rep-header dx">
+          <span>Ojo</span><span>Código CIE-10</span><span>Detalle</span><span />
+        </div>
+        {(form.diagnosticos || []).length === 0 && (
+          <div className="proto-empty" style={{ marginBottom: 10 }}>
+            Sin diagnósticos. Importa desde la derivación o agrégalos manualmente.
+          </div>
+        )}
         {(form.diagnosticos || []).map((d, i) => (
           <div className="rep-row dx" key={i}>
-            <input value={d.ojo} placeholder="Ojo" onChange={(e) => updArr('diagnosticos', i, 'ojo', e.target.value)} />
-            <input value={d.detalle} placeholder="Detalle del diagnóstico" onChange={(e) => updArr('diagnosticos', i, 'detalle', e.target.value)} />
-            <input value={d.cie10} placeholder="CIE-10" onChange={(e) => updArr('diagnosticos', i, 'cie10', e.target.value)} />
-            <button className="icon-mini" title="Quitar" onClick={() => rmRow('diagnosticos', i)}><i className="mdi mdi-minus" /></button>
+            <input value={d.ojo || ''} placeholder="OD/OI/AO"
+              style={{ maxWidth: 80, fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}
+              onChange={(e) => updArr('diagnosticos', i, 'ojo', e.target.value)} />
+            <input value={d.cie10 || ''} placeholder="H25.03"
+              style={{ maxWidth: 120, fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}
+              onChange={(e) => updArr('diagnosticos', i, 'cie10', e.target.value)} />
+            <input value={d.detalle || ''} placeholder="Descripción del diagnóstico"
+              onChange={(e) => updArr('diagnosticos', i, 'detalle', e.target.value)} />
+            <button className="icon-mini" title="Quitar" onClick={() => rmRow('diagnosticos', i)}>
+              <i className="mdi mdi-minus" />
+            </button>
           </div>
         ))}
-        <button className="add-line" onClick={() => addRow('diagnosticos', { ojo: form.lateralidad, evidencia: '', cie10: '', detalle: '', observaciones: '' })}><i className="mdi mdi-plus-circle-outline" /> Agregar diagnóstico</button>
+        <button className="add-line" onClick={() => addRow('diagnosticos', { ojo: form.lateralidad, cie10: '', detalle: '' })}>
+          <i className="mdi mdi-plus-circle-outline" /> Agregar diagnóstico
+        </button>
       </div>
     </div>
   );

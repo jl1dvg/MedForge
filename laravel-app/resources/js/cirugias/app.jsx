@@ -267,9 +267,26 @@ export default function App({ config }) {
       ayudante_anestesia:       staff.ayudante_anestesia || '',
       instrumentista:           staff.instrumentista || '',
       circulante:               staff.circulante || '',
-      procedimientos:           JSON.stringify(form.procedimientos || []),
-      diagnosticos:             JSON.stringify(form.diagnosticos || []),
-      diagnosticos_previos:     JSON.stringify(form.diagnosticos_previos || []),
+      // Procedimientos: keep {codigo, nombre} — backend persists as-is in protocolo_data.procedimientos
+      // NOTE (mejora pendiente): codigo should be the canonical key from tarifario_2014
+      procedimientos: JSON.stringify(form.procedimientos || []),
+      // Diagnosticos: backend guardar() parses idDiagnostico = "CIE10 - detalle" for diagnosticos_asignados table
+      diagnosticos: JSON.stringify(
+        (form.diagnosticos || []).map((d) => ({
+          ojo:           d.ojo || '',
+          idDiagnostico: d.cie10 ? `${d.cie10}${d.detalle ? ` - ${d.detalle}` : ''}` : '',
+          cie10:         d.cie10 || '',
+          detalle:       d.detalle || '',
+          evidencia:     d.evidencia || '',
+          observaciones: d.observaciones || '',
+        }))
+      ),
+      diagnosticos_previos: JSON.stringify(
+        (form.diagnosticos_previos || []).map((p) => ({
+          cie10:       p.cie10 || '',
+          descripcion: p.descripcion || p.detalle || '',
+        }))
+      ),
       insumos:                  JSON.stringify(form.insumos || {}),
       medicamentos:             JSON.stringify(form.medicamentos || []),
       status:                   String(meta.status ?? 0),
