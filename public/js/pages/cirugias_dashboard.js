@@ -105,3 +105,43 @@ window.initCirugiasDashboard = function (data) {
 if (window.cirugiasDashboardData && typeof window.initCirugiasDashboard === 'function') {
     window.initCirugiasDashboard(window.cirugiasDashboardData);
 }
+
+(function syncCirugiasDashboardExportLinks() {
+    var form = document.getElementById('cirugias-dashboard-filter-form');
+    var links = [
+        document.getElementById('cirugias-dashboard-export-pdf'),
+        document.getElementById('cirugias-dashboard-export-excel')
+    ].filter(Boolean);
+
+    if (!form || links.length === 0) {
+        return;
+    }
+
+    var buildQuery = function () {
+        var formData = new FormData(form);
+        var params = new URLSearchParams();
+
+        formData.forEach(function (value, key) {
+            params.set(key, String(value || '').trim());
+        });
+
+        return params.toString();
+    };
+
+    var syncLinks = function () {
+        var query = buildQuery();
+
+        links.forEach(function (link) {
+            var baseUrl = link.getAttribute('data-export-base-url') || link.getAttribute('href') || '';
+            link.setAttribute('href', query ? baseUrl + '?' + query : baseUrl);
+        });
+    };
+
+    form.addEventListener('input', syncLinks);
+    form.addEventListener('change', syncLinks);
+    links.forEach(function (link) {
+        link.addEventListener('click', syncLinks);
+    });
+
+    syncLinks();
+})();
