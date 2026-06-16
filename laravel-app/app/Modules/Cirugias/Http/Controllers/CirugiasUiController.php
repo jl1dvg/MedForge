@@ -171,8 +171,24 @@ class CirugiasUiController
         $start = $dateRange['start']->format('Y-m-d');
         $end   = $dateRange['end']->format('Y-m-d');
 
-        $report      = $this->dashboardService->buildReportPayload($start, $end, $sedeFilter);
-        $sedeOptions = $this->dashboardService->getSedeOptions($start, $end);
+        @set_time_limit(180);
+
+        try {
+            $report      = $this->dashboardService->buildReportPayload($start, $end, $sedeFilter);
+            $sedeOptions = $this->dashboardService->getSedeOptions($start, $end);
+        } catch (Throwable $e) {
+            $errorId = bin2hex(random_bytes(6));
+            Log::error('cirugias.dashboard.report.error', [
+                'error_id' => $errorId,
+                'start' => $start,
+                'end' => $end,
+                'sede' => $sedeFilter,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response('No se pudo generar el reporte (ref: ' . $errorId . ')', 500);
+        }
 
         return view('cirugias.v2-dashboard-report', [
             'report'      => $report,
