@@ -35,6 +35,33 @@ class PacientesV2ResolversTest extends TestCase
         $this->assertTrue($medico['confirmado']);
     }
 
+    public function test_medico_tratante_matches_reordered_agenda_names_and_validates_user_specialty(): void
+    {
+        $pdo = $this->makePdo();
+        $this->createUsersTable($pdo);
+        $this->createProcedimientosTable($pdo);
+
+        $stmt = $pdo->prepare('
+            INSERT INTO users (nombre, full_name, subespecialidad, especialidad, sede, id_trabajador)
+            VALUES (:nombre, :nombre, :subespecialidad, :especialidad, :sede, :id_trabajador)
+        ');
+        $stmt->execute([
+            ':nombre' => 'Andres Fernando Polit Hoyos',
+            ':subespecialidad' => 'cornea_refractiva',
+            ':especialidad' => 'Cirujano Oftalmologo',
+            ':sede' => 'CEIBOS',
+            ':id_trabajador' => '32',
+        ]);
+
+        $this->insertProcedimiento($pdo, 'HC1', 'POLIT HOYOS ANDRES FERNANDO', '2026-06-16', '09:00', 'CEIBOS');
+
+        $medico = (new MedicoTratanteResolver($pdo))->resolve('HC1');
+
+        $this->assertSame('Andres Fernando Polit Hoyos', $medico['nombre']);
+        $this->assertSame('Cirujano Oftalmologo', $medico['especialidad']);
+        $this->assertSame(1, $medico['procedimientos_count']);
+    }
+
     public function test_medico_tratante_returns_null_when_only_optometry_exists(): void
     {
         $pdo = $this->makePdo();

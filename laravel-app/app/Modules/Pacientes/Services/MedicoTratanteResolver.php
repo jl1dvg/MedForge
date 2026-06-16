@@ -28,6 +28,10 @@ class MedicoTratanteResolver
         }
 
         $placeholders = implode(',', array_fill(0, count($hcNumbers), '?'));
+        $users = $this->validUsersByNameTokens();
+        if ($users === []) {
+            return [];
+        }
 
         try {
             $stmt = $this->db->prepare(<<<SQL
@@ -36,13 +40,8 @@ class MedicoTratanteResolver
                     pp.id AS procedimiento_id,
                     pp.fecha,
                     pp.hora,
-                    u.id AS medico_id,
-                    COALESCE(NULLIF(TRIM(u.nombre), ''), NULLIF(TRIM(u.full_name), '')) AS nombre,
-                    COALESCE(NULLIF(TRIM(u.subespecialidad), ''), NULLIF(TRIM(u.especialidad), '')) AS especialidad
+                    pp.doctor
                 FROM procedimiento_proyectado pp
-                INNER JOIN users u
-                    ON UPPER(TRIM(pp.doctor)) = UPPER(TRIM(u.nombre))
-                    OR UPPER(TRIM(pp.doctor)) = UPPER(TRIM(u.full_name))
                 WHERE pp.hc_number IN ({$placeholders})
                   AND COALESCE(pp.sigcenter_present, 1) = 1
                   AND pp.doctor IS NOT NULL
@@ -55,26 +54,21 @@ class MedicoTratanteResolver
 
         $groups = [];
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-            $especialidad = trim((string) ($row['especialidad'] ?? ''));
-            if (!$this->isEspecialidadTratante($especialidad)) {
-                continue;
-            }
-
             $hcNumber = (string) ($row['hc_number'] ?? '');
-            $medicoId = (string) ($row['medico_id'] ?? '');
-            $nombre = trim((string) ($row['nombre'] ?? ''));
-            if ($hcNumber === '' || $medicoId === '' || $nombre === '') {
+            $doctor = trim((string) ($row['doctor'] ?? ''));
+            $user = $this->matchUser($doctor, $users);
+            if ($hcNumber === '' || $user === null) {
                 continue;
             }
 
-            $key = $hcNumber . '|' . $medicoId;
+            $key = $hcNumber . '|' . (string) $user['id'];
             $latestKey = $this->latestKey($row);
             if (!isset($groups[$key])) {
                 $groups[$key] = [
                     'hc_number' => $hcNumber,
-                    'id' => (int) $medicoId,
-                    'nombre' => $nombre,
-                    'especialidad' => $especialidad,
+                    'id' => (int) $user['id'],
+                    'nombre' => (string) $user['nombre'],
+                    'especialidad' => (string) $user['especialidad'],
                     'procedimientos_count' => 0,
                     'ultima_fecha' => null,
                     '_latest_key' => '',
@@ -112,6 +106,75 @@ class MedicoTratanteResolver
         return $resolved;
     }
 
+    /**
+     * @return array<int,array{id:int,nombre:string,especialidad:string,tokens:array<int,string>}>
+     */
+    private function validUsersByNameTokens(): array
+    {
+        try {
+            $stmt = $this->db->query(<<<'SQL'
+                SELECT id, nombre, full_name, especialidad, subespecialidad
+                FROM users
+                WHERE ((nombre IS NOT NULL AND TRIM(nombre) <> '')
+                    OR (full_name IS NOT NULL AND TRIM(full_name) <> ''))
+            SQL);
+        } catch (PDOException) {
+            return [];
+        }
+
+        $users = [];
+        foreach (($stmt?->fetchAll(PDO::FETCH_ASSOC) ?: []) as $row) {
+            $especialidad = trim((string) ($row['especialidad'] ?? ''));
+            $subespecialidad = trim((string) ($row['subespecialidad'] ?? ''));
+            if (!$this->isEspecialidadTratante($especialidad . ' ' . $subespecialidad)) {
+                continue;
+            }
+
+            $nombre = trim((string) ($row['nombre'] ?: ($row['full_name'] ?? '')));
+            $tokens = $this->nameTokens($nombre);
+            if ($nombre === '' || count($tokens) < 2) {
+                continue;
+            }
+
+            $users[] = [
+                'id' => (int) ($row['id'] ?? 0),
+                'nombre' => $nombre,
+                'especialidad' => $especialidad !== '' ? $especialidad : $subespecialidad,
+                'tokens' => $tokens,
+            ];
+        }
+
+        return $users;
+    }
+
+    /**
+     * @param array<int,array{id:int,nombre:string,especialidad:string,tokens:array<int,string>}> $users
+     * @return array{id:int,nombre:string,especialidad:string,tokens:array<int,string>}|null
+     */
+    private function matchUser(string $doctor, array $users): ?array
+    {
+        $doctorTokens = $this->nameTokens($doctor);
+        if (count($doctorTokens) < 2) {
+            return null;
+        }
+
+        $doctorSet = array_fill_keys($doctorTokens, true);
+        foreach ($users as $user) {
+            $matched = 0;
+            foreach ($user['tokens'] as $token) {
+                if (isset($doctorSet[$token])) {
+                    $matched++;
+                }
+            }
+
+            if ($matched === count($user['tokens'])) {
+                return $user;
+            }
+        }
+
+        return null;
+    }
+
     private function isEspecialidadTratante(string $especialidad): bool
     {
         $value = strtolower(trim($especialidad));
@@ -129,6 +192,27 @@ class MedicoTratanteResolver
         }
 
         return str_contains($value, 'cirujano') && str_contains($value, 'oftalm');
+    }
+
+    /**
+     * @return array<int,string>
+     */
+    private function nameTokens(string $name): array
+    {
+        $name = strtolower(trim($name));
+        $name = strtr($name, [
+            'á' => 'a',
+            'é' => 'e',
+            'í' => 'i',
+            'ó' => 'o',
+            'ú' => 'u',
+            'ñ' => 'n',
+        ]);
+        $tokens = preg_split('/[^a-z0-9]+/', $name) ?: [];
+        $tokens = array_values(array_unique(array_filter($tokens, static fn(string $token): bool => $token !== '')));
+        sort($tokens);
+
+        return $tokens;
     }
 
     /**

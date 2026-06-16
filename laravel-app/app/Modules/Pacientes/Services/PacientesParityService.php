@@ -1009,11 +1009,13 @@ class PacientesParityService
 
             foreach (($stmt?->fetchAll(PDO::FETCH_ASSOC) ?: []) as $row) {
                 $nombre = trim((string) ($row['nombre'] ?: ($row['full_name'] ?? '')));
-                $especialidad = trim((string) ($row['subespecialidad'] ?: ($row['especialidad'] ?? '')));
+                $especialidadBase = trim((string) ($row['especialidad'] ?? ''));
+                $subespecialidad = trim((string) ($row['subespecialidad'] ?? ''));
+                $especialidad = $especialidadBase !== '' ? $especialidadBase : $subespecialidad;
                 if ($nombre === '') {
                     continue;
                 }
-                if (!$this->isEspecialidadTratante($especialidad)) {
+                if (!$this->isEspecialidadTratante($especialidadBase . ' ' . $subespecialidad)) {
                     continue;
                 }
 
