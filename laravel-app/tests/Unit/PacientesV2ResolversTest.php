@@ -139,6 +139,42 @@ class PacientesV2ResolversTest extends TestCase
         $this->assertSame('publico', $patient['tipo_afiliacion']);
     }
 
+    public function test_patient_list_excludes_projected_procedure_rows_imported_as_patients(): void
+    {
+        $pdo = $this->makePdo();
+        $this->createPatientDataTable($pdo);
+        $this->createUsersTable($pdo);
+        $this->createProcedimientosTable($pdo);
+        $this->createConsultaDataTable($pdo);
+        $this->createSolicitudProcedimientoTable($pdo);
+
+        $pdo->exec("
+            INSERT INTO patient_data (
+                hc_number, fname, mname, lname, lname2, afiliacion, fecha_nacimiento,
+                sexo, celular, email, direccion, ciudad, created_at
+            ) VALUES
+            (
+                '12345', 'PACIENTE', '', 'REAL', '', 'PARTICULAR', '1990-01-01',
+                'M', '', '', '', '', '2026-06-01 09:00:00'
+            ),
+            (
+                '2024-11-08 09:20:00', 'IMA-DIA-017', '-', 'IMAGENES', '-', '129.1100', NULL,
+                '', '', '', '', '', '2026-06-16 09:00:00'
+            ),
+            (
+                '281295-RETINOGRAFIA PANORAMICA (AO) AMBOS OJOS', 'ANGGIE', 'CRISTELL', 'CORONEL', 'CARPIO', '16.55', NULL,
+                '', '', '', '', '', '2026-06-16 09:00:00'
+            )
+        ");
+
+        $payload = (new PacientesParityService($pdo))->obtenerPacientesReact(null, 0);
+
+        $this->assertSame(1, $payload['meta']['total']);
+        $this->assertCount(1, $payload['data']);
+        $this->assertSame('12345', $payload['data'][0]['hc_number']);
+        $this->assertSame('PARTICULAR', $payload['data'][0]['afiliacion']);
+    }
+
     private function makePdo(): PDO
     {
         $pdo = new PDO('sqlite::memory:');

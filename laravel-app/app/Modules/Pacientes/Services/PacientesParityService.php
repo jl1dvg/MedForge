@@ -23,7 +23,8 @@ class PacientesParityService
         $limit = $limit !== null ? max(1, min(2000, $limit)) : null;
         $offset = max(0, $offset);
 
-        $total = (int) $this->db->query('SELECT COUNT(*) FROM patient_data')->fetchColumn();
+        $pacientesWhere = $this->pacientesValidosWhere();
+        $total = (int) $this->db->query("SELECT COUNT(*) FROM patient_data p WHERE {$pacientesWhere}")->fetchColumn();
         $paginationSql = $limit !== null ? 'LIMIT :limit OFFSET :offset' : '';
 
         $sql = <<<SQL
@@ -119,7 +120,8 @@ class PacientesParityService
                 ) AS alerta
             FROM (
                 SELECT *
-                FROM patient_data
+                FROM patient_data p
+                WHERE {$pacientesWhere}
                 ORDER BY CAST(hc_number AS UNSIGNED) DESC, hc_number DESC
                 {$paginationSql}
             ) p
@@ -152,7 +154,8 @@ class PacientesParityService
             $hcNumber = (string) ($row['hc_number'] ?? '');
             $medicoTratante = $medicosTratantes[$hcNumber] ?? null;
             $sedeInfo = $sedesPacientes[$hcNumber] ?? null;
-            $tipoAfiliacion = $tipoAfiliacionResolver->classify((string) ($row['afiliacion'] ?? ''));
+            $afiliacion = $this->normalizarAfiliacionListado((string) ($row['afiliacion'] ?? ''));
+            $tipoAfiliacion = $tipoAfiliacionResolver->classify($afiliacion);
             $proximaCita = null;
             if (!empty($row['proxima_fecha'])) {
                 $proximaCita = [
@@ -170,10 +173,10 @@ class PacientesParityService
                 'cedula' => null,
                 'telefono' => (string) ($row['telefono'] ?? ''),
                 'email' => (string) ($row['email'] ?? ''),
-                'afiliacion' => (string) ($row['afiliacion'] ?? ''),
+                'afiliacion' => $afiliacion,
                 'tipo_afiliacion' => $tipoAfiliacion,
                 'afiliacion_info' => [
-                    'nombre' => (string) ($row['afiliacion'] ?? ''),
+                    'nombre' => $afiliacion,
                     'tipo' => $tipoAfiliacion,
                 ],
                 'fecha_nacimiento' => (string) ($row['fecha_nacimiento'] ?? ''),
@@ -205,15 +208,35 @@ class PacientesParityService
         ];
     }
 
+    private function pacientesValidosWhere(string $alias = 'p'): string
+    {
+        return "{$alias}.hc_number IS NOT NULL
+            AND TRIM({$alias}.hc_number) <> ''
+            AND {$alias}.hc_number NOT LIKE '%-%'
+            AND {$alias}.hc_number NOT LIKE '% %'";
+    }
+
+    private function normalizarAfiliacionListado(string $afiliacion): string
+    {
+        $afiliacion = trim($afiliacion);
+        if ($afiliacion === '' || preg_match('/^\d+(?:\.\d+)?$/', $afiliacion) === 1) {
+            return '';
+        }
+
+        return $afiliacion;
+    }
+
     /**
      * @return array{total_pacientes:int,pacientes_nuevos:int,citas_hoy:int,solicitudes_activas:int}
      */
     public function obtenerKpisReact(): array
     {
+        $pacientesWhere = $this->pacientesValidosWhere();
+
         return [
-            'total_pacientes' => (int) $this->db->query('SELECT COUNT(*) FROM patient_data')->fetchColumn(),
+            'total_pacientes' => (int) $this->db->query("SELECT COUNT(*) FROM patient_data p WHERE {$pacientesWhere}")->fetchColumn(),
             'pacientes_nuevos' => $this->safeCount(
-                'SELECT COUNT(*) FROM patient_data WHERE created_at >= DATE_FORMAT(CURDATE(), "%Y-%m-01")'
+                "SELECT COUNT(*) FROM patient_data p WHERE {$pacientesWhere} AND p.created_at >= DATE_FORMAT(CURDATE(), \"%Y-%m-01\")"
             ),
             'citas_hoy' => $this->safeCount(
                 'SELECT COUNT(*) FROM procedimiento_proyectado WHERE COALESCE(sigcenter_present, 1) = 1 AND fecha = CURDATE()'
