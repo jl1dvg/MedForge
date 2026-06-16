@@ -16,35 +16,77 @@ Este spec cubre la implementación del nuevo frontend, las optimizaciones de bac
 
 ---
 
+## Principio fundamental: dos informes independientes
+
+**Cirugías e Imágenes son informes completamente separados.** No existe un reporte unificado ni un switch de datos entre módulos dentro de una misma pantalla.
+
+| Aspecto | Compartido | Independiente por módulo |
+|---|---|---|
+| Sistema visual (CSS, tokens) | ✅ | |
+| Componentes React genéricos (charts, KPI, BarsList, etc.) | ✅ | |
+| Layout tipo documento (portada, secciones, footnote) | ✅ | |
+| Blade view | | ✅ |
+| Payload de datos | | ✅ |
+| Secciones específicas (02, 03, 04) | | ✅ |
+| Backend y lógica de negocio | | ✅ |
+| Filtros (campos pueden diferir) | | ✅ |
+| Exportaciones Excel/PDF | | ✅ |
+| Entrada Vite / bundle JS | | ✅ (uno por módulo) |
+
+El diseño fuente sirve como **lenguaje visual común**, no como reporte unificado. Si el toolbar del diseño original tiene un selector de unidad, en la implementación ese control se reemplaza por un **enlace externo** ("Ver informe de Imágenes" / "Ver informe de Cirugías"), no por un switch interno de datos.
+
+---
+
 ## Decisiones de diseño
 
 | Decisión | Elección |
 |---|---|
 | Layout | Fullscreen standalone — sin sidebar/topnav de MedForge |
-| Rutas | Separadas y con lógica de backend independiente |
-| Compilación JS | Vite (no Babel CDN en runtime) |
+| Rutas | Completamente separadas, backend independiente por módulo |
+| Compilación JS | Vite (no Babel CDN en runtime) — un bundle por módulo |
 | Datos | Solo reales; si falta fuente, el bloque se oculta |
 | Deltas comparativos (portada) | Omitidos en v1 — requieren doble query de período anterior |
 | Vistas actuales | Se preservan como respaldo; las rutas se conectan al nuevo diseño solo tras validación |
 | Exportaciones | Los endpoints actuales de Excel y PDF se conservan; los botones los llaman con los filtros vigentes |
+| Navegación entre informes | Solo enlace externo en el toolbar — no switch de datos |
 
 ---
 
 ## Arquitectura
 
-### Frontend
+### Frontend — Estructura por módulo
 
+**CSS compartido** (una sola hoja, ambos módulos la usan):
 ```
-resources/js/v2/reportes-v2/
-    app.tsx                  ← Shell React: lee BACKEND_DATA, maneja filtros, redirige entre rutas
-    charts.tsx               ← Recharts components (TrendArea, AreaSeries, ColumnChart, DonutChart)
-    lib.tsx                  ← Toolbar, Cover, Section, ExecutiveMap, Kpi, BarsList, etc.
-    cirugias-sections.tsx    ← Secciones 02-04 de Cirugías
-    imagenes-sections.tsx    ← Secciones 02-04 de Imágenes
-    types.ts                 ← Interfaces TypeScript del payload
+public/css/v2/reportes-v2.css   ← report.styles.css del diseño (adaptado)
+```
 
-public/css/v2/reportes-v2.css   ← CSS del diseño (report.styles.css adaptado)
+**Componentes compartidos** (biblioteca visual reutilizable):
+```
+resources/js/v2/reportes-v2/shared/
+    charts.tsx    ← Recharts: TrendArea, AreaSeries, ColumnChart, DonutChart, RepTooltip
+    lib.tsx       ← Cover, Section, ExecutiveMap, Kpi, BarsList, DonutLegend, Read, Recs, Footnote
+    types.ts      ← Interfaces base compartidas (ReportPeriod, ReportSede, ExecFlow, ExecKpi, etc.)
+```
 
+**Bundle Cirugías** (entrada Vite independiente):
+```
+resources/js/v2/reportes-v2/cirugias/
+    app.tsx         ← Entry point: monta React, lee window.MF_CIR_REPORT, renderiza CirugiasReport
+    toolbar.tsx     ← Toolbar específico de Cirugías (filtros: período, sede + link a Imágenes)
+    sections.tsx    ← Secciones 02, 03, 04 exclusivas de Cirugías
+```
+
+**Bundle Imágenes** (entrada Vite independiente):
+```
+resources/js/v2/reportes-v2/imagenes/
+    app.tsx         ← Entry point: monta React, lee window.MF_IMG_REPORT, renderiza ImagenesReport
+    toolbar.tsx     ← Toolbar específico de Imágenes (filtros: período, sede, tipo_examen + link a Cirugías)
+    sections.tsx    ← Secciones 02, 03, 04 exclusivas de Imágenes
+```
+
+**Blade views** (cada módulo tiene el suyo, no comparten layout PHP):
+```
 resources/views/cirugias/
     v2-dashboard-report.blade.php   ← Vista fullscreen nueva (Cirugías)
     v2-dashboard.blade.php          ← Vista actual — NO se modifica hasta validación
@@ -60,31 +102,58 @@ resources/views/examenes/
 
 Una vez validadas en staging, las rutas principales se conectan al nuevo diseño y las vistas legacy se mueven a `*-legacy.blade.php`.
 
-### Vite entry points
+### Vite entry points — dos bundles separados
 
 ```js
-// vite.config.js — nuevo entry
-'resources/js/v2/reportes-v2/app.tsx'
+// vite.config.js (laravel-app) — dos entradas nuevas
+input: {
+  // ... entradas existentes ...
+  'reportes-cirugias': 'resources/js/v2/reportes-v2/cirugias/app.tsx',
+  'reportes-imagenes': 'resources/js/v2/reportes-v2/imagenes/app.tsx',
+}
 ```
 
-Genera `public/build/assets/reportes-v2-[hash].js` + `.css`.
+Cada entrada genera su propio bundle: `reportes-cirugias-[hash].js` y `reportes-imagenes-[hash].js`. Los componentes compartidos de `shared/` son importados directamente por cada entry (tree-shaking los mantiene eficientes).
 
-### Blade fullscreen
+### Blade fullscreen — Cirugías
 
 ```html
+{{-- resources/views/cirugias/v2-dashboard-report.blade.php --}}
 <!doctype html>
-<html lang="es" data-unit="{{ $unit }}">
+<html lang="es" data-unit="cirugias">
 <head>
   <meta charset="utf-8">
-  <title>{{ $pageTitle }} · MedForge</title>
-  @vite(['resources/js/v2/reportes-v2/app.tsx'])
+  <title>Informe Ejecutivo · Cirugías · MedForge</title>
+  @vite(['resources/js/v2/reportes-v2/cirugias/app.tsx'])
 </head>
 <body>
   <div id="root"></div>
   <script>
-    window.MF_REPORT = @json($reportPayload);
+    window.MF_CIR_REPORT  = @json($reportPayload);
     window.MF_EXPORT_URLS = @json($exportUrls);
-    window.MF_NAV_URLS = @json($navUrls);
+    window.MF_NAV_URLS    = @json($navUrls);
+  </script>
+</body>
+</html>
+```
+
+### Blade fullscreen — Imágenes
+
+```html
+{{-- resources/views/examenes/v2-imagenes-dashboard-report.blade.php --}}
+<!doctype html>
+<html lang="es" data-unit="imagenes">
+<head>
+  <meta charset="utf-8">
+  <title>Informe Ejecutivo · Imágenes · MedForge</title>
+  @vite(['resources/js/v2/reportes-v2/imagenes/app.tsx'])
+</head>
+<body>
+  <div id="root"></div>
+  <script>
+    window.MF_IMG_REPORT  = @json($reportPayload);
+    window.MF_EXPORT_URLS = @json($exportUrls);
+    window.MF_NAV_URLS    = @json($navUrls);
   </script>
 </body>
 </html>
@@ -92,16 +161,23 @@ Genera `public/build/assets/reportes-v2-[hash].js` + `.css`.
 
 ---
 
-## Toolbar del diseño — adaptaciones
+## Toolbar por módulo — adaptaciones
 
-| Control | Comportamiento implementado |
-|---|---|
-| Selector de unidad | Botón "Cirugías" enlaza a `/v2/cirugias/dashboard`; "Imágenes" a `/v2/imagenes/dashboard`. JS hace `window.location.href`. No mezcla datos. |
-| Período (Mes/Trim/Sem/Año) | Al cambiar, hace `window.location.href = currentRoute + '?period=trim&sede=matriz'`. Backend calcula rango de fechas desde el preset. |
-| Sede | Mismo mecanismo que período. |
-| Exportar Excel | `<a href="{{ $exportUrls['excel'] }}">` — endpoint actual con querystring de filtros vigentes. |
-| Exportar PDF | `<a href="{{ $exportUrls['pdf'] }}">` — endpoint actual. |
-| ← Volver | Link a `/dashboard` (o `/v3/dashboard` si existe). |
+El diseño original tiene un selector de unidad que actúa como switch de datos. **En la implementación, ese control no existe.** En su lugar, cada toolbar muestra:
+
+| Control | Cirugías | Imágenes |
+|---|---|---|
+| Logo/brand MedForge | ✅ | ✅ |
+| Título del informe | "Informe Ejecutivo · Cirugías" | "Informe Ejecutivo · Imágenes" |
+| Período (Mes/Trim/Sem/Año) | ✅ — recarga con `?period=X` | ✅ — recarga con `?period=X` |
+| Sede | ✅ — recarga con `?sede=X` | ✅ — recarga con `?sede=X` |
+| Tipo de examen | ❌ no aplica | ✅ — filtro adicional |
+| Exportar Excel | `<a href="{{ $exportUrls['excel'] }}">` | `<a href="{{ $exportUrls['excel'] }}">` |
+| Exportar PDF | `<a href="{{ $exportUrls['pdf'] }}">` | `<a href="{{ $exportUrls['pdf'] }}">` |
+| Enlace al otro informe | "Ver informe de Imágenes →" | "Ver informe de Cirugías →" |
+| ← Volver | `/dashboard` | `/dashboard` |
+
+**Comportamiento de filtros:** al cambiar período o sede, el toolbar hace `window.location.href = currentRoute + '?period=X&sede=Y'`. El backend recalcula y devuelve datos nuevos. No hay estado React que persista datos de ambas unidades.
 
 ---
 
@@ -283,14 +359,23 @@ La mayor parte de los datos ya está en `$payload['dashboard']['charts']` y `$pa
 
 ---
 
-## Vite — entrada nueva
+## Interfaces TypeScript base compartidas
 
-```js
-// vite.config.js (laravel-app) — agregar al objeto input:
-'reportes-v2': 'resources/js/v2/reportes-v2/app.tsx'
+`shared/types.ts` define las interfaces que ambos módulos usan para portada, mapa ejecutivo y filtros. Cada módulo extiende con sus propios campos:
+
+```ts
+// shared/types.ts
+export interface ReportPeriod { key: string; label: string; fromLabel: string; toLabel: string; }
+export interface ReportSede   { id: string; label: string; }
+export interface ExecFlowStage { key: string; label: string; value: number; context: string; cls: string; leak?: { label: string; count: number; amount: number }; }
+export interface ExecKpi { label: string; value: string; hint: string; source: string; cls: string; }
+export interface ExecAction { severity: string; title: string; metric: string; owner: string; action: string; }
+export interface ExecMap { flow: ExecFlowStage[]; links: {pct:number}[]; kpis: ExecKpi[]; actions: ExecAction[]; summary: Record<string,string>; ledger: {label:string;value:string;tone?:string}[]; }
+export interface SynthCell { label: string; value: string|number; unit?: string; delta?: number; deltaSuffix?: string; }
+
+// Cirugías extiende con sus campos en cirugias/types.ts
+// Imágenes extiende con sus campos en imagenes/types.ts
 ```
-
-El app TSX usa `window.MF_REPORT` (inyectado por Blade) en lugar de `CIR.report()` / `IMG.report()` con datos sintéticos.
 
 ---
 
@@ -364,21 +449,53 @@ Tras validación en staging:
 
 ## Archivos modificados / creados
 
+### Backend
 | Archivo | Acción |
 |---|---|
-| `app/Modules/Cirugias/Services/CirugiasDashboardService.php` | Optimizar + agregar `buildReportPayload()` |
+| `app/Modules/Cirugias/Services/CirugiasDashboardService.php` | Optimizar schema cache + agregar `buildReportPayload()` |
 | `app/Modules/Cirugias/Http/Controllers/CirugiasUiController.php` | Agregar `dashboardReport()` |
-| `app/Modules/Examenes/Services/ImagenesUiService.php` | Optimizar |
+| `app/Modules/Examenes/Services/ImagenesUiService.php` | Optimizar schema cache + eliminar `similar_text()` + limitar tarifario |
 | `app/Modules/Examenes/Http/Controllers/ImagenesUiController.php` | Agregar `dashboardReport()` |
-| `routes/v2/cirugias.php` | Ruta `/report` temporal |
+| `routes/v2/cirugias.php` | Ruta `/cirugias/dashboard/report` temporal |
 | `routes/web.php` | Ruta `/v2/imagenes/dashboard/report` temporal |
-| `resources/views/cirugias/v2-dashboard-report.blade.php` | Crear (fullscreen) |
-| `resources/views/examenes/v2-imagenes-dashboard-report.blade.php` | Crear (fullscreen) |
-| `resources/js/v2/reportes-v2/app.tsx` | Crear |
-| `resources/js/v2/reportes-v2/charts.tsx` | Crear |
-| `resources/js/v2/reportes-v2/lib.tsx` | Crear |
-| `resources/js/v2/reportes-v2/cirugias-sections.tsx` | Crear |
-| `resources/js/v2/reportes-v2/imagenes-sections.tsx` | Crear |
-| `resources/js/v2/reportes-v2/types.ts` | Crear |
-| `public/css/v2/reportes-v2.css` | Crear |
-| `laravel-app/vite.config.js` | Agregar entry `reportes-v2` |
+
+### Vistas
+| Archivo | Acción |
+|---|---|
+| `resources/views/cirugias/v2-dashboard-report.blade.php` | Crear (fullscreen, bundle Cirugías) |
+| `resources/views/examenes/v2-imagenes-dashboard-report.blade.php` | Crear (fullscreen, bundle Imágenes) |
+| `resources/views/cirugias/v2-dashboard.blade.php` | NO modificar hasta validación |
+| `resources/views/examenes/v2-imagenes-dashboard.blade.php` | NO modificar hasta validación |
+
+### Frontend — CSS compartido
+| Archivo | Acción |
+|---|---|
+| `public/css/v2/reportes-v2.css` | Crear (report.styles.css adaptado) |
+
+### Frontend — Componentes compartidos
+| Archivo | Acción |
+|---|---|
+| `resources/js/v2/reportes-v2/shared/charts.tsx` | Crear (TrendArea, AreaSeries, ColumnChart, DonutChart) |
+| `resources/js/v2/reportes-v2/shared/lib.tsx` | Crear (Cover, Section, ExecutiveMap, Kpi, BarsList, etc.) |
+| `resources/js/v2/reportes-v2/shared/types.ts` | Crear (interfaces base) |
+
+### Frontend — Bundle Cirugías (independiente)
+| Archivo | Acción |
+|---|---|
+| `resources/js/v2/reportes-v2/cirugias/app.tsx` | Crear (entry point) |
+| `resources/js/v2/reportes-v2/cirugias/toolbar.tsx` | Crear |
+| `resources/js/v2/reportes-v2/cirugias/sections.tsx` | Crear (secciones 02-04) |
+| `resources/js/v2/reportes-v2/cirugias/types.ts` | Crear (extiende tipos base) |
+
+### Frontend — Bundle Imágenes (independiente)
+| Archivo | Acción |
+|---|---|
+| `resources/js/v2/reportes-v2/imagenes/app.tsx` | Crear (entry point) |
+| `resources/js/v2/reportes-v2/imagenes/toolbar.tsx` | Crear |
+| `resources/js/v2/reportes-v2/imagenes/sections.tsx` | Crear (secciones 02-04) |
+| `resources/js/v2/reportes-v2/imagenes/types.ts` | Crear (extiende tipos base) |
+
+### Build
+| Archivo | Acción |
+|---|---|
+| `laravel-app/vite.config.js` | Agregar 2 entries: `reportes-cirugias` y `reportes-imagenes` |
