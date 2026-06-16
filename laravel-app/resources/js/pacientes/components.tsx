@@ -228,9 +228,9 @@ export function EditPatientModal({ patient, open, onClose, onSave }: {
   };
 
   return (
-    <div className={`modal-backdrop ${open ? 'open' : ''}`} onClick={onClose}>
-      <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
-        <div className="modal-head">
+    <div className={`pac-modal-backdrop ${open ? 'open' : ''}`} onClick={onClose}>
+      <div className="pac-modal pac-modal-lg" onClick={e => e.stopPropagation()}>
+        <div className="pac-modal-head">
           <span className="mh-ic"><i className="mdi mdi-account-edit-outline" /></span>
           <div>
             <h2>Editar paciente</h2>
@@ -238,7 +238,7 @@ export function EditPatientModal({ patient, open, onClose, onSave }: {
           </div>
           <button className="mh-close" onClick={onClose}><i className="mdi mdi-close" /></button>
         </div>
-        <div className="modal-body">
+        <div className="pac-modal-body">
           {error && <div className="edit-error"><i className="mdi mdi-alert-circle-outline" />{error}</div>}
           <p className="edit-section-label">Nombres</p>
           <div className="form-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
@@ -272,7 +272,7 @@ export function EditPatientModal({ patient, open, onClose, onSave }: {
             </div>
           </div>
         </div>
-        <div className="modal-foot">
+        <div className="pac-modal-foot">
           <button className="wbtn ghost" onClick={onClose} disabled={saving}>Cancelar</button>
           <button className="wbtn primary" onClick={handleSave} disabled={saving}>
             {saving ? <><i className="mdi mdi-loading mdi-spin" />Guardando…</> : <><i className="mdi mdi-check" />Guardar cambios</>}
@@ -297,9 +297,9 @@ export function AgendarModal({ patient, open, onClose, onConfirm }: {
   const today = new Date().toISOString().slice(0, 10);
 
   return (
-    <div className={`modal-backdrop ${open ? 'open' : ''}`} onClick={onClose}>
-      <div className="modal" onClick={e => e.stopPropagation()}>
-        <div className="modal-head">
+    <div className={`pac-modal-backdrop ${open ? 'open' : ''}`} onClick={onClose}>
+      <div className="pac-modal" onClick={e => e.stopPropagation()}>
+        <div className="pac-modal-head">
           <span className="mh-ic"><i className="mdi mdi-calendar-plus" /></span>
           <div>
             <h2>Agendar cita</h2>
@@ -307,7 +307,7 @@ export function AgendarModal({ patient, open, onClose, onConfirm }: {
           </div>
           <button className="mh-close" onClick={onClose}><i className="mdi mdi-close" /></button>
         </div>
-        <div className="modal-body">
+        <div className="pac-modal-body">
           <div className="field">
             <label>Tipo de cita</label>
             <select value={tipo} onChange={e => setTipo(e.target.value)}>
@@ -319,7 +319,7 @@ export function AgendarModal({ patient, open, onClose, onConfirm }: {
             <div className="field"><label>Hora</label><input type="time" value={hora} onChange={e => setHora(e.target.value)} /></div>
           </div>
         </div>
-        <div className="modal-foot">
+        <div className="pac-modal-foot">
           <button className="wbtn ghost" onClick={onClose}>Cancelar</button>
           <button
             className="wbtn primary"
