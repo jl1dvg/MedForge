@@ -122,8 +122,15 @@ export function Toolbar({ startDate, endDate, sede, sedeOptions }: ToolbarProps)
               </>
             )}
           </div>
+          <a
+            className="rep-btn"
+            href={`/v2/cirugias/dashboard/export/excel?start_date=${startDate}&end_date=${endDate}&sede=${sede}`}
+            style={{ textDecoration: 'none' }}
+          >
+            <i className="mdi mdi-microsoft-excel"></i>Excel
+          </a>
           <button className="rep-btn rep-btn--primary" onClick={() => window.print()} disabled={loading}>
-            <i className="mdi mdi-file-pdf-box"></i>Exportar PDF
+            <i className="mdi mdi-file-pdf-box"></i>PDF
           </button>
         </div>
       </div>
