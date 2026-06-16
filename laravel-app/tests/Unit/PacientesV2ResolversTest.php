@@ -84,8 +84,8 @@ class PacientesV2ResolversTest extends TestCase
 
         $sede = (new SedePacienteResolver($pdo))->resolve('HC1');
 
-        $this->assertSame('villa_club', $sede['id']);
-        $this->assertSame('VILLA CLUB', $sede['nombre']);
+        $this->assertSame('ceibos', $sede['id']);
+        $this->assertSame('CEIBOS', $sede['nombre']);
         $this->assertSame('primera_atencion', $sede['origen']);
     }
 
@@ -134,8 +134,8 @@ class PacientesV2ResolversTest extends TestCase
         $this->assertSame('DR DOS', $patient['medico']);
         $this->assertSame('DR DOS', $patient['medico_tratante']['nombre']);
         $this->assertSame(2, $patient['medico_tratante']['procedimientos_count']);
-        $this->assertSame('villa_club', $patient['sede']);
-        $this->assertSame('VILLA CLUB', $patient['sede_info']['nombre']);
+        $this->assertSame('ceibos', $patient['sede']);
+        $this->assertSame('CEIBOS', $patient['sede_info']['nombre']);
         $this->assertSame('publico', $patient['tipo_afiliacion']);
     }
 

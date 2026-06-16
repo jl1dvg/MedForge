@@ -50,14 +50,14 @@ class SedePacienteResolver
                 continue;
             }
 
-            $nombre = trim((string) ($row['id_sede'] ?: ($row['sede_departamento'] ?? '')));
-            if ($nombre === '') {
+            $sede = $this->normalizeSede((string) ($row['id_sede'] ?: ($row['sede_departamento'] ?? '')));
+            if ($sede === null) {
                 continue;
             }
 
             $resolved[$hcNumber] = [
-                'id' => $this->catalogKey($nombre),
-                'nombre' => $nombre,
+                'id' => $sede['id'],
+                'nombre' => $sede['nombre'],
                 'origen' => 'primera_atencion',
             ];
         }
@@ -65,13 +65,29 @@ class SedePacienteResolver
         return $resolved;
     }
 
-    private function catalogKey(string $value): string
+    /**
+     * @return array{id:string,nombre:string}|null
+     */
+    private function normalizeSede(string $value): ?array
     {
         $normalized = strtolower(trim($value));
-        $normalized = strtr($normalized, ['á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u', 'ñ' => 'n']);
-        $normalized = preg_replace('/[^a-z0-9]+/i', '_', $normalized) ?: '';
-        $normalized = trim($normalized, '_');
+        $normalized = strtr($normalized, [
+            'á' => 'a',
+            'é' => 'e',
+            'í' => 'i',
+            'ó' => 'o',
+            'ú' => 'u',
+            'ñ' => 'n',
+        ]);
 
-        return $normalized !== '' ? $normalized : md5($value);
+        if (str_contains($normalized, 'ceibos')) {
+            return ['id' => 'ceibos', 'nombre' => 'CEIBOS'];
+        }
+
+        if (str_contains($normalized, 'matriz')) {
+            return ['id' => 'matriz', 'nombre' => 'MATRIZ'];
+        }
+
+        return null;
     }
 }

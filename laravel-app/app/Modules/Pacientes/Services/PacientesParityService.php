@@ -1042,58 +1042,10 @@ class PacientesParityService
      */
     private function catalogoSedes(): array
     {
-        $items = [];
-
-        try {
-            $stmt = $this->db->query(<<<'SQL'
-                SELECT DISTINCT COALESCE(NULLIF(TRIM(id_sede), ''), NULLIF(TRIM(sede_departamento), '')) AS nombre
-                FROM procedimiento_proyectado
-                WHERE COALESCE(NULLIF(TRIM(id_sede), ''), NULLIF(TRIM(sede_departamento), '')) IS NOT NULL
-                ORDER BY nombre ASC
-            SQL);
-
-            foreach (($stmt?->fetchAll(PDO::FETCH_ASSOC) ?: []) as $row) {
-                $nombre = trim((string) ($row['nombre'] ?? ''));
-                if ($nombre === '') {
-                    continue;
-                }
-
-                $items[$this->catalogKey($nombre)] = [
-                    'id' => $this->catalogKey($nombre),
-                    'label' => $nombre,
-                    'nombre' => $nombre,
-                ];
-            }
-        } catch (PDOException) {
-            // keep user fallback below
-        }
-
-        try {
-            $stmt = $this->db->query(<<<'SQL'
-                SELECT DISTINCT TRIM(sede) AS nombre
-                FROM users
-                WHERE sede IS NOT NULL
-                  AND TRIM(sede) <> ''
-                ORDER BY nombre ASC
-            SQL);
-
-            foreach (($stmt?->fetchAll(PDO::FETCH_ASSOC) ?: []) as $row) {
-                $nombre = trim((string) ($row['nombre'] ?? ''));
-                if ($nombre === '') {
-                    continue;
-                }
-
-                $items[$this->catalogKey($nombre)] = [
-                    'id' => $this->catalogKey($nombre),
-                    'label' => $nombre,
-                    'nombre' => $nombre,
-                ];
-            }
-        } catch (PDOException) {
-            // no-op
-        }
-
-        return array_values($items);
+        return [
+            ['id' => 'ceibos', 'label' => 'CEIBOS', 'nombre' => 'CEIBOS'],
+            ['id' => 'matriz', 'label' => 'MATRIZ', 'nombre' => 'MATRIZ'],
+        ];
     }
 
     /**
