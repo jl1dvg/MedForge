@@ -16,6 +16,28 @@ Este spec cubre la implementación del nuevo frontend, las optimizaciones de bac
 
 ---
 
+## Perímetro tecnológico — todo dentro de Laravel
+
+**Todo vive dentro del proyecto Laravel (`laravel-app/`).** No se crean dependencias externas ni se mueve nada fuera de este proyecto.
+
+| Capa | Tecnología | Ubicación |
+|---|---|---|
+| Rutas | Laravel Router | `routes/v2/cirugias.php`, `routes/web.php` |
+| Controladores | Laravel Controllers | `app/Modules/*/Http/Controllers/` |
+| Servicios | Laravel Services (PHP) | `app/Modules/*/Services/` |
+| Vistas | Blade (fullscreen) | `resources/views/*/` |
+| JS/React | Vite + React 18 + TypeScript | `resources/js/v2/reportes-v2/` |
+| CSS | Archivo estático versionado por Vite | `resources/css/v2/` ó `public/css/v2/` |
+| Exportaciones | Endpoints Laravel existentes | Sin cambios |
+
+Cuando el spec menciona "vista actual" o "vista anterior", se refiere exclusivamente a:
+- `resources/views/cirugias/v2-dashboard.blade.php` (vista actual de Cirugías)
+- `resources/views/examenes/v2-imagenes-dashboard.blade.php` (vista actual de Imágenes)
+
+Ambas viven en Laravel y se mantienen como respaldo temporal dentro del mismo proyecto. No hay sistema PHP antiguo involucrado.
+
+---
+
 ## Principio fundamental: dos informes independientes
 
 **Cirugías e Imágenes son informes completamente separados.** No existe un reporte unificado ni un switch de datos entre módulos dentro de una misma pantalla.
@@ -100,7 +122,7 @@ resources/views/examenes/
 - `/v2/cirugias/dashboard/report` → `v2-dashboard-report.blade.php`
 - `/v2/imagenes/dashboard/report` → `v2-imagenes-dashboard-report.blade.php`
 
-Una vez validadas en staging, las rutas principales se conectan al nuevo diseño y las vistas legacy se mueven a `*-legacy.blade.php`.
+Una vez validadas en staging, las rutas principales se conectan al nuevo diseño y las vistas actuales se renombran a `*-anterior.blade.php` (dentro de `resources/views/`, en Laravel).
 
 ### Vite entry points — dos bundles separados
 
@@ -407,7 +429,7 @@ Route::get('/v2/imagenes/dashboard/report', [ImagenesUiController::class, 'dashb
 
 Tras validación en staging:
 1. Las rutas `/report` pasan a ser las principales
-2. Las vistas legacy se renombran a `v2-dashboard-legacy.blade.php`
+2. Las vistas vista anterior se renombran a `v2-dashboard-anterior.blade.php`
 
 ---
 
@@ -443,7 +465,7 @@ Tras validación en staging:
 4. **Fase 3 — Validación y switch**
    - Probar en staging: datos reales, Excel, PDF, filtros
    - Conectar rutas principales al nuevo diseño
-   - Mover vistas legacy a `*-legacy.blade.php`
+   - Mover vistas vista anterior a `*-anterior.blade.php`
 
 ---
 
