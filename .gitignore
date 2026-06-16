@@ -43,3 +43,4 @@ cive_extention/manifest.json
 !/views/pacientes/flujo/**
 .superpowers/
 /laravel-app/public/build_bk/
+medforge-design-system/
