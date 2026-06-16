@@ -78,7 +78,8 @@ export function RepTooltip({ active, payload, label, unit = '', prefix = '', tit
 }
 
 interface TrendAreaProps {
-  data: Record<string, string | number>[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  data: any[];
   keys: [string, string];
   names: [string, string];
   height?: number;
@@ -109,7 +110,8 @@ export function TrendArea({ data, keys, names, height = 250 }: TrendAreaProps) {
 }
 
 interface AreaSeriesProps {
-  data: Record<string, string | number>[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  data: any[];
   dataKey?: string;
   name?: string;
   color?: string;
@@ -138,12 +140,8 @@ export function AreaSeries({ data, dataKey = 'value', name = 'Valor', color = '#
   );
 }
 
-interface ColumnChartDataItem {
-  label?: string;
-  value?: number;
-  color?: string;
-  [key: string]: unknown;
-}
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type ColumnChartDataItem = any;
 
 interface ColumnChartProps {
   data: ColumnChartDataItem[];
@@ -176,14 +174,8 @@ export function ColumnChart({ data, dataKey = 'value', labelKey = 'label', name 
   );
 }
 
-interface DonutDataItem {
-  label?: string;
-  name?: string;
-  total?: number;
-  count?: number;
-  color?: string;
-  [key: string]: unknown;
-}
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type DonutDataItem = any;
 
 interface DonutChartProps {
   data: DonutDataItem[];

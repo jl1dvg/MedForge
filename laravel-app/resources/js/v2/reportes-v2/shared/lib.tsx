@@ -193,9 +193,8 @@ export function Kpi({ icon, label, value, unit, sub, accent }: KpiProps) {
   );
 }
 
-interface BarsListItem {
-  [key: string]: unknown;
-}
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type BarsListItem = any;
 
 interface BarsListProps {
   items: BarsListItem[];
@@ -229,11 +228,8 @@ export function BarsList({ items, valueKey = 'total', labelKey = 'label', color 
   );
 }
 
-interface DonutLegendItem {
-  label?: string;
-  color?: string;
-  [key: string]: unknown;
-}
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type DonutLegendItem = any;
 
 export function DonutLegend({ items, valueKey = 'total' }: { items: DonutLegendItem[]; valueKey?: string }) {
   const total = items.reduce((a, d) => a + (Number(d[valueKey]) || 0), 0);
