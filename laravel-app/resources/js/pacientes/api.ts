@@ -22,8 +22,12 @@ function buildTimeline(p: any): any[] {
 function normalizePatient(raw: any, id: number): Patient {
   const rawDisplayName = String(raw.display_name || '').trim();
   const rawFullName = String(raw.full_name || '').trim();
-  const nombres = String(raw.nombres || `${raw.fname || ''} ${raw.mname || ''}`.trim() || rawDisplayName).trim();
-  const apellidos = String(raw.apellidos || `${raw.lname || ''} ${raw.lname2 || ''}`.trim()).trim();
+  const fname = String(raw.fname || '').trim();
+  const mname = String(raw.mname || '').trim();
+  const lname = String(raw.lname || '').trim();
+  const lname2 = String(raw.lname2 || '').trim();
+  const nombres = String(raw.nombres || `${fname} ${mname}`.trim() || rawDisplayName).trim();
+  const apellidos = String(raw.apellidos || `${lname} ${lname2}`.trim()).trim();
   const displayName = rawDisplayName || `${nombres} ${apellidos}`.trim() || rawFullName;
   const fullName = rawFullName || `${apellidos} ${nombres}`.trim() || displayName;
   const initialSource = displayName || fullName || 'Paciente';
@@ -66,12 +70,16 @@ function normalizePatient(raw: any, id: number): Patient {
   const p: Patient = {
     id: raw.id || id,
     hc_number: String(raw.hc_number || raw.hc || ''),
+    fname,
+    mname,
+    lname,
+    lname2,
     nombres,
     apellidos,
     full_name: fullName,
     display_name: displayName,
     initials: ini,
-    cedula: String(raw.cedula || raw.identificacion || ''),
+    cedula: String(raw.cedula || raw.identificacion || raw.hc_number || raw.hc || ''),
     fecha_nac: fechaNac,
     edad,
     sexo: String(raw.sexo || raw.genero || 'M'),

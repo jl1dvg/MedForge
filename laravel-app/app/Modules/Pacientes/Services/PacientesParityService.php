@@ -30,16 +30,23 @@ class PacientesParityService
         $sql = <<<SQL
             SELECT
                 p.hc_number,
+                COALESCE(p.fname, '') AS fname,
+                COALESCE(p.mname, '') AS mname,
+                COALESCE(p.lname, '') AS lname,
+                COALESCE(p.lname2, '') AS lname2,
                 TRIM(CONCAT_WS(' ', p.lname, p.lname2, p.fname, p.mname)) AS full_name,
                 TRIM(CONCAT_WS(' ', p.fname, p.mname, p.lname, p.lname2)) AS display_name,
-                NULL AS cedula,
+                COALESCE(NULLIF(p.cedula, ''), p.hc_number) AS cedula,
                 COALESCE(p.celular, '') AS telefono,
+                COALESCE(p.telefono_alt, '') AS telefono_alt,
                 COALESCE(p.email, '') AS email,
                 COALESCE(p.afiliacion, '') AS afiliacion,
                 p.fecha_nacimiento,
                 p.sexo,
                 COALESCE(p.direccion, '') AS direccion,
                 COALESCE(p.ciudad, '') AS ciudad,
+                COALESCE(p.medico_tratante_id, '') AS medico_tratante_id,
+                COALESCE(p.sede_principal, '') AS sede_principal,
                 p.created_at,
                 (
                     SELECT pp.doctor
@@ -147,13 +154,21 @@ class PacientesParityService
         )));
         $medicosTratantes = (new MedicoTratanteResolver($this->db))->resolveMany($hcNumbers);
         $sedesPacientes = (new SedePacienteResolver($this->db))->resolveMany($hcNumbers);
+        $manualMedicos = $this->resolverMedicosManuales(array_values(array_filter(array_map(
+            static fn(array $row): string => (string) ($row['medico_tratante_id'] ?? ''),
+            $rows
+        ))));
         $tipoAfiliacionResolver = new TipoAfiliacionResolver();
 
         $data = [];
         foreach ($rows as $row) {
             $hcNumber = (string) ($row['hc_number'] ?? '');
-            $medicoTratante = $medicosTratantes[$hcNumber] ?? null;
-            $sedeInfo = $sedesPacientes[$hcNumber] ?? null;
+            $manualMedicoId = (string) ($row['medico_tratante_id'] ?? '');
+            $medicoTratante = $manualMedicoId !== '' && isset($manualMedicos[$manualMedicoId])
+                ? $manualMedicos[$manualMedicoId]
+                : ($medicosTratantes[$hcNumber] ?? null);
+            $sedeInfo = $this->normalizarSedePrincipal((string) ($row['sede_principal'] ?? ''))
+                ?? ($sedesPacientes[$hcNumber] ?? null);
             $afiliacion = $this->normalizarAfiliacionListado((string) ($row['afiliacion'] ?? ''));
             $tipoAfiliacion = $tipoAfiliacionResolver->classify($afiliacion);
             $proximaCita = null;
@@ -168,10 +183,15 @@ class PacientesParityService
 
             $data[] = [
                 'hc_number' => $hcNumber,
+                'fname' => (string) ($row['fname'] ?? ''),
+                'mname' => (string) ($row['mname'] ?? ''),
+                'lname' => (string) ($row['lname'] ?? ''),
+                'lname2' => (string) ($row['lname2'] ?? ''),
                 'full_name' => (string) ($row['full_name'] ?? ''),
                 'display_name' => (string) ($row['display_name'] ?? ''),
-                'cedula' => null,
+                'cedula' => (string) ($row['cedula'] ?? $hcNumber),
                 'telefono' => (string) ($row['telefono'] ?? ''),
+                'telefono_alt' => (string) ($row['telefono_alt'] ?? ''),
                 'email' => (string) ($row['email'] ?? ''),
                 'afiliacion' => $afiliacion,
                 'tipo_afiliacion' => $tipoAfiliacion,
@@ -183,7 +203,7 @@ class PacientesParityService
                 'sexo' => (string) ($row['sexo'] ?? ''),
                 'direccion' => (string) ($row['direccion'] ?? ''),
                 'ciudad' => (string) ($row['ciudad'] ?? ''),
-                'medico' => $medicoTratante !== null ? (string) $medicoTratante['nombre'] : '',
+                'medico' => $manualMedicoId !== '' ? $manualMedicoId : ($medicoTratante !== null ? (string) $medicoTratante['nombre'] : ''),
                 'medico_tratante' => $medicoTratante,
                 'sede' => $sedeInfo !== null ? (string) $sedeInfo['id'] : '',
                 'sede_info' => $sedeInfo,
@@ -285,18 +305,21 @@ class PacientesParityService
 
         $stmt = $this->db->prepare(<<<'SQL'
             INSERT INTO patient_data (
-                hc_number, fname, mname, lname, lname2, afiliacion, fecha_nacimiento,
-                sexo, celular, ciudad, email, direccion, created_at, updated_at,
+                hc_number, cedula, fname, mname, lname, lname2, afiliacion, fecha_nacimiento,
+                sexo, celular, telefono_alt, ciudad, email, direccion, medico_tratante_id,
+                sede_principal, created_at, updated_at,
                 created_by_type, created_by_identifier, updated_by_type, updated_by_identifier
             ) VALUES (
-                :hc_number, :fname, :mname, :lname, :lname2, :afiliacion, :fecha_nacimiento,
-                :sexo, :celular, :ciudad, :email, :direccion, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP,
+                :hc_number, :cedula, :fname, :mname, :lname, :lname2, :afiliacion, :fecha_nacimiento,
+                :sexo, :celular, :telefono_alt, :ciudad, :email, :direccion, :medico_tratante_id,
+                :sede_principal, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP,
                 :created_by_type, :created_by_identifier, :updated_by_type, :updated_by_identifier
             )
         SQL);
 
         $stmt->execute([
             ':hc_number' => $hcNumber,
+            ':cedula' => trim((string) ($input['cedula'] ?? '')),
             ':fname' => $fname,
             ':mname' => $mname,
             ':lname' => $lname,
@@ -305,23 +328,21 @@ class PacientesParityService
             ':fecha_nacimiento' => $fechaNacimiento !== '' ? $fechaNacimiento : null,
             ':sexo' => trim((string) ($input['sexo'] ?? '')),
             ':celular' => trim((string) ($input['telefono'] ?? $input['celular'] ?? '')),
+            ':telefono_alt' => trim((string) ($input['telefono_alt'] ?? '')),
             ':ciudad' => trim((string) ($input['ciudad'] ?? '')),
             ':email' => trim((string) ($input['email'] ?? '')),
             ':direccion' => trim((string) ($input['direccion'] ?? '')),
+            ':medico_tratante_id' => trim((string) ($input['medico'] ?? $input['medico_tratante_id'] ?? '')),
+            ':sede_principal' => trim((string) ($input['sede'] ?? $input['sede_principal'] ?? '')),
             ':created_by_type' => $auditType,
             ':created_by_identifier' => $auditIdentifier,
             ':updated_by_type' => $auditType,
             ':updated_by_identifier' => $auditIdentifier,
         ]);
 
-        $warnings = [];
-        if (trim((string) ($input['cedula'] ?? '')) !== '') {
-            $warnings[] = 'patient_data no tiene columna cedula; el documento no fue persistido en esta fase.';
-        }
-
         return [
             'hc_number' => $hcNumber,
-            'warnings' => $warnings,
+            'warnings' => [],
         ];
     }
 
@@ -487,12 +508,16 @@ class PacientesParityService
         $lname = trim((string) ($input['lname'] ?? ''));
         $lname2 = trim((string) ($input['lname2'] ?? ''));
         $afiliacion = trim((string) ($input['afiliacion'] ?? ''));
+        $cedula = trim((string) ($input['cedula'] ?? ''));
         $fechaNacimiento = trim((string) ($input['fecha_nacimiento'] ?? ''));
         $sexo = trim((string) ($input['sexo'] ?? ''));
         $celular = trim((string) ($input['celular'] ?? ''));
+        $telefonoAlt = trim((string) ($input['telefono_alt'] ?? ''));
         $ciudad = trim((string) ($input['ciudad'] ?? ''));
         $email = trim((string) ($input['email'] ?? ''));
         $direccion = trim((string) ($input['direccion'] ?? ''));
+        $medicoTratanteId = trim((string) ($input['medico_tratante_id'] ?? ''));
+        $sedePrincipal = trim((string) ($input['sede_principal'] ?? ''));
 
         $auditType = $sessionUserId !== null ? 'user' : 'api';
         $auditIdentifier = $sessionUserId !== null ? ('user:' . (string) $sessionUserId) : 'api:/v2/pacientes/detalles';
@@ -504,13 +529,17 @@ class PacientesParityService
                 mname = :mname,
                 lname = COALESCE(NULLIF(:lname, ''), lname),
                 lname2 = :lname2,
+                cedula = :cedula,
                 afiliacion = :afiliacion,
                 fecha_nacimiento = :fecha_nacimiento,
                 sexo = :sexo,
                 celular = :celular,
+                telefono_alt = :telefono_alt,
                 ciudad = :ciudad,
                 email = :email,
                 direccion = :direccion,
+                medico_tratante_id = :medico_tratante_id,
+                sede_principal = :sede_principal,
                 updated_at = CURRENT_TIMESTAMP,
                 updated_by_type = :updated_by_type,
                 updated_by_identifier = :updated_by_identifier
@@ -523,13 +552,17 @@ class PacientesParityService
             ':mname' => $mname,
             ':lname' => $lname,
             ':lname2' => $lname2,
+            ':cedula' => $cedula,
             ':afiliacion' => $afiliacion,
             ':fecha_nacimiento' => $fechaNacimiento,
             ':sexo' => $sexo,
             ':celular' => $celular,
+            ':telefono_alt' => $telefonoAlt,
             ':ciudad' => $ciudad,
             ':email' => $email,
             ':direccion' => $direccion,
+            ':medico_tratante_id' => $medicoTratanteId,
+            ':sede_principal' => $sedePrincipal,
             ':updated_by_type' => $auditType,
             ':updated_by_identifier' => $auditIdentifier,
             ':hc_number' => $hcNumber,
@@ -1016,6 +1049,81 @@ class PacientesParityService
         } catch (PDOException) {
             return 0;
         }
+    }
+
+    /**
+     * @param array<int,string> $ids
+     * @return array<string,array<string,mixed>>
+     */
+    private function resolverMedicosManuales(array $ids): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map(
+            static fn(string $id): string => trim($id),
+            $ids
+        ))));
+
+        if ($ids === []) {
+            return [];
+        }
+
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+
+        try {
+            $stmt = $this->db->prepare("
+                SELECT id, nombre, full_name, especialidad, subespecialidad
+                FROM users
+                WHERE CAST(id AS CHAR) IN ({$placeholders})
+            ");
+            $stmt->execute($ids);
+        } catch (PDOException) {
+            return [];
+        }
+
+        $items = [];
+        foreach (($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) as $row) {
+            $id = (string) ($row['id'] ?? '');
+            $nombre = trim((string) ($row['nombre'] ?: ($row['full_name'] ?? '')));
+            $especialidad = trim((string) (($row['especialidad'] ?? '') ?: ($row['subespecialidad'] ?? '')));
+            if ($id === '' || $nombre === '') {
+                continue;
+            }
+
+            $items[$id] = [
+                'id' => (int) $id,
+                'nombre' => $nombre,
+                'especialidad' => $especialidad,
+                'procedimientos_count' => 0,
+                'ultima_fecha' => null,
+                'confirmado' => true,
+                'origen' => 'manual',
+            ];
+        }
+
+        return $items;
+    }
+
+    /**
+     * @return array{id:string,nombre:string,origen:string}|null
+     */
+    private function normalizarSedePrincipal(string $sede): ?array
+    {
+        $value = strtolower(trim($sede));
+        if ($value === '') {
+            return null;
+        }
+
+        $plain = strtr($value, ['á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u']);
+        $plain = preg_replace('/[^a-z0-9]+/', '', $plain) ?? $plain;
+
+        if (str_contains($plain, 'ceibos') || $plain === '16') {
+            return ['id' => 'ceibos', 'nombre' => 'CEIBOS', 'origen' => 'manual'];
+        }
+
+        if (str_contains($plain, 'matriz') || $plain === '1') {
+            return ['id' => 'matriz', 'nombre' => 'MATRIZ', 'origen' => 'manual'];
+        }
+
+        return null;
     }
 
     /**

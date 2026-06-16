@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import type { Patient, WizardFormData } from '../types';
+import type { PacientesCatalogos, Patient, WizardFormData } from '../types';
 import { MEDICOS, SEDES, ASEGURADORAS } from '../data';
 import { validarCedula, emailOk, telOk, edadDe, fmtDateLong, initials } from '../utils';
 import { Avatar } from '../components';
 import { MEDICO_MAP, SEDE_MAP } from '../data';
 
 const BLANK: WizardFormData = {
-  docTipo: 'cedula', cedula: '', nombres: '', apellidos: '', fecha_nac: '', sexo: '',
+  docTipo: 'cedula', cedula: '', fname: '', mname: '', lname: '', lname2: '',
+  nombres: '', apellidos: '', fecha_nac: '', sexo: '',
   telefono: '', telefono_alt: '', email: '', direccion: '', ciudad: 'Guayaquil',
   afiliacion: '', aseguradora: '', poliza: '', titular: '',
   medico: '', sede: '', motivo: '', alerta: '',
@@ -21,6 +22,7 @@ const STEPS = [
 
 interface Props {
   patients: Patient[];
+  catalogos?: PacientesCatalogos | null;
   mode?: 'create' | 'edit';
   initialPatient?: Patient | null;
   onCancel: () => void;
@@ -29,7 +31,7 @@ interface Props {
   onOpenExisting: (id: number) => void;
 }
 
-export default function WizardView({ patients, mode = 'create', initialPatient = null, onCancel, onCreate, onUpdate, onOpenExisting }: Props) {
+export default function WizardView({ patients, catalogos = null, mode = 'create', initialPatient = null, onCancel, onCreate, onUpdate, onOpenExisting }: Props) {
   const isEdit = mode === 'edit';
   const [step, setStep] = useState(1);
   const [f, setF] = useState<WizardFormData>(() => initialPatient ? formFromPatient(initialPatient) : BLANK);
@@ -41,8 +43,20 @@ export default function WizardView({ patients, mode = 'create', initialPatient =
   const [saveError, setSaveError] = useState('');
 
   const set = (k: keyof WizardFormData, v: string) => setF(s => ({ ...s, [k]: v }));
+  const setNamePart = (k: 'fname' | 'mname' | 'lname' | 'lname2', v: string) => setF(s => {
+    const next = { ...s, [k]: v };
+    return {
+      ...next,
+      nombres: [next.fname, next.mname].filter(Boolean).join(' ').trim(),
+      apellidos: [next.lname, next.lname2].filter(Boolean).join(' ').trim(),
+    };
+  });
   const touch = (k: string) => setTouched(t => ({ ...t, [k]: true }));
   const showFor = (k: string) => touched[k] || showErr;
+  const medicoOptions = catalogos?.medicos?.length ? catalogos.medicos : MEDICOS;
+  const sedeOptions = catalogos?.sedes?.length ? catalogos.sedes : SEDES;
+  const afiliacionOptions = catalogos?.afiliaciones?.length ? catalogos.afiliaciones : [];
+  const aseguradoraOptions = catalogos?.aseguradoras?.length ? catalogos.aseguradoras : ASEGURADORAS;
 
   const cedulaValida = isEdit && !f.cedula.trim()
     ? true
@@ -88,8 +102,8 @@ export default function WizardView({ patients, mode = 'create', initialPatient =
   }, [f.cedula, f.docTipo, patients, isEdit, initialPatient?.hc_number]);
 
   const valid1 = isEdit
-    ? !!(f.nombres.trim() && f.apellidos.trim() && cedulaValida && !dup && !checking)
-    : !!(f.nombres.trim() && f.apellidos.trim() && cedulaValida && !dup && !checking && f.fecha_nac && f.sexo);
+    ? !!(f.fname.trim() && f.lname.trim() && cedulaValida && !dup && !checking)
+    : !!(f.fname.trim() && f.lname.trim() && cedulaValida && !dup && !checking && f.fecha_nac && f.sexo);
   const valid2 = isEdit
     ? !!(!f.email || emailOk(f.email))
     : !!(telOk(f.telefono) && (!f.email || emailOk(f.email)) && f.direccion.trim() && f.ciudad.trim() && f.afiliacion && (f.afiliacion !== 'seguro' || (f.aseguradora.trim() && f.poliza.trim())));
@@ -205,14 +219,22 @@ export default function WizardView({ patients, mode = 'create', initialPatient =
                     )}
 
                     <div className="field">
-                      <label>Nombres <span className="req">*</span></label>
-                      <input className={showFor('nombres') && !f.nombres.trim() ? 'invalid' : ''} placeholder="Ej. María Fernanda" value={f.nombres} onChange={e => set('nombres', e.target.value)} onBlur={() => touch('nombres')} />
-                      {showFor('nombres') && !f.nombres.trim() && <div className="field-msg err"><i className="mdi mdi-alert-circle-outline" />Campo obligatorio.</div>}
+                      <label>Primer nombre <span className="req">*</span></label>
+                      <input className={showFor('fname') && !f.fname.trim() ? 'invalid' : ''} placeholder="Ej. María" value={f.fname} onChange={e => setNamePart('fname', e.target.value)} onBlur={() => touch('fname')} />
+                      {showFor('fname') && !f.fname.trim() && <div className="field-msg err"><i className="mdi mdi-alert-circle-outline" />Campo obligatorio.</div>}
                     </div>
                     <div className="field">
-                      <label>Apellidos <span className="req">*</span></label>
-                      <input className={showFor('apellidos') && !f.apellidos.trim() ? 'invalid' : ''} placeholder="Ej. Cordero Plúas" value={f.apellidos} onChange={e => set('apellidos', e.target.value)} onBlur={() => touch('apellidos')} />
-                      {showFor('apellidos') && !f.apellidos.trim() && <div className="field-msg err"><i className="mdi mdi-alert-circle-outline" />Campo obligatorio.</div>}
+                      <label>Segundo nombre <span className="opt">(opcional)</span></label>
+                      <input placeholder="Ej. Fernanda" value={f.mname} onChange={e => setNamePart('mname', e.target.value)} />
+                    </div>
+                    <div className="field">
+                      <label>Primer apellido <span className="req">*</span></label>
+                      <input className={showFor('lname') && !f.lname.trim() ? 'invalid' : ''} placeholder="Ej. Cordero" value={f.lname} onChange={e => setNamePart('lname', e.target.value)} onBlur={() => touch('lname')} />
+                      {showFor('lname') && !f.lname.trim() && <div className="field-msg err"><i className="mdi mdi-alert-circle-outline" />Campo obligatorio.</div>}
+                    </div>
+                    <div className="field">
+                      <label>Segundo apellido <span className="opt">(opcional)</span></label>
+                      <input placeholder="Ej. Plúas" value={f.lname2} onChange={e => setNamePart('lname2', e.target.value)} />
                     </div>
 
                     <div className="field">
@@ -263,17 +285,22 @@ export default function WizardView({ patients, mode = 'create', initialPatient =
                       <input className={showFor('ciudad') && !f.ciudad.trim() ? 'invalid' : ''} placeholder="Ej. Guayaquil" value={f.ciudad} onChange={e => set('ciudad', e.target.value)} onBlur={() => touch('ciudad')} />
                     </div>
                     <div className="field">
-                      <label>Tipo de afiliación <span className="req">*</span></label>
-                      <select className={showFor('afiliacion') && !f.afiliacion ? 'invalid' : ''} value={f.afiliacion} onChange={e => set('afiliacion', e.target.value)} onBlur={() => touch('afiliacion')}>
-                        <option value="">Selecciona…</option>
-                        {isEdit && f.afiliacion && !['privado', 'iess', 'seguro'].includes(f.afiliacion) && (
-                          <option value={f.afiliacion}>{f.afiliacion}</option>
-                        )}
-                        <option value="privado">Privado</option>
-                        <option value="iess">IESS</option>
-                        <option value="seguro">Seguro privado</option>
-                      </select>
-                      {showFor('afiliacion') && !f.afiliacion && <div className="field-msg err"><i className="mdi mdi-alert-circle-outline" />Campo obligatorio.</div>}
+                      <label>Plan de afiliación {!isEdit ? <span className="req">*</span> : <span className="opt">(opcional)</span>}</label>
+                      <input
+                        list="pac-afiliaciones-list"
+                        className={!isEdit && showFor('afiliacion') && !f.afiliacion ? 'invalid' : ''}
+                        value={f.afiliacion}
+                        placeholder="Busca o selecciona un plan…"
+                        onChange={e => set('afiliacion', e.target.value)}
+                        onBlur={() => touch('afiliacion')}
+                      />
+                      <datalist id="pac-afiliaciones-list">
+                        {afiliacionOptions.map(a => {
+                          const value = a.nombre || a.label || a.id;
+                          return <option key={a.id || value} value={value}>{a.label || value}</option>;
+                        })}
+                      </datalist>
+                      {!isEdit && showFor('afiliacion') && !f.afiliacion && <div className="field-msg err"><i className="mdi mdi-alert-circle-outline" />Campo obligatorio.</div>}
                     </div>
 
                     {f.afiliacion === 'seguro' && (
@@ -284,7 +311,7 @@ export default function WizardView({ patients, mode = 'create', initialPatient =
                             <label>Aseguradora <span className="req">*</span></label>
                             <select className={showFor('aseguradora') && !f.aseguradora ? 'invalid' : ''} value={f.aseguradora} onChange={e => set('aseguradora', e.target.value)} onBlur={() => touch('aseguradora')}>
                               <option value="">Selecciona…</option>
-                              {ASEGURADORAS.map(a => <option key={a} value={a}>{a}</option>)}
+                              {aseguradoraOptions.map(a => <option key={a} value={a}>{a}</option>)}
                             </select>
                           </div>
                           <div className="field">
@@ -313,10 +340,10 @@ export default function WizardView({ patients, mode = 'create', initialPatient =
                       <label>Médico tratante <span className="req">*</span></label>
                       <select className={showFor('medico') && !f.medico ? 'invalid' : ''} value={f.medico} onChange={e => set('medico', e.target.value)} onBlur={() => touch('medico')}>
                         <option value="">Selecciona…</option>
-                        {isEdit && f.medico && !MEDICOS.some(m => m.id === f.medico) && (
+                        {isEdit && f.medico && !medicoOptions.some(m => m.id === f.medico) && (
                           <option value={f.medico}>{f.medico}</option>
                         )}
-                        {MEDICOS.map(m => <option key={m.id} value={m.id}>{m.full} — {m.esp}</option>)}
+                        {medicoOptions.map(m => <option key={m.id} value={m.id}>{m.full || m.nombre || m.id} — {m.esp || m.especialidad || ''}</option>)}
                       </select>
                       {showFor('medico') && !f.medico && !isEdit && <div className="field-msg err"><i className="mdi mdi-alert-circle-outline" />Campo obligatorio.</div>}
                     </div>
@@ -324,10 +351,10 @@ export default function WizardView({ patients, mode = 'create', initialPatient =
                       <label>Sede principal <span className="req">*</span></label>
                       <select className={showFor('sede') && !f.sede ? 'invalid' : ''} value={f.sede} onChange={e => set('sede', e.target.value)} onBlur={() => touch('sede')}>
                         <option value="">Selecciona…</option>
-                        {isEdit && f.sede && !SEDES.some(s => s.id === f.sede) && (
-                          <option value={f.sede}>{SEDE_MAP[f.sede]?.label || f.sede}</option>
+                        {isEdit && f.sede && !sedeOptions.some(s => s.id === f.sede) && (
+                          <option value={f.sede}>{f.sede}</option>
                         )}
-                        {SEDES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+                        {sedeOptions.map(s => <option key={s.id} value={s.id}>{s.label || s.nombre || s.id}</option>)}
                       </select>
                       {showFor('sede') && !f.sede && !isEdit && <div className="field-msg err"><i className="mdi mdi-alert-circle-outline" />Campo obligatorio.</div>}
                     </div>
@@ -346,7 +373,7 @@ export default function WizardView({ patients, mode = 'create', initialPatient =
             )}
 
             {/* Step 4 — Confirmación */}
-            {step === 4 && <ConfirmStep f={f} onEdit={n => setStep(n)} />}
+            {step === 4 && <ConfirmStep f={f} catalogos={catalogos} onEdit={n => setStep(n)} />}
 
             <div className="wiz-foot">
               {step > 1 ? (
@@ -379,9 +406,12 @@ export default function WizardView({ patients, mode = 'create', initialPatient =
 }
 
 /* ---- Confirmation step ---- */
-function ConfirmStep({ f, onEdit }: { f: WizardFormData; onEdit: (n: number) => void }) {
-  const m = MEDICO_MAP[f.medico];
-  const afilLabel = f.afiliacion === 'privado' ? 'Privado' : f.afiliacion === 'iess' ? 'IESS' : 'Seguro privado';
+function ConfirmStep({ f, catalogos, onEdit }: { f: WizardFormData; catalogos?: PacientesCatalogos | null; onEdit: (n: number) => void }) {
+  const medicos = catalogos?.medicos?.length ? catalogos.medicos : MEDICOS;
+  const sedes = catalogos?.sedes?.length ? catalogos.sedes : SEDES;
+  const m = medicos.find(item => item.id === f.medico) || MEDICO_MAP[f.medico];
+  const sede = sedes.find(item => item.id === f.sede);
+  const afilLabel = f.afiliacion || '—';
   return (
     <>
       <div className="wiz-card-head"><h2>Revisa y confirma</h2><p>Verifica que todos los datos sean correctos antes de guardar.</p></div>
@@ -390,7 +420,7 @@ function ConfirmStep({ f, onEdit }: { f: WizardFormData; onEdit: (n: number) => 
           <div className="confirm-sec">
             <div className="cs-head"><i className="mdi mdi-card-account-details-outline" /><h3>Datos básicos</h3><button className="cs-edit" onClick={() => onEdit(1)}><i className="mdi mdi-pencil-outline" />Editar</button></div>
             <div className="cs-grid">
-              <div className="ci span2"><div className="k">Nombre completo</div><div className="v">{f.nombres} {f.apellidos}</div></div>
+              <div className="ci span2"><div className="k">Nombre completo</div><div className="v">{[f.fname, f.mname, f.lname, f.lname2].filter(Boolean).join(' ')}</div></div>
               <div className="ci"><div className="k">{f.docTipo === 'cedula' ? 'Cédula' : 'Pasaporte'}</div><div className="v">{f.cedula}</div></div>
               <div className="ci"><div className="k">Nacimiento</div><div className="v">{fmtDateLong(f.fecha_nac)}</div></div>
               <div className="ci"><div className="k">Edad</div><div className="v">{edadDe(f.fecha_nac)} años</div></div>
@@ -417,8 +447,8 @@ function ConfirmStep({ f, onEdit }: { f: WizardFormData; onEdit: (n: number) => 
           <div className="confirm-sec">
             <div className="cs-head"><i className="mdi mdi-stethoscope" /><h3>Datos clínicos</h3><button className="cs-edit" onClick={() => onEdit(3)}><i className="mdi mdi-pencil-outline" />Editar</button></div>
             <div className="cs-grid">
-              <div className="ci"><div className="k">Médico tratante</div><div className="v">{m ? m.full : '—'}</div></div>
-              <div className="ci"><div className="k">Sede principal</div><div className="v">{f.sede ? SEDE_MAP[f.sede]?.label || f.sede : '—'}</div></div>
+              <div className="ci"><div className="k">Médico tratante</div><div className="v">{m ? (m.full || m.nombre || m.id) : '—'}</div></div>
+              <div className="ci"><div className="k">Sede principal</div><div className="v">{sede ? (sede.label || sede.nombre || sede.id) : (f.sede ? SEDE_MAP[f.sede]?.label || f.sede : '—')}</div></div>
               <div className="ci span3"><div className="k">Motivo de consulta</div><div className={`v ${f.motivo ? '' : 'muted'}`}>{f.motivo || 'No especificado'}</div></div>
               <div className="ci span3"><div className="k">Alerta clínica</div><div className={`v ${f.alerta ? '' : 'muted'}`}>{f.alerta || 'Ninguna'}</div></div>
             </div>
@@ -440,8 +470,12 @@ function formFromPatient(p: Patient): WizardFormData {
   return {
     docTipo: cedula && !validarCedula(cedula) ? 'pasaporte' : 'cedula',
     cedula,
-    nombres: p.nombres || '',
-    apellidos: p.apellidos || '',
+    fname: p.fname || p.nombres?.split(/\s+/)[0] || '',
+    mname: p.mname || p.nombres?.split(/\s+/).slice(1).join(' ') || '',
+    lname: p.lname || p.apellidos?.split(/\s+/)[0] || '',
+    lname2: p.lname2 || p.apellidos?.split(/\s+/).slice(1).join(' ') || '',
+    nombres: p.nombres || [p.fname, p.mname].filter(Boolean).join(' '),
+    apellidos: p.apellidos || [p.lname, p.lname2].filter(Boolean).join(' '),
     fecha_nac: p.fecha_nac?.slice(0, 10) || '',
     sexo,
     telefono: p.telefono || '',
@@ -453,7 +487,7 @@ function formFromPatient(p: Patient): WizardFormData {
     aseguradora: p.aseguradora || '',
     poliza: p.poliza || '',
     titular: p.titular || '',
-    medico: p.medico || p.medico_tratante?.nombre || '',
+    medico: p.medico_tratante?.id ? String(p.medico_tratante.id) : (p.medico || ''),
     sede: p.sede || p.sede_info?.id || '',
     motivo: '',
     alerta: p.alerta || '',
@@ -465,13 +499,15 @@ function buildPatient(f: WizardFormData, patients: Patient[]): Patient {
   const nowIso = new Date().toISOString();
   const maxHc = Math.max(...patients.map(p => parseInt(p.hc_number, 10) || 0), 10000);
   const hc = String(maxHc + 1).padStart(6, '0');
-  const ini = initials(f.nombres || 'P', f.apellidos || 'P');
+  const nombres = [f.fname, f.mname].filter(Boolean).join(' ').trim();
+  const apellidos = [f.lname, f.lname2].filter(Boolean).join(' ').trim();
+  const ini = initials(nombres || 'P', apellidos || 'P');
   const m = MEDICO_MAP[f.medico];
   const notas = f.motivo ? [{ txt: 'Motivo de consulta inicial: ' + f.motivo, by: m?.full || 'Recepción', at: nowIso }] : [];
   const p: Patient = {
     id: Math.max(...patients.map(x => x.id), 0) + 1,
-    hc_number: hc, nombres: f.nombres, apellidos: f.apellidos,
-    full_name: `${f.apellidos} ${f.nombres}`, display_name: `${f.nombres} ${f.apellidos}`, initials: ini,
+    hc_number: hc, fname: f.fname, mname: f.mname, lname: f.lname, lname2: f.lname2, nombres, apellidos,
+    full_name: `${apellidos} ${nombres}`, display_name: `${nombres} ${apellidos}`, initials: ini,
     cedula: f.cedula, fecha_nac: f.fecha_nac, edad: edadDe(f.fecha_nac), sexo: f.sexo,
     telefono: f.telefono, telefono_alt: f.telefono_alt || null, email: f.email || null,
     direccion: f.direccion, ciudad: f.ciudad, sede: f.sede, sede_info: null, medico: f.medico, medico_tratante: null,

@@ -136,30 +136,37 @@ export default function App() {
   }, []);
 
   const onSaveEdit = useCallback(async (hcNumber: string, data: WizardFormData) => {
-    const nombresParts = data.nombres.trim().split(/\s+/).filter(Boolean);
-    const apellidosParts = data.apellidos.trim().split(/\s+/).filter(Boolean);
+    const nombres = [data.fname, data.mname].filter(Boolean).join(' ').trim();
+    const apellidos = [data.lname, data.lname2].filter(Boolean).join(' ').trim();
     const payload = {
-      fname: nombresParts[0] || '',
-      mname: nombresParts.slice(1).join(' '),
-      lname: apellidosParts[0] || '',
-      lname2: apellidosParts.slice(1).join(' '),
+      cedula: data.cedula,
+      fname: data.fname,
+      mname: data.mname,
+      lname: data.lname,
+      lname2: data.lname2,
       fecha_nacimiento: data.fecha_nac,
       sexo: data.sexo,
       celular: data.telefono,
+      telefono_alt: data.telefono_alt,
       afiliacion: data.afiliacion,
       ciudad: data.ciudad,
       email: data.email,
       direccion: data.direccion,
+      medico_tratante_id: data.medico,
+      sede_principal: data.sede,
     };
     await updatePatient(hcNumber, payload);
-    const nombres = data.nombres.trim();
-    const apellidos = data.apellidos.trim();
     const patch = {
+      fname: data.fname,
+      mname: data.mname,
+      lname: data.lname,
+      lname2: data.lname2,
       nombres,
       apellidos,
       full_name: `${apellidos} ${nombres}`.trim(),
       display_name: `${nombres} ${apellidos}`.trim(),
       sexo: data.sexo,
+      cedula: data.cedula || hcNumber,
       telefono: data.telefono || '',
       telefono_alt: data.telefono_alt || null,
       email: data.email || null,
@@ -277,6 +284,7 @@ export default function App() {
         <WizardView
           mode="create"
           patients={patients}
+          catalogos={catalogos}
           onCancel={goList}
           onCreate={onPatientCreated}
           onOpenExisting={openPatient}
@@ -287,6 +295,7 @@ export default function App() {
         <WizardView
           mode="edit"
           patients={patients}
+          catalogos={catalogos}
           initialPatient={detailPatient}
           onCancel={() => setRoute('detail')}
           onCreate={onPatientCreated}

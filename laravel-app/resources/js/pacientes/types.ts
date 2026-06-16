@@ -108,6 +108,10 @@ export interface Emergencia {
 export interface Patient {
   id: number;
   hc_number: string;
+  fname: string;
+  mname: string;
+  lname: string;
+  lname2: string;
   nombres: string;
   apellidos: string;
   full_name: string;
@@ -158,6 +162,10 @@ export interface Patient {
 export interface WizardFormData {
   docTipo: 'cedula' | 'pasaporte';
   cedula: string;
+  fname: string;
+  mname: string;
+  lname: string;
+  lname2: string;
   nombres: string;
   apellidos: string;
   fecha_nac: string;

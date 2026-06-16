@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\Model;
  * 
  * @property int $id
  * @property string|null $hc_number
+ * @property string|null $cedula
  * @property Carbon|null $fecha_caducidad
  * @property string $lname
  * @property string|null $lname2
@@ -24,10 +25,13 @@ use Illuminate\Database\Eloquent\Model;
  * @property Carbon|null $fecha_nacimiento
  * @property string|null $sexo
  * @property string|null $celular
+ * @property string|null $telefono_alt
  * @property string|null $ciudad
  * @property string|null $estado_civil
  * @property string|null $email
  * @property string|null $direccion
+ * @property int|null $medico_tratante_id
+ * @property string|null $sede_principal
  * @property string|null $ocupacion
  * @property string|null $lugar_trabajo
  * @property string|null $parroquia
@@ -59,6 +63,7 @@ class PatientDatum extends Model
 
 	protected $fillable = [
 		'hc_number',
+		'cedula',
 		'fecha_caducidad',
 		'lname',
 		'lname2',
@@ -68,10 +73,13 @@ class PatientDatum extends Model
 		'fecha_nacimiento',
 		'sexo',
 		'celular',
+		'telefono_alt',
 		'ciudad',
 		'estado_civil',
 		'email',
 		'direccion',
+		'medico_tratante_id',
+		'sede_principal',
 		'ocupacion',
 		'lugar_trabajo',
 		'parroquia',

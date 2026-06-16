@@ -139,6 +139,45 @@ class PacientesV2ResolversTest extends TestCase
         $this->assertSame('publico', $patient['tipo_afiliacion']);
     }
 
+    public function test_patient_list_contract_exposes_editable_legacy_fields_and_manual_assignments(): void
+    {
+        $pdo = $this->makePdo();
+        $this->createPatientDataTable($pdo);
+        $this->createUsersTable($pdo);
+        $this->createProcedimientosTable($pdo);
+        $this->createConsultaDataTable($pdo);
+        $this->createSolicitudProcedimientoTable($pdo);
+
+        $pdo->exec("
+            INSERT INTO users (id, nombre, full_name, subespecialidad, especialidad, sede, id_trabajador)
+            VALUES (99, 'DRA MANUAL', 'DRA MANUAL', 'Cirujano Oftalmologo', 'Cirujano Oftalmologo', 'MATRIZ', '99')
+        ");
+        $pdo->exec("
+            INSERT INTO patient_data (
+                hc_number, fname, mname, lname, lname2, afiliacion, fecha_nacimiento,
+                sexo, celular, telefono_alt, email, direccion, ciudad, medico_tratante_id,
+                sede_principal, created_at
+            ) VALUES (
+                '0201019485', 'NARCISA', 'ANATILA', 'GUAMAN', 'CHACAN', 'CONFIAMED 100%', '1966-10-08',
+                'F', '0969720084', '042681140', 'info@cive.ec', 'GUAYAQUIL', 'GUAYAQUIL',
+                99, 'matriz', '2026-06-01 09:00:00'
+            )
+        ");
+
+        $patient = (new PacientesParityService($pdo))->obtenerPacientesReact(null, 0)['data'][0];
+
+        $this->assertSame('0201019485', $patient['cedula']);
+        $this->assertSame('NARCISA', $patient['fname']);
+        $this->assertSame('ANATILA', $patient['mname']);
+        $this->assertSame('GUAMAN', $patient['lname']);
+        $this->assertSame('CHACAN', $patient['lname2']);
+        $this->assertSame('042681140', $patient['telefono_alt']);
+        $this->assertSame('99', $patient['medico']);
+        $this->assertSame('DRA MANUAL', $patient['medico_tratante']['nombre']);
+        $this->assertSame('matriz', $patient['sede']);
+        $this->assertSame('MATRIZ', $patient['sede_info']['nombre']);
+    }
+
     public function test_patient_list_excludes_projected_procedure_rows_imported_as_patients(): void
     {
         $pdo = $this->makePdo();
@@ -221,6 +260,7 @@ class PacientesV2ResolversTest extends TestCase
             CREATE TABLE patient_data (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 hc_number TEXT,
+                cedula TEXT,
                 fname TEXT,
                 mname TEXT,
                 lname TEXT,
@@ -229,9 +269,12 @@ class PacientesV2ResolversTest extends TestCase
                 fecha_nacimiento TEXT,
                 sexo TEXT,
                 celular TEXT,
+                telefono_alt TEXT,
                 email TEXT,
                 direccion TEXT,
                 ciudad TEXT,
+                medico_tratante_id TEXT,
+                sede_principal TEXT,
                 created_at TEXT
             )
         ');
