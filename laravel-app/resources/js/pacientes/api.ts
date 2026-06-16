@@ -20,11 +20,14 @@ function buildTimeline(p: any): any[] {
 }
 
 function normalizePatient(raw: any, id: number): Patient {
-  const nombres = String(raw.nombres || raw.fname || '').trim();
+  const rawDisplayName = String(raw.display_name || '').trim();
+  const rawFullName = String(raw.full_name || '').trim();
+  const nombres = String(raw.nombres || `${raw.fname || ''} ${raw.mname || ''}`.trim() || rawDisplayName).trim();
   const apellidos = String(raw.apellidos || `${raw.lname || ''} ${raw.lname2 || ''}`.trim()).trim();
-  const displayName = `${nombres} ${apellidos}`.trim();
-  const fullName = `${apellidos} ${nombres}`.trim();
-  const ini = initials(nombres || 'P', apellidos || 'P');
+  const displayName = rawDisplayName || `${nombres} ${apellidos}`.trim() || rawFullName;
+  const fullName = rawFullName || `${apellidos} ${nombres}`.trim() || displayName;
+  const initialSource = displayName || fullName || 'Paciente';
+  const ini = initials(nombres || initialSource, apellidos || initialSource.split(/\s+/).slice(1).join(' '));
   const solicitudes = raw.solicitudes || [];
   const activeSols = solicitudes.filter((s: any) => SOL_ACTIVA.has(s.estado));
 
