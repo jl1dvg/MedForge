@@ -1,54 +1,6 @@
 import React, { useState } from 'react';
 import type { SedeOption } from './types';
 
-const PERIOD_LABELS: Record<string, string> = {
-  mes: 'Mes', trim: 'Trim', sem: 'Sem', año: 'Año',
-};
-
-function fmt(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
-
-function datesForPreset(preset: string): { start: string; end: string } {
-  const today = new Date();
-  const y = today.getFullYear();
-  const m = today.getMonth(); // 0-indexed
-
-  switch (preset) {
-    case 'mes':
-      return { start: fmt(new Date(y, m, 1)), end: fmt(today) };
-    case 'trim': {
-      const quarterStart = Math.floor(m / 3) * 3;
-      return { start: fmt(new Date(y, quarterStart, 1)), end: fmt(today) };
-    }
-    case 'sem': {
-      const semStart = m < 6 ? 0 : 6;
-      return { start: fmt(new Date(y, semStart, 1)), end: fmt(today) };
-    }
-    case 'año':
-      return { start: fmt(new Date(y, 0, 1)), end: fmt(today) };
-    default:
-      return { start: fmt(new Date(y, m, 1)), end: fmt(today) };
-  }
-}
-
-function activePeriodKey(startDate: string, endDate: string): string | null {
-  const today = new Date();
-  const todayStr = fmt(today);
-  if (endDate !== todayStr) return null;
-
-  const y = today.getFullYear();
-  const m = today.getMonth();
-
-  if (startDate === fmt(new Date(y, m, 1))) return 'mes';
-  const quarterStart = Math.floor(m / 3) * 3;
-  if (startDate === fmt(new Date(y, quarterStart, 1))) return 'trim';
-  const semStart = m < 6 ? 0 : 6;
-  if (startDate === fmt(new Date(y, semStart, 1))) return 'sem';
-  if (startDate === fmt(new Date(y, 0, 1))) return 'año';
-  return null;
-}
-
 interface ToolbarProps {
   startDate: string;
   endDate: string;
@@ -57,8 +9,9 @@ interface ToolbarProps {
 }
 
 export function Toolbar({ startDate, endDate, sede, sedeOptions }: ToolbarProps) {
-  const activePeriod = activePeriodKey(startDate, endDate);
   const [loading, setLoading] = useState(false);
+  const [start, setStart] = useState(startDate);
+  const [end, setEnd] = useState(endDate);
 
   const navigate = (params: Record<string, string>) => {
     setLoading(true);
@@ -67,8 +20,7 @@ export function Toolbar({ startDate, endDate, sede, sedeOptions }: ToolbarProps)
     window.location.href = url.toString();
   };
 
-  const selectPeriod = (key: string) => {
-    const { start, end } = datesForPreset(key);
+  const applyRange = () => {
     navigate({ start_date: start, end_date: end });
   };
 
@@ -92,17 +44,25 @@ export function Toolbar({ startDate, endDate, sede, sedeOptions }: ToolbarProps)
           </div>
           <div className="rep-filters">
             <span className="rep-flabel">Período</span>
-            <div className="rep-seg">
-              {Object.entries(PERIOD_LABELS).map(([key, label]) => (
-                <button
-                  key={key}
-                  className={activePeriod === key ? 'is-active' : ''}
-                  onClick={() => selectPeriod(key)}
-                  disabled={loading}
-                >
-                  {label}
-                </button>
-              ))}
+            <div className="rep-seg rep-seg--solid" style={{ gap: 6, padding: '4px 8px' }}>
+              <input
+                type="date"
+                value={start}
+                max={end}
+                onChange={e => setStart(e.target.value)}
+                disabled={loading}
+                style={{ border: 'none', background: 'transparent', font: 'inherit', color: 'inherit' }}
+              />
+              <span>→</span>
+              <input
+                type="date"
+                value={end}
+                min={start}
+                onChange={e => setEnd(e.target.value)}
+                disabled={loading}
+                style={{ border: 'none', background: 'transparent', font: 'inherit', color: 'inherit' }}
+              />
+              <button onClick={applyRange} disabled={loading}>Aplicar</button>
             </div>
             {sedeOptions.length > 1 && (
               <>
