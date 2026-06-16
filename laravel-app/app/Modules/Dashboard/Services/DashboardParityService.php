@@ -16,10 +16,44 @@ class DashboardParityService
         if ($this->sede === '') {
             return '';
         }
-        if ($this->sede === 'CEIBOS') {
-            return " AND {$alias}.sede_departamento LIKE 'CEIBOS%'";
+
+        $rawExpr = "LOWER(TRIM(COALESCE(NULLIF({$alias}.sede_departamento, ''), NULLIF(CAST({$alias}.id_sede AS CHAR), ''), '')))";
+        $normalizedExpr = "CASE
+            WHEN {$rawExpr} LIKE '%ceib%' THEN 'CEIBOS'
+            WHEN {$rawExpr} LIKE '%matriz%' OR {$rawExpr} LIKE '%villa%' OR {$rawExpr} LIKE '%vclub%' THEN 'MATRIZ'
+            ELSE ''
+        END";
+
+        return " AND ({$normalizedExpr}) = '{$this->sede}'";
+    }
+
+    private function dashboardV3OperationalWhere(string $alias = 'pp'): string
+    {
+        return " AND {$alias}.sede_departamento IS NOT NULL
+            AND TRIM({$alias}.sede_departamento) != ''
+            AND UPPER(TRIM(COALESCE({$alias}.estado_agenda, ''))) != 'GENERADAS'";
+    }
+
+    private function normalizeSedeFilter(string $sede): string
+    {
+        $normalized = strtolower(trim($sede));
+        if ($normalized === '') {
+            return '';
         }
-        return " AND {$alias}.sede_departamento = '{$this->sede}'";
+
+        if (str_contains($normalized, 'ceib')) {
+            return 'CEIBOS';
+        }
+
+        if (
+            str_contains($normalized, 'matriz')
+            || str_contains($normalized, 'villa')
+            || str_contains($normalized, 'vclub')
+        ) {
+            return 'MATRIZ';
+        }
+
+        return '';
     }
 
     /**
@@ -27,7 +61,7 @@ class DashboardParityService
      */
     public function buildUiPayload(?string $startDate, ?string $endDate, string $sede = ''): array
     {
-        $this->sede = strtoupper(trim($sede));
+        $this->sede = $this->normalizeSedeFilter($sede);
         [$start, $end, $label] = $this->resolveDateRange($startDate, $endDate);
         $summary = $this->buildSummary($startDate, $endDate);
 
@@ -163,7 +197,7 @@ class DashboardParityService
                  FROM procedimiento_proyectado pp
                  LEFT JOIN visitas v ON v.id = pp.visita_id
                  WHERE COALESCE(pp.sigcenter_present, 1) = 1
-                   AND COALESCE(DATE(pp.fecha), v.fecha_visita) = ?' . $this->sedeWhere('pp'),
+                   AND DATE(pp.fecha) = ?' . $this->dashboardV3OperationalWhere('pp') . $this->sedeWhere('pp'),
                 [$today->format('Y-m-d')]
             );
         } catch (Throwable) {
@@ -199,7 +233,7 @@ class DashboardParityService
                  FROM procedimiento_proyectado pp
                  WHERE COALESCE(pp.sigcenter_present, 1) = 1
                    AND DATE(pp.fecha) = ?
-                   AND UPPER(TRIM(COALESCE(pp.procedimiento_proyectado, ""))) LIKE "CIRUGIAS%"' . $this->sedeWhere('pp'),
+                   AND UPPER(TRIM(COALESCE(pp.procedimiento_proyectado, ""))) LIKE "CIRUGIAS%"' . $this->dashboardV3OperationalWhere('pp') . $this->sedeWhere('pp'),
                 [$date]
             );
         } catch (Throwable) {
@@ -254,9 +288,9 @@ class DashboardParityService
                  FROM procedimiento_proyectado pp
                  LEFT JOIN visitas v ON v.id = pp.visita_id
                  WHERE COALESCE(pp.sigcenter_present, 1) = 1
-                   AND COALESCE(DATE(pp.fecha), v.fecha_visita) = ?
+                   AND DATE(pp.fecha) = ?
                    AND pp.doctor IS NOT NULL
-                   AND TRIM(pp.doctor) != ''" . $this->sedeWhere('pp') . "
+                   AND TRIM(pp.doctor) != ''" . $this->dashboardV3OperationalWhere('pp') . $this->sedeWhere('pp') . "
                  GROUP BY pp.doctor
                  ORDER BY en_espera DESC, total_agenda DESC
                  LIMIT 10",
@@ -441,7 +475,7 @@ class DashboardParityService
                  LEFT JOIN patient_data pd ON pd.hc_number = pp.hc_number
                  LEFT JOIN visitas v ON v.id = pp.visita_id
                  WHERE COALESCE(pp.sigcenter_present, 1) = 1
-                   AND COALESCE(DATE(pp.fecha), v.fecha_visita) = ?' . $this->sedeWhere('pp') . '
+                   AND DATE(pp.fecha) = ?' . $this->dashboardV3OperationalWhere('pp') . $this->sedeWhere('pp') . '
                  ORDER BY pp.hora ASC, pp.form_id ASC
                  LIMIT 200',
                 [$today->format('Y-m-d')]
@@ -531,7 +565,7 @@ class DashboardParityService
                  LEFT JOIN patient_data pd ON pd.hc_number = pp.hc_number
                  LEFT JOIN visitas v ON v.id = pp.visita_id
                  WHERE COALESCE(pp.sigcenter_present, 1) = 1
-                   AND COALESCE(DATE(pp.fecha), v.fecha_visita) = ?' . $this->sedeWhere('pp') . '
+                   AND DATE(pp.fecha) = ?' . $this->dashboardV3OperationalWhere('pp') . $this->sedeWhere('pp') . '
                  ORDER BY pp.hora ASC, pp.form_id ASC',
                 [$date]
             );
@@ -608,12 +642,12 @@ class DashboardParityService
                         ON pr.form_id    = pp.form_id
                        AND pr.hc_number  = pp.hc_number
                  WHERE COALESCE(pp.sigcenter_present, 1) = 1
-                   AND COALESCE(DATE(pp.fecha), v.fecha_visita) = ?
+                   AND DATE(pp.fecha) = ?
                    AND UPPER(TRIM(COALESCE(pp.procedimiento_proyectado, ''))) LIKE 'CIRUGIAS%'
                    AND (
                        UPPER(TRIM(COALESCE(pp.estado_agenda, ''))) IN ($inList)
                        OR pr.form_id IS NOT NULL
-                   )" . $this->sedeWhere('pp') . "
+                   )" . $this->dashboardV3OperationalWhere('pp') . $this->sedeWhere('pp') . "
                  ORDER BY pp.hora ASC, pp.form_id ASC",
                 array_merge([$date], $presentStates)
             );
@@ -723,7 +757,8 @@ class DashboardParityService
                  LEFT JOIN visitas v ON v.id = pp.visita_id
                  LEFT JOIN billing_facturacion_real bfr ON bfr.form_id = pp.form_id
                  WHERE COALESCE(pp.sigcenter_present, 1) = 1
-                   AND COALESCE(DATE(pp.fecha), v.fecha_visita) BETWEEN ? AND ?
+                   AND DATE(pp.fecha) BETWEEN ? AND ?
+                   ' . $this->dashboardV3OperationalWhere('pp') . '
                    AND bfr.id IS NULL',
                 [$start->format('Y-m-d'), $end->format('Y-m-d')]
             )->total ?? 0);
@@ -745,8 +780,9 @@ class DashboardParityService
                  LEFT JOIN visitas v ON v.id = pp.visita_id
                  LEFT JOIN imagenes_nas_index idx ON idx.form_id = pp.form_id
                  WHERE COALESCE(pp.sigcenter_present, 1) = 1
-                   AND COALESCE(DATE(pp.fecha), v.fecha_visita) BETWEEN ? AND ?
+                   AND DATE(pp.fecha) BETWEEN ? AND ?
                    AND UPPER(TRIM(COALESCE(pp.procedimiento_proyectado, ""))) LIKE "IMAGENES%"
+                   ' . $this->dashboardV3OperationalWhere('pp') . '
                    AND idx.form_id IS NULL',
                 [$start->format('Y-m-d'), $end->format('Y-m-d')]
             )->total ?? 0);
