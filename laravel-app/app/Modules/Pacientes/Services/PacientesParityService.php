@@ -15,6 +15,267 @@ class PacientesParityService
     {
     }
 
+    /**
+     * @return array{data:array<int,array<string,mixed>>,meta:array<string,int|null>}
+     */
+    public function obtenerPacientesReact(?int $limit = null, int $offset = 0): array
+    {
+        $limit = $limit !== null ? max(1, min(2000, $limit)) : null;
+        $offset = max(0, $offset);
+
+        $total = (int) $this->db->query('SELECT COUNT(*) FROM patient_data')->fetchColumn();
+        $paginationSql = $limit !== null ? 'LIMIT :limit OFFSET :offset' : '';
+
+        $sql = <<<SQL
+            SELECT
+                p.hc_number,
+                TRIM(CONCAT_WS(' ', p.lname, p.lname2, p.fname, p.mname)) AS full_name,
+                TRIM(CONCAT_WS(' ', p.fname, p.mname, p.lname, p.lname2)) AS display_name,
+                NULL AS cedula,
+                COALESCE(p.celular, '') AS telefono,
+                COALESCE(p.email, '') AS email,
+                COALESCE(p.afiliacion, '') AS afiliacion,
+                p.fecha_nacimiento,
+                p.sexo,
+                COALESCE(p.direccion, '') AS direccion,
+                COALESCE(p.ciudad, '') AS ciudad,
+                p.created_at,
+                (
+                    SELECT pp.doctor
+                    FROM procedimiento_proyectado pp
+                    WHERE pp.hc_number = p.hc_number
+                      AND COALESCE(pp.sigcenter_present, 1) = 1
+                    ORDER BY pp.id DESC
+                    LIMIT 1
+                ) AS medico,
+                (
+                    SELECT COALESCE(NULLIF(pp.id_sede, ''), NULLIF(pp.sede_departamento, ''))
+                    FROM procedimiento_proyectado pp
+                    WHERE pp.hc_number = p.hc_number
+                      AND COALESCE(pp.sigcenter_present, 1) = 1
+                    ORDER BY pp.id DESC
+                    LIMIT 1
+                ) AS sede,
+                (
+                    SELECT MAX(cd.fecha)
+                    FROM consulta_data cd
+                    WHERE cd.hc_number = p.hc_number
+                ) AS ultima_visita,
+                (
+                    SELECT pp.fecha
+                    FROM procedimiento_proyectado pp
+                    WHERE pp.hc_number = p.hc_number
+                      AND COALESCE(pp.sigcenter_present, 1) = 1
+                      AND pp.fecha IS NOT NULL
+                      AND pp.fecha >= CURDATE()
+                    ORDER BY pp.fecha ASC, pp.hora ASC, pp.id ASC
+                    LIMIT 1
+                ) AS proxima_fecha,
+                (
+                    SELECT pp.hora
+                    FROM procedimiento_proyectado pp
+                    WHERE pp.hc_number = p.hc_number
+                      AND COALESCE(pp.sigcenter_present, 1) = 1
+                      AND pp.fecha IS NOT NULL
+                      AND pp.fecha >= CURDATE()
+                    ORDER BY pp.fecha ASC, pp.hora ASC, pp.id ASC
+                    LIMIT 1
+                ) AS proxima_hora,
+                (
+                    SELECT pp.procedimiento_proyectado
+                    FROM procedimiento_proyectado pp
+                    WHERE pp.hc_number = p.hc_number
+                      AND COALESCE(pp.sigcenter_present, 1) = 1
+                      AND pp.fecha IS NOT NULL
+                      AND pp.fecha >= CURDATE()
+                    ORDER BY pp.fecha ASC, pp.hora ASC, pp.id ASC
+                    LIMIT 1
+                ) AS proxima_tipo,
+                (
+                    SELECT pp.doctor
+                    FROM procedimiento_proyectado pp
+                    WHERE pp.hc_number = p.hc_number
+                      AND COALESCE(pp.sigcenter_present, 1) = 1
+                      AND pp.fecha IS NOT NULL
+                      AND pp.fecha >= CURDATE()
+                    ORDER BY pp.fecha ASC, pp.hora ASC, pp.id ASC
+                    LIMIT 1
+                ) AS proxima_doctor,
+                (
+                    SELECT COUNT(*)
+                    FROM solicitud_procedimiento sp
+                    WHERE sp.hc_number = p.hc_number
+                      AND LOWER(COALESCE(sp.estado, '')) IN ('ingresada', 'cotizacion', 'cotización', 'en_proceso', 'en proceso', 'autorizada')
+                ) AS solicitud_activa,
+                NULL AS deuda,
+                (
+                    SELECT NULLIF(TRIM(cd.antecedente_alergico), '')
+                    FROM consulta_data cd
+                    WHERE cd.hc_number = p.hc_number
+                      AND cd.antecedente_alergico IS NOT NULL
+                      AND TRIM(cd.antecedente_alergico) <> ''
+                    ORDER BY cd.id DESC
+                    LIMIT 1
+                ) AS alerta
+            FROM (
+                SELECT *
+                FROM patient_data
+                ORDER BY CAST(hc_number AS UNSIGNED) DESC, hc_number DESC
+                {$paginationSql}
+            ) p
+            ORDER BY CAST(p.hc_number AS UNSIGNED) DESC, p.hc_number DESC
+        SQL;
+
+        $stmt = $this->db->prepare($sql);
+        if ($limit !== null) {
+            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+            $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+        }
+        $stmt->execute();
+
+        $data = [];
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $proximaCita = null;
+            if (!empty($row['proxima_fecha'])) {
+                $proximaCita = [
+                    'fecha' => (string) $row['proxima_fecha'],
+                    'hora' => (string) ($row['proxima_hora'] ?? ''),
+                    'tipo' => (string) ($row['proxima_tipo'] ?? ''),
+                    'medico' => (string) ($row['proxima_doctor'] ?? ''),
+                ];
+            }
+
+            $data[] = [
+                'hc_number' => (string) ($row['hc_number'] ?? ''),
+                'full_name' => (string) ($row['full_name'] ?? ''),
+                'display_name' => (string) ($row['display_name'] ?? ''),
+                'cedula' => null,
+                'telefono' => (string) ($row['telefono'] ?? ''),
+                'email' => (string) ($row['email'] ?? ''),
+                'afiliacion' => (string) ($row['afiliacion'] ?? ''),
+                'fecha_nacimiento' => (string) ($row['fecha_nacimiento'] ?? ''),
+                'sexo' => (string) ($row['sexo'] ?? ''),
+                'direccion' => (string) ($row['direccion'] ?? ''),
+                'ciudad' => (string) ($row['ciudad'] ?? ''),
+                'medico' => (string) ($row['medico'] ?? ''),
+                'sede' => (string) ($row['sede'] ?? ''),
+                'ultima_visita' => (string) ($row['ultima_visita'] ?? ''),
+                'proxima_cita' => $proximaCita,
+                'solicitud_activa' => (int) ($row['solicitud_activa'] ?? 0),
+                'sol_activa' => (int) ($row['solicitud_activa'] ?? 0),
+                'deuda' => null,
+                'alerta' => $row['alerta'] !== null ? (string) $row['alerta'] : null,
+                'created_at' => (string) ($row['created_at'] ?? ''),
+            ];
+        }
+
+        return [
+            'data' => $data,
+            'meta' => [
+                'total' => $total,
+                'count' => count($data),
+                'limit' => $limit,
+                'offset' => $offset,
+            ],
+        ];
+    }
+
+    /**
+     * @return array{total_pacientes:int,pacientes_nuevos:int,citas_hoy:int,solicitudes_activas:int}
+     */
+    public function obtenerKpisReact(): array
+    {
+        return [
+            'total_pacientes' => (int) $this->db->query('SELECT COUNT(*) FROM patient_data')->fetchColumn(),
+            'pacientes_nuevos' => $this->safeCount(
+                'SELECT COUNT(*) FROM patient_data WHERE created_at >= DATE_FORMAT(CURDATE(), "%Y-%m-01")'
+            ),
+            'citas_hoy' => $this->safeCount(
+                'SELECT COUNT(*) FROM procedimiento_proyectado WHERE COALESCE(sigcenter_present, 1) = 1 AND fecha = CURDATE()'
+            ),
+            'solicitudes_activas' => $this->safeCount(
+                "SELECT COUNT(*) FROM solicitud_procedimiento WHERE LOWER(COALESCE(estado, '')) IN ('ingresada', 'cotizacion', 'cotización', 'en_proceso', 'en proceso', 'autorizada')"
+            ),
+        ];
+    }
+
+    /**
+     * @return array{medicos:array<int,array<string,string>>,sedes:array<int,array<string,string>>,afiliaciones:array<int,array<string,string>>,aseguradoras:array<int,array<string,string>>}
+     */
+    public function obtenerCatalogosReact(): array
+    {
+        return [
+            'medicos' => $this->catalogoMedicos(),
+            'sedes' => $this->catalogoSedes(),
+            'afiliaciones' => $this->catalogoAfiliaciones(),
+            'aseguradoras' => [],
+        ];
+    }
+
+    /**
+     * @param array<string,mixed> $input
+     * @return array<string,mixed>
+     */
+    public function crearPaciente(array $input, ?int $sessionUserId): array
+    {
+        $nombres = $this->splitWords((string) ($input['nombres'] ?? ''));
+        $apellidos = $this->splitWords((string) ($input['apellidos'] ?? ''));
+        $fname = $nombres[0] ?? '';
+        $mname = trim(implode(' ', array_slice($nombres, 1)));
+        $lname = $apellidos[0] ?? '';
+        $lname2 = trim(implode(' ', array_slice($apellidos, 1)));
+
+        if ($fname === '' || $lname === '') {
+            throw new \InvalidArgumentException('nombres y apellidos son requeridos.');
+        }
+
+        $hcNumber = $this->nextHcNumber();
+        $auditType = $sessionUserId !== null ? 'user' : 'api';
+        $auditIdentifier = $sessionUserId !== null ? ('user:' . (string) $sessionUserId) : 'api:/v2/pacientes/crear';
+        $fechaNacimiento = trim((string) ($input['fecha_nac'] ?? $input['fecha_nacimiento'] ?? ''));
+
+        $stmt = $this->db->prepare(<<<'SQL'
+            INSERT INTO patient_data (
+                hc_number, fname, mname, lname, lname2, afiliacion, fecha_nacimiento,
+                sexo, celular, ciudad, email, direccion, created_at, updated_at,
+                created_by_type, created_by_identifier, updated_by_type, updated_by_identifier
+            ) VALUES (
+                :hc_number, :fname, :mname, :lname, :lname2, :afiliacion, :fecha_nacimiento,
+                :sexo, :celular, :ciudad, :email, :direccion, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP,
+                :created_by_type, :created_by_identifier, :updated_by_type, :updated_by_identifier
+            )
+        SQL);
+
+        $stmt->execute([
+            ':hc_number' => $hcNumber,
+            ':fname' => $fname,
+            ':mname' => $mname,
+            ':lname' => $lname,
+            ':lname2' => $lname2,
+            ':afiliacion' => trim((string) ($input['afiliacion'] ?? '')),
+            ':fecha_nacimiento' => $fechaNacimiento !== '' ? $fechaNacimiento : null,
+            ':sexo' => trim((string) ($input['sexo'] ?? '')),
+            ':celular' => trim((string) ($input['telefono'] ?? $input['celular'] ?? '')),
+            ':ciudad' => trim((string) ($input['ciudad'] ?? '')),
+            ':email' => trim((string) ($input['email'] ?? '')),
+            ':direccion' => trim((string) ($input['direccion'] ?? '')),
+            ':created_by_type' => $auditType,
+            ':created_by_identifier' => $auditIdentifier,
+            ':updated_by_type' => $auditType,
+            ':updated_by_identifier' => $auditIdentifier,
+        ]);
+
+        $warnings = [];
+        if (trim((string) ($input['cedula'] ?? '')) !== '') {
+            $warnings[] = 'patient_data no tiene columna cedula; el documento no fue persistido en esta fase.';
+        }
+
+        return [
+            'hc_number' => $hcNumber,
+            'warnings' => $warnings,
+        ];
+    }
+
     public function obtenerPacientesPaginados(
         int $start,
         int $length,
@@ -683,6 +944,169 @@ class PacientesParityService
         }
 
         return array_column($stmt->fetchAll(PDO::FETCH_ASSOC), 'afiliacion');
+    }
+
+    private function safeCount(string $sql): int
+    {
+        try {
+            $stmt = $this->db->query($sql);
+            if ($stmt === false) {
+                return 0;
+            }
+
+            return (int) $stmt->fetchColumn();
+        } catch (PDOException) {
+            return 0;
+        }
+    }
+
+    /**
+     * @return array<int,array<string,string>>
+     */
+    private function catalogoMedicos(): array
+    {
+        $items = [];
+
+        try {
+            $stmt = $this->db->query(<<<'SQL'
+                SELECT id, nombre, full_name, subespecialidad, especialidad, sede, id_trabajador
+                FROM users
+                WHERE ((nombre IS NOT NULL AND TRIM(nombre) <> '')
+                    OR (full_name IS NOT NULL AND TRIM(full_name) <> ''))
+                  AND (
+                    (subespecialidad IS NOT NULL AND TRIM(subespecialidad) <> '')
+                    OR (especialidad IS NOT NULL AND TRIM(especialidad) <> '')
+                    OR id_trabajador IS NOT NULL
+                  )
+                ORDER BY COALESCE(nombre, full_name) ASC
+            SQL);
+
+            foreach (($stmt?->fetchAll(PDO::FETCH_ASSOC) ?: []) as $row) {
+                $nombre = trim((string) ($row['nombre'] ?: ($row['full_name'] ?? '')));
+                if ($nombre === '') {
+                    continue;
+                }
+
+                $key = (string) ($row['id'] ?? $this->catalogKey($nombre));
+                $items[$key] = [
+                    'id' => $key,
+                    'full' => $nombre,
+                    'nombre' => $nombre,
+                    'esp' => trim((string) ($row['subespecialidad'] ?: ($row['especialidad'] ?? ''))),
+                    'especialidad' => trim((string) ($row['subespecialidad'] ?: ($row['especialidad'] ?? ''))),
+                    'sede' => trim((string) ($row['sede'] ?? '')),
+                    'id_trabajador' => (string) ($row['id_trabajador'] ?? ''),
+                ];
+            }
+        } catch (PDOException) {
+            // no-op
+        }
+
+        return array_values($items);
+    }
+
+    /**
+     * @return array<int,array<string,string>>
+     */
+    private function catalogoSedes(): array
+    {
+        $items = [];
+
+        try {
+            $stmt = $this->db->query(<<<'SQL'
+                SELECT DISTINCT COALESCE(NULLIF(TRIM(id_sede), ''), NULLIF(TRIM(sede_departamento), '')) AS nombre
+                FROM procedimiento_proyectado
+                WHERE COALESCE(NULLIF(TRIM(id_sede), ''), NULLIF(TRIM(sede_departamento), '')) IS NOT NULL
+                ORDER BY nombre ASC
+            SQL);
+
+            foreach (($stmt?->fetchAll(PDO::FETCH_ASSOC) ?: []) as $row) {
+                $nombre = trim((string) ($row['nombre'] ?? ''));
+                if ($nombre === '') {
+                    continue;
+                }
+
+                $items[$this->catalogKey($nombre)] = [
+                    'id' => $this->catalogKey($nombre),
+                    'label' => $nombre,
+                    'nombre' => $nombre,
+                ];
+            }
+        } catch (PDOException) {
+            // keep user fallback below
+        }
+
+        try {
+            $stmt = $this->db->query(<<<'SQL'
+                SELECT DISTINCT TRIM(sede) AS nombre
+                FROM users
+                WHERE sede IS NOT NULL
+                  AND TRIM(sede) <> ''
+                ORDER BY nombre ASC
+            SQL);
+
+            foreach (($stmt?->fetchAll(PDO::FETCH_ASSOC) ?: []) as $row) {
+                $nombre = trim((string) ($row['nombre'] ?? ''));
+                if ($nombre === '') {
+                    continue;
+                }
+
+                $items[$this->catalogKey($nombre)] = [
+                    'id' => $this->catalogKey($nombre),
+                    'label' => $nombre,
+                    'nombre' => $nombre,
+                ];
+            }
+        } catch (PDOException) {
+            // no-op
+        }
+
+        return array_values($items);
+    }
+
+    /**
+     * @return array<int,array<string,string>>
+     */
+    private function catalogoAfiliaciones(): array
+    {
+        return array_map(
+            fn(string $afiliacion): array => [
+                'id' => $this->catalogKey($afiliacion),
+                'label' => $afiliacion,
+                'nombre' => $afiliacion,
+            ],
+            $this->getAfiliacionesDisponibles()
+        );
+    }
+
+    private function catalogKey(string $value): string
+    {
+        $normalized = strtolower(trim($value));
+        $normalized = preg_replace('/[^a-z0-9]+/i', '_', $normalized) ?: '';
+        $normalized = trim($normalized, '_');
+
+        return $normalized !== '' ? $normalized : md5($value);
+    }
+
+    /**
+     * @return array<int,string>
+     */
+    private function splitWords(string $value): array
+    {
+        $value = trim(preg_replace('/\s+/', ' ', $value) ?: '');
+        if ($value === '') {
+            return [];
+        }
+
+        return explode(' ', $value);
+    }
+
+    private function nextHcNumber(): string
+    {
+        $stmt = $this->db->query('SELECT MAX(CAST(hc_number AS UNSIGNED)) FROM patient_data');
+        $next = ((int) ($stmt ? $stmt->fetchColumn() : 0)) + 1;
+
+        return str_pad((string) $next, 6, '0', STR_PAD_LEFT);
     }
 
     private function obtenerProcedimientosNormalizados(int $prefacturaId): ?array

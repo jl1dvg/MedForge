@@ -47,42 +47,11 @@ class PacientesReadController
             ]);
         }
 
-        /** @var PDO $pdo */
-        $pdo = DB::connection()->getPdo();
+        $limit = $request->has('limit') ? (int) $request->query('limit') : null;
+        $offset = (int) $request->query('offset', 0);
+        $payload = $this->service->obtenerPacientesReact($limit, $offset);
 
-        $total = (int) $pdo->query('SELECT COUNT(*) FROM patient_data')->fetchColumn();
-
-        // Simple query: no JOINs — fast even on 10k+ rows.
-        // Richer data (sede, médico, próxima cita) is loaded per-patient via /detalles/section.
-        $sql = <<<'SQL'
-            SELECT
-                p.hc_number,
-                p.fname,
-                p.lname,
-                COALESCE(p.lname2, '')       AS lname2,
-                p.afiliacion,
-                p.fecha_nacimiento,
-                p.sexo,
-                COALESCE(p.celular, '')       AS telefono,
-                COALESCE(p.email, '')         AS email,
-                COALESCE(p.direccion, '')     AS direccion,
-                COALESCE(p.ciudad, 'Guayaquil') AS ciudad,
-                p.created_at
-            FROM patient_data p
-            ORDER BY p.hc_number DESC
-        SQL;
-
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute();
-        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-
-        return response()->json([
-            'data' => $rows,
-            'meta' => [
-                'total'  => $total,
-                'count'  => count($rows),
-            ],
-        ]);
+        return response()->json($payload);
     }
 
     public function datatable(Request $request): JsonResponse
@@ -198,6 +167,49 @@ class PacientesReadController
             ]);
             return response()->json(['error' => 'Error al actualizar el paciente'], 500);
         }
+    }
+
+    public function crear(Request $request): JsonResponse
+    {
+        if (!$this->isLegacyAuthenticated($request)) {
+            return response()->json(['error' => 'Sesión expirada'], 401);
+        }
+
+        try {
+            $payload = $this->service->crearPaciente($request->all(), $this->legacyUserId($request));
+
+            return response()->json($payload, 201);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['error' => $e->getMessage()], 422);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('Error creando paciente', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json(['error' => 'Error al crear el paciente'], 500);
+        }
+    }
+
+    public function catalogos(Request $request): JsonResponse
+    {
+        if (!$this->isLegacyAuthenticated($request)) {
+            return response()->json(['error' => 'Sesión expirada'], 401);
+        }
+
+        return response()->json([
+            'data' => $this->service->obtenerCatalogosReact(),
+        ]);
+    }
+
+    public function kpis(Request $request): JsonResponse
+    {
+        if (!$this->isLegacyAuthenticated($request)) {
+            return response()->json(['error' => 'Sesión expirada'], 401);
+        }
+
+        return response()->json([
+            'data' => $this->service->obtenerKpisReact(),
+        ]);
     }
 
     public function flujo(Request $request): JsonResponse|RedirectResponse|View
