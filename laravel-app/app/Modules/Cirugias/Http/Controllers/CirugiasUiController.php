@@ -154,6 +154,35 @@ class CirugiasUiController
         return view('cirugias.v2-dashboard', $data);
     }
 
+    public function dashboardReport(Request $request): JsonResponse|RedirectResponse|View|Response
+    {
+        $unauthorized = $this->requireLegacyAuth($request);
+        if ($unauthorized !== null) {
+            return $unauthorized;
+        }
+
+        if (!$this->hasAnyPermission($request, self::DASHBOARD_ALLOWED_PERMISSIONS)) {
+            return response('Acceso denegado', 403);
+        }
+
+        $dateRange  = $this->resolveDateRange($request);
+        $sedeFilter = $this->resolveSedeFilter($request);
+
+        $start = $dateRange['start']->format('Y-m-d');
+        $end   = $dateRange['end']->format('Y-m-d');
+
+        $report      = $this->dashboardService->buildReportPayload($start, $end, $sedeFilter);
+        $sedeOptions = $this->dashboardService->getSedeOptions($start, $end);
+
+        return view('cirugias.v2-dashboard-report', [
+            'report'      => $report,
+            'sedeOptions' => $sedeOptions,
+            'startDate'   => $start,
+            'endDate'     => $end,
+            'sedeFilter'  => $sedeFilter,
+        ]);
+    }
+
     public function exportPdf(Request $request): JsonResponse|RedirectResponse|Response
     {
         $unauthorized = $this->requireLegacyAuth($request);
