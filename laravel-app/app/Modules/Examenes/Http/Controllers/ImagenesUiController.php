@@ -8,6 +8,7 @@ use App\Modules\Examenes\Services\ImagenesUiService;
 use App\Modules\Shared\Support\LegacyCurrentUser;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class ImagenesUiController
 {
@@ -52,14 +53,28 @@ class ImagenesUiController
 
     public function dashboardReport(Request $request): View
     {
-        $payload  = $this->service->imagenesDashboard($request->query());
+        $query = $request->query();
+        // El toolbar del reporte ejecutivo envía start_date/end_date; buildFilters() espera fecha_inicio/fecha_fin.
+        if (!empty($query['start_date']) && empty($query['fecha_inicio'])) {
+            $query['fecha_inicio'] = $query['start_date'];
+        }
+        if (!empty($query['end_date']) && empty($query['fecha_fin'])) {
+            $query['fecha_fin'] = $query['end_date'];
+        }
+
+        $payload  = $this->service->buildExecutiveReportPayload($query);
         $db       = $payload['dashboard'];
         $meta     = $db['meta'] ?? [];
         $charts   = $db['charts'] ?? [];
         $filters  = $payload['filters'];
 
-        $startDate = $filters['start_date'] ?? date('Y-m-d', strtotime('-30 days'));
-        $endDate   = $filters['end_date']   ?? date('Y-m-d');
+        Log::info('imagenes.executive_report.timings', [
+            'timings' => $payload['timings'] ?? [],
+            'row_count' => $payload['rowCount'] ?? 0,
+        ]);
+
+        $startDate = $filters['fecha_inicio'] ?? date('Y-m-d', strtotime('-30 days'));
+        $endDate   = $filters['fecha_fin']   ?? date('Y-m-d');
         $sedeFilter = $filters['sede'] ?? '';
 
         $sedeOptions = $payload['sedeOptions'] ?? [['value' => '', 'label' => 'Todas las sedes']];

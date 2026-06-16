@@ -9,6 +9,7 @@ use App\Modules\Codes\Services\CodePriceService;
 use App\Modules\Shared\Support\AfiliacionDimensionService;
 use DateTime;
 use DateTimeImmutable;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use PDO;
@@ -98,6 +99,63 @@ class ImagenesUiService
             'afiliacionCategoriaOptions' => $afiliacionCategoriaOptions,
             'seguroOptions' => $seguroOptions,
             'sedeOptions' => $sedeOptions,
+        ];
+    }
+
+    /**
+     * Lean payload for the executive report (/v2/imagenes/dashboard/report).
+     *
+     * Unlike imagenesDashboard(), this intentionally skips
+     * buildImagenesDashboardDetailRows() (the per-row operational table),
+     * which is the single most expensive step and is not needed for the
+     * executive summary. It reuses the same pipeline/summary builders so
+     * KPI figures stay identical to the operational dashboard.
+     *
+     * @param array<string,mixed> $query
+     * @return array{filters:array<string,mixed>,dashboard:array<string,mixed>,sedeOptions:array<int,array{value:string,label:string}>,rowCount:int,timings:array<string,float>}
+     */
+    public function buildExecutiveReportPayload(array $query): array
+    {
+        $timings = [];
+        $start = microtime(true);
+
+        $mark = function (string $label, float $since) use (&$timings): float {
+            $timings[$label] = round((microtime(true) - $since) * 1000, 2);
+
+            return microtime(true);
+        };
+
+        $t = $start;
+        $filters = $this->buildFilters($query);
+        $filters['afiliacion_match_mode'] = 'grouped';
+        $t = $mark('filters', $t);
+
+        $rows = $this->fetchImagenesRealizadas($filters, true);
+        $rows = array_map(fn (array $row): array => $this->decorateImagenRow($row), $rows);
+        $t = $mark('fetch_rows', $t);
+
+        $solicitudes = $this->fetchImagenesSolicitudPipeline($filters);
+        $t = $mark('solicitud_pipeline', $t);
+
+        $dashboard = $this->buildImagenesDashboardSummary($rows, $filters, $solicitudes);
+        $t = $mark('summary_build', $t);
+
+        $sedeOptions = [
+            ['value' => '', 'label' => 'Todas las sedes'],
+            ['value' => 'MATRIZ', 'label' => 'MATRIZ'],
+            ['value' => 'CEIBOS', 'label' => 'CEIBOS'],
+        ];
+        $mark('sede_options', $t);
+
+        $timings['total'] = round((microtime(true) - $start) * 1000, 2);
+        $timings['row_count'] = count($rows);
+
+        return [
+            'filters' => $filters,
+            'dashboard' => $dashboard,
+            'sedeOptions' => $sedeOptions,
+            'rowCount' => count($rows),
+            'timings' => $timings,
         ];
     }
 
@@ -3182,12 +3240,15 @@ class ImagenesUiService
             ? 'empresa_seguro'
             : "'' AS empresa_seguro";
 
-        $stmt = $this->db->query(
-            "SELECT afiliacion_norm, categoria, afiliacion_raw, {$empresaSeguroSelect}
-             FROM afiliacion_categoria_map
-             WHERE TRIM(COALESCE(afiliacion_norm, '')) <> ''"
-        );
-        $rows = $stmt ? ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
+        $rows = Cache::remember('imagenes.afiliacion_categoria_map.rows', 3600, function () use ($empresaSeguroSelect): array {
+            $stmt = $this->db->query(
+                "SELECT afiliacion_norm, categoria, afiliacion_raw, {$empresaSeguroSelect}
+                 FROM afiliacion_categoria_map
+                 WHERE TRIM(COALESCE(afiliacion_norm, '')) <> ''"
+            );
+
+            return $stmt ? ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
+        });
 
         $map = [];
         foreach ($rows as $row) {
@@ -3227,17 +3288,21 @@ class ImagenesUiService
             ? ['id', 'codigo', 'descripcion', 'short_description']
             : ['id', 'codigo', 'descripcion'];
 
-        $rows = Tarifario2014::query()->select($select)->get();
-        $index = [];
-        foreach ($rows as $row) {
-            $index[] = [
-                'id' => (int)$row->id,
-                'codigo' => trim((string)($row->codigo ?? '')),
-                'descripcion' => trim((string)($row->descripcion ?? '')),
-                'descripcion_norm' => $this->normalizarTexto((string)($row->descripcion ?? '')),
-                'short_description_norm' => $this->normalizarTexto((string)($row->short_description ?? '')),
-            ];
-        }
+        $index = Cache::remember('imagenes.tarifa_description_index', 3600, function () use ($select): array {
+            $rows = Tarifario2014::query()->select($select)->get();
+            $index = [];
+            foreach ($rows as $row) {
+                $index[] = [
+                    'id' => (int)$row->id,
+                    'codigo' => trim((string)($row->codigo ?? '')),
+                    'descripcion' => trim((string)($row->descripcion ?? '')),
+                    'descripcion_norm' => $this->normalizarTexto((string)($row->descripcion ?? '')),
+                    'short_description_norm' => $this->normalizarTexto((string)($row->short_description ?? '')),
+                ];
+            }
+
+            return $index;
+        });
 
         return $this->tarifaDescriptionIndexCache = $index;
     }
@@ -3256,7 +3321,13 @@ class ImagenesUiService
         }
 
         try {
-            return $this->codePriceCache[$codeId] = $this->codePriceService()->pricesForCode($codeId, $this->codePriceLevels());
+            $prices = Cache::remember(
+                "imagenes.tarifa_code_prices.{$codeId}",
+                3600,
+                fn (): array => $this->codePriceService()->pricesForCode($codeId, $this->codePriceLevels())
+            );
+
+            return $this->codePriceCache[$codeId] = $prices;
         } catch (\Throwable) {
             return $this->codePriceCache[$codeId] = [];
         }
