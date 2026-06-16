@@ -71,6 +71,7 @@ Route::middleware(['app.auth', 'app.permission:administrativo,examenes.view,exam
     Route::get('/v2/examenes/turnero', [ExamenesUiController::class, 'turnero']);
     Route::get('/v2/imagenes/examenes-realizados', [ImagenesUiController::class, 'realizadas']);
     Route::get('/v2/imagenes/dashboard', [ImagenesUiController::class, 'dashboard']);
+    Route::get('/v2/imagenes/dashboard/report', [ImagenesUiController::class, 'dashboardReport']);
 });
 
 Route::middleware(['app.auth', 'app.permission:administrativo,agenda.view,pacientes.view,solicitudes.view,examenes.view'])->group(function (): void {
