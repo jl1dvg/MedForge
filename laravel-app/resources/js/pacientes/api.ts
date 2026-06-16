@@ -1,4 +1,4 @@
-import type { Patient } from './types';
+import type { PacientesCatalogos, Patient } from './types';
 import { MEDICO_MAP, SEDE_MAP, AFIL_MAP, ESTADO_SOL, SOL_ACTIVA, TIPO_CITA } from './data';
 import { initials } from './utils';
 
@@ -41,7 +41,7 @@ function normalizePatient(raw: any, id: number): Patient {
 
   // Resolve sede from list endpoint (id_sede field) or detail
   const sedeRaw = String(raw.sede || raw.sede_id || raw.id_sede || '').toLowerCase().trim();
-  const sede = sedeRaw || 'ceibos';
+  const sede = sedeRaw;
 
   // Resolve medico: list endpoint returns medico_nombre (raw doctor name), detail has medico_id
   const medico = String(raw.medico || raw.medico_id || raw.doctor_id || raw.medico_nombre || '');
@@ -79,10 +79,14 @@ function normalizePatient(raw: any, id: number): Patient {
     telefono_alt: raw.telefono_alt || raw.tel2 || null,
     email: raw.email || null,
     direccion: String(raw.direccion || raw.dir || ''),
-    ciudad: String(raw.ciudad || 'Guayaquil'),
+    ciudad: String(raw.ciudad || ''),
     sede,
+    sede_info: raw.sede_info || null,
     medico,
-    afiliacion: String(raw.afiliacion || 'privado'),
+    medico_tratante: raw.medico_tratante || null,
+    afiliacion: String(raw.afiliacion || ''),
+    tipo_afiliacion: String(raw.tipo_afiliacion || raw.afiliacion_info?.tipo || 'otros'),
+    afiliacion_info: raw.afiliacion_info || null,
     aseguradora: raw.aseguradora || null,
     poliza: raw.poliza || raw.num_poliza || null,
     titular: raw.titular || null,
@@ -113,6 +117,23 @@ export async function fetchPatientList(): Promise<Patient[]> {
   const json = await res.json();
   const rows: any[] = json.data || [];
   return rows.map((r, i) => normalizePatient(r, i + 1));
+}
+
+export async function fetchPatientCatalogos(): Promise<PacientesCatalogos> {
+  const res = await fetch('/v2/pacientes/catalogos', {
+    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+  });
+  if (!res.ok) throw new Error('Error cargando catálogos de pacientes');
+  const json = await res.json();
+  const data = json.data || {};
+
+  return {
+    medicos: data.medicos || [],
+    sedes: data.sedes || [],
+    afiliaciones: data.afiliaciones || [],
+    tipos_afiliacion: data.tipos_afiliacion || [],
+    aseguradoras: data.aseguradoras || [],
+  };
 }
 
 export async function fetchPatientDetail(hcNumber: string): Promise<Patient | null> {

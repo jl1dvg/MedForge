@@ -67,7 +67,7 @@ class PacientesParityService
                     WHERE pp.hc_number = p.hc_number
                       AND COALESCE(pp.sigcenter_present, 1) = 1
                       AND pp.fecha IS NOT NULL
-                      AND pp.fecha >= CURDATE()
+                      AND pp.fecha >= :today_fecha
                     ORDER BY pp.fecha ASC, pp.hora ASC, pp.id ASC
                     LIMIT 1
                 ) AS proxima_fecha,
@@ -77,7 +77,7 @@ class PacientesParityService
                     WHERE pp.hc_number = p.hc_number
                       AND COALESCE(pp.sigcenter_present, 1) = 1
                       AND pp.fecha IS NOT NULL
-                      AND pp.fecha >= CURDATE()
+                      AND pp.fecha >= :today_hora
                     ORDER BY pp.fecha ASC, pp.hora ASC, pp.id ASC
                     LIMIT 1
                 ) AS proxima_hora,
@@ -87,7 +87,7 @@ class PacientesParityService
                     WHERE pp.hc_number = p.hc_number
                       AND COALESCE(pp.sigcenter_present, 1) = 1
                       AND pp.fecha IS NOT NULL
-                      AND pp.fecha >= CURDATE()
+                      AND pp.fecha >= :today_tipo
                     ORDER BY pp.fecha ASC, pp.hora ASC, pp.id ASC
                     LIMIT 1
                 ) AS proxima_tipo,
@@ -97,7 +97,7 @@ class PacientesParityService
                     WHERE pp.hc_number = p.hc_number
                       AND COALESCE(pp.sigcenter_present, 1) = 1
                       AND pp.fecha IS NOT NULL
-                      AND pp.fecha >= CURDATE()
+                      AND pp.fecha >= :today_doctor
                     ORDER BY pp.fecha ASC, pp.hora ASC, pp.id ASC
                     LIMIT 1
                 ) AS proxima_doctor,
@@ -131,10 +131,28 @@ class PacientesParityService
             $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
             $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
         }
+        $today = (new DateTime())->format('Y-m-d');
+        $stmt->bindValue(':today_fecha', $today);
+        $stmt->bindValue(':today_hora', $today);
+        $stmt->bindValue(':today_tipo', $today);
+        $stmt->bindValue(':today_doctor', $today);
         $stmt->execute();
 
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $hcNumbers = array_values(array_filter(array_map(
+            static fn(array $row): string => (string) ($row['hc_number'] ?? ''),
+            $rows
+        )));
+        $medicosTratantes = (new MedicoTratanteResolver($this->db))->resolveMany($hcNumbers);
+        $sedesPacientes = (new SedePacienteResolver($this->db))->resolveMany($hcNumbers);
+        $tipoAfiliacionResolver = new TipoAfiliacionResolver();
+
         $data = [];
-        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        foreach ($rows as $row) {
+            $hcNumber = (string) ($row['hc_number'] ?? '');
+            $medicoTratante = $medicosTratantes[$hcNumber] ?? null;
+            $sedeInfo = $sedesPacientes[$hcNumber] ?? null;
+            $tipoAfiliacion = $tipoAfiliacionResolver->classify((string) ($row['afiliacion'] ?? ''));
             $proximaCita = null;
             if (!empty($row['proxima_fecha'])) {
                 $proximaCita = [
@@ -146,19 +164,26 @@ class PacientesParityService
             }
 
             $data[] = [
-                'hc_number' => (string) ($row['hc_number'] ?? ''),
+                'hc_number' => $hcNumber,
                 'full_name' => (string) ($row['full_name'] ?? ''),
                 'display_name' => (string) ($row['display_name'] ?? ''),
                 'cedula' => null,
                 'telefono' => (string) ($row['telefono'] ?? ''),
                 'email' => (string) ($row['email'] ?? ''),
                 'afiliacion' => (string) ($row['afiliacion'] ?? ''),
+                'tipo_afiliacion' => $tipoAfiliacion,
+                'afiliacion_info' => [
+                    'nombre' => (string) ($row['afiliacion'] ?? ''),
+                    'tipo' => $tipoAfiliacion,
+                ],
                 'fecha_nacimiento' => (string) ($row['fecha_nacimiento'] ?? ''),
                 'sexo' => (string) ($row['sexo'] ?? ''),
                 'direccion' => (string) ($row['direccion'] ?? ''),
                 'ciudad' => (string) ($row['ciudad'] ?? ''),
-                'medico' => (string) ($row['medico'] ?? ''),
-                'sede' => (string) ($row['sede'] ?? ''),
+                'medico' => $medicoTratante !== null ? (string) $medicoTratante['nombre'] : '',
+                'medico_tratante' => $medicoTratante,
+                'sede' => $sedeInfo !== null ? (string) $sedeInfo['id'] : '',
+                'sede_info' => $sedeInfo,
                 'ultima_visita' => (string) ($row['ultima_visita'] ?? ''),
                 'proxima_cita' => $proximaCita,
                 'solicitud_activa' => (int) ($row['solicitud_activa'] ?? 0),
@@ -208,6 +233,7 @@ class PacientesParityService
             'medicos' => $this->catalogoMedicos(),
             'sedes' => $this->catalogoSedes(),
             'afiliaciones' => $this->catalogoAfiliaciones(),
+            'tipos_afiliacion' => $this->catalogoTiposAfiliacion(),
             'aseguradoras' => [],
         ];
     }
@@ -983,7 +1009,11 @@ class PacientesParityService
 
             foreach (($stmt?->fetchAll(PDO::FETCH_ASSOC) ?: []) as $row) {
                 $nombre = trim((string) ($row['nombre'] ?: ($row['full_name'] ?? '')));
+                $especialidad = trim((string) ($row['subespecialidad'] ?: ($row['especialidad'] ?? '')));
                 if ($nombre === '') {
+                    continue;
+                }
+                if (!$this->isEspecialidadTratante($especialidad)) {
                     continue;
                 }
 
@@ -992,8 +1022,8 @@ class PacientesParityService
                     'id' => $key,
                     'full' => $nombre,
                     'nombre' => $nombre,
-                    'esp' => trim((string) ($row['subespecialidad'] ?: ($row['especialidad'] ?? ''))),
-                    'especialidad' => trim((string) ($row['subespecialidad'] ?: ($row['especialidad'] ?? ''))),
+                    'esp' => $especialidad,
+                    'especialidad' => $especialidad,
                     'sede' => trim((string) ($row['sede'] ?? '')),
                     'id_trabajador' => (string) ($row['id_trabajador'] ?? ''),
                 ];
@@ -1069,14 +1099,49 @@ class PacientesParityService
      */
     private function catalogoAfiliaciones(): array
     {
+        $resolver = new TipoAfiliacionResolver();
+
         return array_map(
             fn(string $afiliacion): array => [
                 'id' => $this->catalogKey($afiliacion),
                 'label' => $afiliacion,
                 'nombre' => $afiliacion,
+                'tipo_afiliacion' => $resolver->classify($afiliacion),
             ],
             $this->getAfiliacionesDisponibles()
         );
+    }
+
+    /**
+     * @return array<int,array<string,string>>
+     */
+    private function catalogoTiposAfiliacion(): array
+    {
+        $resolver = new TipoAfiliacionResolver();
+
+        return array_map(
+            static fn(string $tipo): array => $resolver->metadata($tipo),
+            ['publico', 'privado', 'particular', 'fundacional', 'otros']
+        );
+    }
+
+    private function isEspecialidadTratante(string $especialidad): bool
+    {
+        $value = strtolower(trim($especialidad));
+        $value = strtr($value, [
+            'á' => 'a',
+            'é' => 'e',
+            'í' => 'i',
+            'ó' => 'o',
+            'ú' => 'u',
+            'ñ' => 'n',
+        ]);
+
+        if (str_contains($value, 'optometr') || str_contains($value, 'administrativo')) {
+            return false;
+        }
+
+        return str_contains($value, 'cirujano') && str_contains($value, 'oftalm');
     }
 
     private function catalogKey(string $value): string

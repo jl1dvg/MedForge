@@ -1,21 +1,41 @@
 export interface Sede {
   id: string;
   label: string;
-  short: string;
-  color: string;
+  short?: string;
+  color?: string;
+  nombre?: string;
 }
 
 export interface Medico {
   id: string;
   full: string;
   esp: string;
-  color: string;
+  color?: string;
+  nombre?: string;
+  especialidad?: string;
 }
 
 export interface Afiliacion {
   id: string;
   label: string;
   tone: string;
+  nombre?: string;
+  tipo_afiliacion?: string;
+}
+
+export interface TipoAfiliacion {
+  id: string;
+  label: string;
+  tone: string;
+  color?: string;
+}
+
+export interface PacientesCatalogos {
+  medicos: Medico[];
+  sedes: Sede[];
+  afiliaciones: Afiliacion[];
+  tipos_afiliacion: TipoAfiliacion[];
+  aseguradoras: string[];
 }
 
 export interface ProximaCita {
@@ -103,8 +123,19 @@ export interface Patient {
   direccion: string;
   ciudad: string;
   sede: string;
+  sede_info: { id: string; nombre: string; origen: string } | null;
   medico: string;
+  medico_tratante: {
+    id: number;
+    nombre: string;
+    especialidad: string;
+    procedimientos_count: number;
+    ultima_fecha: string | null;
+    confirmado: boolean;
+  } | null;
   afiliacion: string;
+  tipo_afiliacion: string;
+  afiliacion_info: { nombre: string; tipo: string } | null;
   aseguradora: string | null;
   poliza: string | null;
   titular: string | null;

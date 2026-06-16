@@ -273,6 +273,11 @@
 .afil-chip.tone-neutral { background: var(--bg-softer, #f1f5f9); color: var(--fg-3, #64748b); }
 .afil-chip.tone-consulta { background: var(--cat-consulta-bg, #e8f4fc); color: var(--cat-consulta-fg, #0c6fb0); }
 .afil-chip.tone-visita { background: var(--cat-visita-bg, #eef8f4); color: var(--cat-visita-fg, #1f9d7a); }
+.afil-chip.tone-publico { background: #e8f4fc; color: #0c6fb0; }
+.afil-chip.tone-privado { background: #f0edff; color: #5b52c7; }
+.afil-chip.tone-particular { background: #f1f5f9; color: #475569; }
+.afil-chip.tone-fundacional { background: #e7f7ef; color: #177a55; }
+.afil-chip.tone-otros { background: #fff4db; color: #946200; }
 
 .sol-badge { display: inline-flex; align-items: center; font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 100px; white-space: nowrap; }
 .sol-badge.sm { font-size: 10px; padding: 2px 7px; }

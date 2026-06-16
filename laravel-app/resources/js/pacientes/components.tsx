@@ -17,23 +17,31 @@ export function Avatar({ initials, size = 38, sede }: { initials: string; size?:
 }
 
 /* ---- SedeBadge ---- */
-export function SedeBadge({ id }: { id: string }) {
+export function SedeBadge({ id, label }: { id: string; label?: string }) {
   const s = SEDE_MAP[id];
-  if (!s) return null;
+  const display = label || s?.label || id;
+  if (!display) return <span className="tc-muted">—</span>;
   return (
     <span className={`sede-badge sede-${id}`}>
       <span className="sd-dot" />
-      {s.label}
+      {display}
     </span>
   );
 }
 
 /* ---- AfilChip ---- */
-export function AfilChip({ id }: { id: string }) {
+export function AfilChip({ id, tipo }: { id: string; tipo?: string }) {
   const a = AFIL_MAP[id];
-  if (!a) return <span className="afil-chip tone-neutral">{id}</span>;
-  const icon = id === 'iess' ? 'mdi-shield-account-outline' : id === 'seguro' ? 'mdi-shield-check-outline' : 'mdi-account-cash-outline';
-  return <span className={`afil-chip tone-${a.tone}`}><i className={`mdi ${icon}`} />{a.label}</span>;
+  const tone = tipo || a?.tone || 'otros';
+  const label = a?.label || id || '—';
+  const icon = tone === 'publico'
+    ? 'mdi-shield-account-outline'
+    : tone === 'privado'
+      ? 'mdi-shield-check-outline'
+      : tone === 'fundacional'
+        ? 'mdi-hand-heart-outline'
+        : 'mdi-account-cash-outline';
+  return <span className={`afil-chip tone-${tone}`}><i className={`mdi ${icon}`} />{label}</span>;
 }
 
 /* ---- SolBadge ---- */
@@ -62,8 +70,16 @@ export function PatientBadges({ p, compact }: { p: Patient; compact?: boolean })
 }
 
 /* ---- MedicoCell ---- */
-export function MedicoCell({ id }: { id: string }) {
+export function MedicoCell({ id, medico }: { id: string; medico?: Patient['medico_tratante'] }) {
   const m = MEDICO_MAP[id];
+  if (medico) {
+    return (
+      <div className="medico-cell">
+        <span className="md-name">{medico.nombre}</span>
+        <span className="md-esp">{medico.especialidad}</span>
+      </div>
+    );
+  }
   if (!m) return <span className="tc-muted">{id || '—'}</span>;
   return (
     <div className="medico-cell">

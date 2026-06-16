@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import type { Patient, AppRoute, Toast as ToastType } from './types';
+import type { PacientesCatalogos, Patient, AppRoute, Toast as ToastType } from './types';
 import { TIPO_CITA, MEDICO_MAP } from './data';
-import { fetchPatientList, fetchPatientDetail, createPatient, updatePatient } from './api';
+import { fetchPatientList, fetchPatientDetail, fetchPatientCatalogos, createPatient, updatePatient } from './api';
 import { Toast, AgendarModal, EditPatientModal } from './components';
 import ListView from './views/ListView';
 import DetailView from './views/DetailView';
@@ -9,6 +9,7 @@ import WizardView from './views/WizardView';
 
 export default function App() {
   const [patients, setPatients] = useState<Patient[]>([]);
+  const [catalogos, setCatalogos] = useState<PacientesCatalogos | null>(null);
   const [loading, setLoading] = useState(true);
   const [route, setRoute] = useState<AppRoute>('list');
   const [selectedHc, setSelectedHc] = useState<string | null>(null);
@@ -21,8 +22,11 @@ export default function App() {
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    fetchPatientList()
-      .then(list => setPatients(list))
+    Promise.all([fetchPatientList(), fetchPatientCatalogos()])
+      .then(([list, cats]) => {
+        setPatients(list);
+        setCatalogos(cats);
+      })
       .catch(() => showToast('Error cargando pacientes', 'mdi-alert-circle-outline', 'err'))
       .finally(() => setLoading(false));
   }, []);
@@ -211,6 +215,7 @@ export default function App() {
           loading={loading}
           search={search}
           setSearch={setSearch}
+          catalogos={catalogos}
           onOpen={openPatient}
           onAgendar={onAgendar}
           onWhats={onWhats}

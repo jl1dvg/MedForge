@@ -1,6 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import type { Patient } from '../types';
-import { SEDES, MEDICOS, AFILIACIONES, MEDICO_MAP } from '../data';
+import type { PacientesCatalogos, Patient } from '../types';
 import { fmtDateShort, relDays, isFuture, isToday } from '../utils';
 import { Avatar, SedeBadge, AfilChip, PatientBadges, MedicoCell, ProxCita, Kpi, RowActions } from '../components';
 
@@ -9,12 +8,13 @@ interface Props {
   loading: boolean;
   search: string;
   setSearch: (v: string) => void;
+  catalogos: PacientesCatalogos | null;
   onOpen: (id: number) => void;
   onAgendar: (p: Patient) => void;
   onWhats: (p: Patient) => void;
 }
 
-export default function ListView({ patients, loading, search, setSearch, onOpen, onAgendar, onWhats }: Props) {
+export default function ListView({ patients, loading, search, setSearch, catalogos, onOpen, onAgendar, onWhats }: Props) {
   const [view, setView] = useState<'tabla' | 'tarjetas'>('tabla');
   const [filters, setFilters] = useState({ sede: '', medico: '', afiliacion: '', registro: '' });
   const [flags, setFlags] = useState({ citas: false, solicitudes: false, hoy: false });
@@ -43,7 +43,7 @@ export default function ListView({ patients, loading, search, setSearch, onOpen,
       }
       if (filters.sede && p.sede !== filters.sede) return false;
       if (filters.medico && p.medico !== filters.medico) return false;
-      if (filters.afiliacion && p.afiliacion !== filters.afiliacion) return false;
+      if (filters.afiliacion && p.tipo_afiliacion !== filters.afiliacion) return false;
       if (filters.registro) {
         const days = (Date.now() - new Date(p.ultima_visita).getTime()) / 86400000;
         if (filters.registro === '7' && days > 7) return false;
@@ -57,6 +57,36 @@ export default function ListView({ patients, loading, search, setSearch, onOpen,
       return true;
     });
   }, [patients, search, filters, flags]);
+
+  const sedeOptions = useMemo(() => {
+    if (catalogos?.sedes?.length) {
+      return catalogos.sedes.map(s => ({ id: s.id, label: s.label || s.nombre || s.id }));
+    }
+
+    return Array.from(new Map(
+      patients
+        .filter(p => p.sede)
+        .map(p => [p.sede, { id: p.sede, label: p.sede_info?.nombre || p.sede }])
+    ).values());
+  }, [catalogos, patients]);
+
+  const medicoOptions = useMemo(() => {
+    if (catalogos?.medicos?.length) {
+      return catalogos.medicos.map(m => ({ id: m.nombre || m.full || m.id, label: m.full || m.nombre || m.id }));
+    }
+
+    return Array.from(new Set(patients.map(p => p.medico).filter(Boolean)))
+      .map(nombre => ({ id: nombre, label: nombre }));
+  }, [catalogos, patients]);
+
+  const tipoAfiliacionOptions = useMemo(() => {
+    if (catalogos?.tipos_afiliacion?.length) {
+      return catalogos.tipos_afiliacion.map(t => ({ id: t.id, label: t.label }));
+    }
+
+    return Array.from(new Set(patients.map(p => p.tipo_afiliacion).filter(Boolean)))
+      .map(tipo => ({ id: tipo, label: tipo }));
+  }, [catalogos, patients]);
 
   const sorted = useMemo(() => {
     const arr = filtered.slice();
@@ -112,15 +142,15 @@ export default function ListView({ patients, loading, search, setSearch, onOpen,
 
           <select className={`filter-select ${filters.sede ? 'is-set' : ''}`} value={filters.sede} onChange={e => setFilters(f => ({ ...f, sede: e.target.value }))}>
             <option value="">Todas las sedes</option>
-            {SEDES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+            {sedeOptions.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
           </select>
           <select className={`filter-select ${filters.medico ? 'is-set' : ''}`} value={filters.medico} onChange={e => setFilters(f => ({ ...f, medico: e.target.value }))}>
             <option value="">Todos los médicos</option>
-            {MEDICOS.map(m => <option key={m.id} value={m.id}>{m.full}</option>)}
+            {medicoOptions.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
           </select>
           <select className={`filter-select ${filters.afiliacion ? 'is-set' : ''}`} value={filters.afiliacion} onChange={e => setFilters(f => ({ ...f, afiliacion: e.target.value }))}>
-            <option value="">Toda afiliación</option>
-            {AFILIACIONES.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
+            <option value="">Todo tipo afiliación</option>
+            {tipoAfiliacionOptions.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
           </select>
           <select className={`filter-select ${filters.registro ? 'is-set' : ''}`} value={filters.registro} onChange={e => setFilters(f => ({ ...f, registro: e.target.value }))}>
             <option value="">Último registro</option>
@@ -207,9 +237,9 @@ export default function ListView({ patients, loading, search, setSearch, onOpen,
                         <div className="ct-mail">{p.email || <span className="tc-muted">Sin correo</span>}</div>
                       </div>
                     </td>
-                    <td><MedicoCell id={p.medico} /></td>
-                    <td><SedeBadge id={p.sede} /></td>
-                    <td><AfilChip id={p.afiliacion} /></td>
+                    <td><MedicoCell id={p.medico} medico={p.medico_tratante} /></td>
+                    <td><SedeBadge id={p.sede} label={p.sede_info?.nombre} /></td>
+                    <td><AfilChip id={p.afiliacion} tipo={p.tipo_afiliacion} /></td>
                     <td>
                       <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--fg-1)' }}>{fmtDateShort(p.ultima_visita)}</div>
                       <div style={{ fontSize: 11, color: 'var(--fg-mute)' }}>{relDays(p.ultima_visita)}</div>
@@ -258,14 +288,14 @@ export default function ListView({ patients, loading, search, setSearch, onOpen,
                       <span className="hc">HC {p.hc_number}</span>
                       <span>·</span>
                       {p.edad > 0 && <span>{p.edad} años</span>}
-                      <SedeBadge id={p.sede} />
+                      <SedeBadge id={p.sede} label={p.sede_info?.nombre} />
                     </div>
                   </div>
                   <PatientBadges p={p} compact />
                 </div>
                 <div className="pcard-meta">
-                  <div className="mi"><div className="k">Médico</div><div className="v">{p.medico ? (MEDICO_MAP[p.medico]?.full || p.medico) : '—'}</div></div>
-                  <div className="mi"><div className="k">Afiliación</div><div className="v"><AfilChip id={p.afiliacion} /></div></div>
+                  <div className="mi"><div className="k">Médico</div><div className="v">{p.medico || '—'}</div></div>
+                  <div className="mi"><div className="k">Afiliación</div><div className="v"><AfilChip id={p.afiliacion} tipo={p.tipo_afiliacion} /></div></div>
                   <div className="mi"><div className="k">Teléfono</div><div className="v">{p.telefono || '—'}</div></div>
                   <div className="mi"><div className="k">Próxima cita</div><div className="v"><ProxCita cita={p.proxima_cita} /></div></div>
                 </div>
