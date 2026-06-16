@@ -44,6 +44,8 @@ export default defineConfig({
                 'resources/js/solicitudes-v3/main.tsx',
                 'resources/js/agenda/main.tsx',
                 'resources/js/whatsapp/main.jsx',
+                'resources/js/v2/reportes-v2/cirugias/app.tsx',
+                'resources/js/v2/reportes-v2/imagenes/app.tsx',
             ],
             refresh: true,
         }),
