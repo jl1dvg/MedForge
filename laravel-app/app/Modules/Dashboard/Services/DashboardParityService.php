@@ -314,11 +314,11 @@ class DashboardParityService
         try {
             $rows = DB::select(
                 'SELECT
-                    COALESCE(NULLIF(TRIM(referido_prefactura_por), ""), "Sin especificar") AS fuente,
-                    COUNT(DISTINCT hc_number) AS total
-                 FROM procedimiento_proyectado
-                 WHERE COALESCE(sigcenter_present, 1) = 1
-                   AND DATE(fecha) = ?' . $this->sedeWhere() . '
+                    COALESCE(NULLIF(TRIM(pp.referido_prefactura_por), ""), "Sin especificar") AS fuente,
+                    COUNT(DISTINCT pp.hc_number) AS total
+                 FROM procedimiento_proyectado pp
+                 WHERE COALESCE(pp.sigcenter_present, 1) = 1
+                   AND DATE(pp.fecha) = ?' . $this->sedeWhere('pp') . '
                  GROUP BY fuente
                  ORDER BY total DESC',
                 [$today->format('Y-m-d')]
