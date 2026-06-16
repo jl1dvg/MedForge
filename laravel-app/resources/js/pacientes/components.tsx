@@ -125,13 +125,18 @@ export function Kpi({ tone, icon, value, label, sub, active, onClick }: {
 }
 
 /* ---- Row quick actions ---- */
-export function RowActions({ p, onOpen, onAgendar, onWhats }: {
-  p: Patient; onOpen: (id: number) => void; onAgendar: (p: Patient) => void; onWhats: (p: Patient) => void;
+export function RowActions({ p, onOpen, onAgendar, onEditar, onWhats }: {
+  p: Patient;
+  onOpen: (id: number) => void;
+  onAgendar: (p: Patient) => void;
+  onEditar?: (p: Patient) => void;
+  onWhats: (p: Patient) => void;
 }) {
   return (
     <div className="row-actions" onClick={e => e.stopPropagation()}>
       <button className="ra-btn ra-view" title="Ver detalle" onClick={() => onOpen(p.id)}><i className="mdi mdi-arrow-expand" /></button>
       <button className="ra-btn ra-cal" title="Agendar cita" onClick={() => onAgendar(p)}><i className="mdi mdi-calendar-plus" /></button>
+      {onEditar && <button className="ra-btn ra-edit" title="Editar paciente" onClick={() => onEditar(p)}><i className="mdi mdi-pencil-outline" /></button>}
       <button className="ra-btn ra-wa" title="Enviar WhatsApp" onClick={() => onWhats(p)}><i className="mdi mdi-whatsapp" /></button>
     </div>
   );

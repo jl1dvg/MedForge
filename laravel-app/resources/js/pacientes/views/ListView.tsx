@@ -11,10 +11,11 @@ interface Props {
   catalogos: PacientesCatalogos | null;
   onOpen: (id: number) => void;
   onAgendar: (p: Patient) => void;
+  onEditar: (p: Patient) => void;
   onWhats: (p: Patient) => void;
 }
 
-export default function ListView({ patients, loading, search, setSearch, catalogos, onOpen, onAgendar, onWhats }: Props) {
+export default function ListView({ patients, loading, search, setSearch, catalogos, onOpen, onAgendar, onEditar, onWhats }: Props) {
   const [view, setView] = useState<'tabla' | 'tarjetas'>('tabla');
   const [filters, setFilters] = useState({ sede: '', medico: '', afiliacion: '', registro: '' });
   const [flags, setFlags] = useState({ citas: false, solicitudes: false, hoy: false });
@@ -246,7 +247,7 @@ export default function ListView({ patients, loading, search, setSearch, catalog
                     </td>
                     <td><ProxCita cita={p.proxima_cita} /></td>
                     <td><PatientBadges p={p} compact /></td>
-                    <td style={{ textAlign: 'right' }}><RowActions p={p} onOpen={onOpen} onAgendar={onAgendar} onWhats={onWhats} /></td>
+                    <td style={{ textAlign: 'right' }}><RowActions p={p} onOpen={onOpen} onAgendar={onAgendar} onEditar={onEditar} onWhats={onWhats} /></td>
                   </tr>
                 ))}
               </tbody>
@@ -301,7 +302,7 @@ export default function ListView({ patients, loading, search, setSearch, catalog
                 </div>
                 <div className="pcard-foot">
                   <span style={{ fontSize: 11.5, color: 'var(--fg-mute)' }}>Última visita {relDays(p.ultima_visita)}</span>
-                  <RowActions p={p} onOpen={onOpen} onAgendar={onAgendar} onWhats={onWhats} />
+                  <RowActions p={p} onOpen={onOpen} onAgendar={onAgendar} onEditar={onEditar} onWhats={onWhats} />
                 </div>
               </article>
             ))}

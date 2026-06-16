@@ -218,6 +218,7 @@ export default function App() {
           catalogos={catalogos}
           onOpen={openPatient}
           onAgendar={onAgendar}
+          onEditar={onEditar}
           onWhats={onWhats}
         />
       )}
