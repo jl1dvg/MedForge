@@ -21,30 +21,55 @@ const STEPS = [
 
 interface Props {
   patients: Patient[];
+  mode?: 'create' | 'edit';
+  initialPatient?: Patient | null;
   onCancel: () => void;
-  onCreate: (p: Patient) => void;
+  onCreate: (p: Patient) => void | Promise<void>;
+  onUpdate?: (hcNumber: string, data: WizardFormData) => void | Promise<void>;
   onOpenExisting: (id: number) => void;
 }
 
-export default function WizardView({ patients, onCancel, onCreate, onOpenExisting }: Props) {
+export default function WizardView({ patients, mode = 'create', initialPatient = null, onCancel, onCreate, onUpdate, onOpenExisting }: Props) {
+  const isEdit = mode === 'edit';
   const [step, setStep] = useState(1);
-  const [f, setF] = useState<WizardFormData>(BLANK);
+  const [f, setF] = useState<WizardFormData>(() => initialPatient ? formFromPatient(initialPatient) : BLANK);
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [showErr, setShowErr] = useState(false);
   const [checking, setChecking] = useState(false);
   const [dup, setDup] = useState<Patient | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   const set = (k: keyof WizardFormData, v: string) => setF(s => ({ ...s, [k]: v }));
   const touch = (k: string) => setTouched(t => ({ ...t, [k]: true }));
   const showFor = (k: string) => touched[k] || showErr;
 
-  const cedulaValida = f.docTipo === 'pasaporte' ? f.cedula.trim().length >= 5 : validarCedula(f.cedula);
+  const cedulaValida = isEdit && !f.cedula.trim()
+    ? true
+    : f.docTipo === 'pasaporte'
+      ? f.cedula.trim().length >= 5
+      : validarCedula(f.cedula);
+
+  useEffect(() => {
+    if (isEdit && initialPatient) {
+      setF(formFromPatient(initialPatient));
+      setStep(1);
+      setTouched({});
+      setShowErr(false);
+      setDup(null);
+      setSaveError('');
+    }
+  }, [isEdit, initialPatient?.hc_number]);
 
   useEffect(() => {
     setDup(null);
+    if (isEdit && !f.cedula.trim()) return;
     if (f.docTipo === 'pasaporte') {
       if (f.cedula.trim().length >= 5) {
-        const ex = patients.find(p => p.cedula.toLowerCase() === f.cedula.trim().toLowerCase());
+        const ex = patients.find(p =>
+          p.cedula.toLowerCase() === f.cedula.trim().toLowerCase()
+          && (!isEdit || p.hc_number !== initialPatient?.hc_number)
+        );
         if (ex) setDup(ex);
       }
       return;
@@ -52,16 +77,23 @@ export default function WizardView({ patients, onCancel, onCreate, onOpenExistin
     if (!validarCedula(f.cedula)) return;
     setChecking(true);
     const t = setTimeout(() => {
-      const ex = patients.find(p => p.cedula === f.cedula);
+      const ex = patients.find(p =>
+        p.cedula === f.cedula
+        && (!isEdit || p.hc_number !== initialPatient?.hc_number)
+      );
       setDup(ex || null);
       setChecking(false);
     }, 650);
     return () => { clearTimeout(t); setChecking(false); };
-  }, [f.cedula, f.docTipo, patients]);
+  }, [f.cedula, f.docTipo, patients, isEdit, initialPatient?.hc_number]);
 
-  const valid1 = !!(f.nombres.trim() && f.apellidos.trim() && cedulaValida && !dup && !checking && f.fecha_nac && f.sexo);
-  const valid2 = !!(telOk(f.telefono) && (!f.email || emailOk(f.email)) && f.direccion.trim() && f.ciudad.trim() && f.afiliacion && (f.afiliacion !== 'seguro' || (f.aseguradora.trim() && f.poliza.trim())));
-  const valid3 = !!(f.medico && f.sede);
+  const valid1 = isEdit
+    ? !!(f.nombres.trim() && f.apellidos.trim() && cedulaValida && !dup && !checking)
+    : !!(f.nombres.trim() && f.apellidos.trim() && cedulaValida && !dup && !checking && f.fecha_nac && f.sexo);
+  const valid2 = isEdit
+    ? !!(!f.email || emailOk(f.email))
+    : !!(telOk(f.telefono) && (!f.email || emailOk(f.email)) && f.direccion.trim() && f.ciudad.trim() && f.afiliacion && (f.afiliacion !== 'seguro' || (f.aseguradora.trim() && f.poliza.trim())));
+  const valid3 = isEdit || !!(f.medico && f.sede);
   const stepValid = step === 1 ? valid1 : step === 2 ? valid2 : step === 3 ? valid3 : true;
 
   const next = () => {
@@ -71,22 +103,34 @@ export default function WizardView({ patients, onCancel, onCreate, onOpenExistin
   };
   const back = () => { setShowErr(false); setStep(s => s - 1); };
 
-  const save = () => {
-    const newP = buildPatient(f, patients);
-    onCreate(newP);
+  const save = async () => {
+    setSaveError('');
+    setSaving(true);
+    try {
+      if (isEdit && initialPatient && onUpdate) {
+        await onUpdate(initialPatient.hc_number, f);
+        return;
+      }
+      const newP = buildPatient(f, patients);
+      await onCreate(newP);
+    } catch (error: any) {
+      setSaveError(error?.message || 'No se pudo guardar el paciente.');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const cedulaState = checking ? 'load' : (f.cedula && !cedulaValida ? 'err' : (cedulaValida && !dup ? 'ok' : null));
+  const cedulaState = checking ? 'load' : (f.cedula && !cedulaValida ? 'err' : (f.cedula && cedulaValida && !dup ? 'ok' : null));
   const today = new Date().toISOString().slice(0, 10);
 
   return (
     <div className="page">
       <div className="page-inner">
         <div className="wiz-page">
-          <button className="dt-back" onClick={onCancel}><i className="mdi mdi-arrow-left" />Cancelar y volver a la lista</button>
+          <button className="dt-back" onClick={onCancel}><i className="mdi mdi-arrow-left" />{isEdit ? 'Cancelar y volver a la ficha' : 'Cancelar y volver a la lista'}</button>
           <div className="wiz-head">
-            <h1>Nuevo paciente</h1>
-            <p>Completa los tres pasos para registrar un paciente en MedForge.</p>
+            <h1>{isEdit ? 'Editar paciente' : 'Nuevo paciente'}</h1>
+            <p>{isEdit ? `Actualiza los datos del paciente HC ${initialPatient?.hc_number || ''} con el mismo flujo de registro.` : 'Completa los tres pasos para registrar un paciente en MedForge.'}</p>
           </div>
 
           <div className="wiz-steps">
@@ -138,7 +182,8 @@ export default function WizardView({ patients, onCancel, onCreate, onOpenExistin
                         <div className="field-msg err"><i className="mdi mdi-alert-circle-outline" />La cédula ecuatoriana no es válida.</div>
                       )}
                       {checking && <div className="field-msg hint"><i className="mdi mdi-magnify" />Verificando si el paciente ya existe…</div>}
-                      {cedulaValida && !dup && !checking && <div className="field-msg ok"><i className="mdi mdi-check" />Documento válido y disponible.</div>}
+                      {f.cedula && cedulaValida && !dup && !checking && <div className="field-msg ok"><i className="mdi mdi-check" />Documento válido y disponible.</div>}
+                      {isEdit && !f.cedula && <div className="field-msg hint"><i className="mdi mdi-information-outline" />Este registro no tiene documento guardado; puedes conservarlo vacío.</div>}
                     </div>
 
                     {dup && (
@@ -221,6 +266,9 @@ export default function WizardView({ patients, onCancel, onCreate, onOpenExistin
                       <label>Tipo de afiliación <span className="req">*</span></label>
                       <select className={showFor('afiliacion') && !f.afiliacion ? 'invalid' : ''} value={f.afiliacion} onChange={e => set('afiliacion', e.target.value)} onBlur={() => touch('afiliacion')}>
                         <option value="">Selecciona…</option>
+                        {isEdit && f.afiliacion && !['privado', 'iess', 'seguro'].includes(f.afiliacion) && (
+                          <option value={f.afiliacion}>{f.afiliacion}</option>
+                        )}
                         <option value="privado">Privado</option>
                         <option value="iess">IESS</option>
                         <option value="seguro">Seguro privado</option>
@@ -265,17 +313,23 @@ export default function WizardView({ patients, onCancel, onCreate, onOpenExistin
                       <label>Médico tratante <span className="req">*</span></label>
                       <select className={showFor('medico') && !f.medico ? 'invalid' : ''} value={f.medico} onChange={e => set('medico', e.target.value)} onBlur={() => touch('medico')}>
                         <option value="">Selecciona…</option>
+                        {isEdit && f.medico && !MEDICOS.some(m => m.id === f.medico) && (
+                          <option value={f.medico}>{f.medico}</option>
+                        )}
                         {MEDICOS.map(m => <option key={m.id} value={m.id}>{m.full} — {m.esp}</option>)}
                       </select>
-                      {showFor('medico') && !f.medico && <div className="field-msg err"><i className="mdi mdi-alert-circle-outline" />Campo obligatorio.</div>}
+                      {showFor('medico') && !f.medico && !isEdit && <div className="field-msg err"><i className="mdi mdi-alert-circle-outline" />Campo obligatorio.</div>}
                     </div>
                     <div className="field">
                       <label>Sede principal <span className="req">*</span></label>
                       <select className={showFor('sede') && !f.sede ? 'invalid' : ''} value={f.sede} onChange={e => set('sede', e.target.value)} onBlur={() => touch('sede')}>
                         <option value="">Selecciona…</option>
+                        {isEdit && f.sede && !SEDES.some(s => s.id === f.sede) && (
+                          <option value={f.sede}>{SEDE_MAP[f.sede]?.label || f.sede}</option>
+                        )}
                         {SEDES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
                       </select>
-                      {showFor('sede') && !f.sede && <div className="field-msg err"><i className="mdi mdi-alert-circle-outline" />Campo obligatorio.</div>}
+                      {showFor('sede') && !f.sede && !isEdit && <div className="field-msg err"><i className="mdi mdi-alert-circle-outline" />Campo obligatorio.</div>}
                     </div>
                     <div className="field fg-span2">
                       <label>Motivo de consulta inicial <span className="opt">(opcional)</span></label>
@@ -303,13 +357,18 @@ export default function WizardView({ patients, onCancel, onCreate, onOpenExistin
               {showErr && !stepValid && (
                 <span className="step-error"><i className="mdi mdi-alert-circle-outline" />Completa los campos obligatorios.</span>
               )}
+              {saveError && (
+                <span className="step-error"><i className="mdi mdi-alert-circle-outline" />{saveError}</span>
+              )}
               <div className="wf-spacer" />
               {step < 4 ? (
                 <button className={`wbtn primary ${stepValid ? '' : 'is-wait'}`} onClick={next}>
                   Siguiente<i className="mdi mdi-arrow-right" />
                 </button>
               ) : (
-                <button className="wbtn save" onClick={save}><i className="mdi mdi-check-circle-outline" />Guardar paciente</button>
+                <button className="wbtn save" onClick={save} disabled={saving}>
+                  {saving ? <><i className="mdi mdi-loading mdi-spin" />Guardando…</> : <><i className="mdi mdi-check-circle-outline" />{isEdit ? 'Guardar cambios' : 'Guardar paciente'}</>}
+                </button>
               )}
             </div>
           </div>
@@ -368,6 +427,37 @@ function ConfirmStep({ f, onEdit }: { f: WizardFormData; onEdit: (n: number) => 
       </div>
     </>
   );
+}
+
+function formFromPatient(p: Patient): WizardFormData {
+  const cedula = p.cedula || '';
+  const sexo = String(p.sexo || '').toLowerCase().startsWith('f')
+    ? 'F'
+    : String(p.sexo || '').toLowerCase().startsWith('m')
+      ? 'M'
+      : p.sexo || '';
+
+  return {
+    docTipo: cedula && !validarCedula(cedula) ? 'pasaporte' : 'cedula',
+    cedula,
+    nombres: p.nombres || '',
+    apellidos: p.apellidos || '',
+    fecha_nac: p.fecha_nac?.slice(0, 10) || '',
+    sexo,
+    telefono: p.telefono || '',
+    telefono_alt: p.telefono_alt || '',
+    email: p.email || '',
+    direccion: p.direccion || '',
+    ciudad: p.ciudad || 'Guayaquil',
+    afiliacion: p.afiliacion || '',
+    aseguradora: p.aseguradora || '',
+    poliza: p.poliza || '',
+    titular: p.titular || '',
+    medico: p.medico || p.medico_tratante?.nombre || '',
+    sede: p.sede || p.sede_info?.id || '',
+    motivo: '',
+    alerta: p.alerta || '',
+  };
 }
 
 /* ---- Build patient from form ---- */

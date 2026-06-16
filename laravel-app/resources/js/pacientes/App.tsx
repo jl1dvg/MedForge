@@ -1,8 +1,8 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import type { PacientesCatalogos, Patient, AppRoute, Toast as ToastType } from './types';
+import type { PacientesCatalogos, Patient, AppRoute, Toast as ToastType, WizardFormData } from './types';
 import { TIPO_CITA, MEDICO_MAP } from './data';
 import { fetchPatientList, fetchPatientDetail, fetchPatientCatalogos, createPatient, updatePatient } from './api';
-import { Toast, AgendarModal, EditPatientModal } from './components';
+import { Toast, AgendarModal } from './components';
 import ListView from './views/ListView';
 import DetailView from './views/DetailView';
 import WizardView from './views/WizardView';
@@ -18,7 +18,6 @@ export default function App() {
   const [search, setSearch] = useState('');
   const [toast, setToast] = useState<ToastType | null>(null);
   const [agendar, setAgendar] = useState<{ patient: Patient | null; open: boolean }>({ patient: null, open: false });
-  const [editar, setEditar] = useState<{ patient: Patient | null; open: boolean }>({ patient: null, open: false });
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -126,28 +125,61 @@ export default function App() {
   }, [detailPatient, showToast]);
 
   const onEditar = useCallback((p: Patient) => {
-    setEditar({ patient: p, open: true });
+    setSelectedHc(p.hc_number);
+    setDetailPatient(p);
+    setRoute('edit');
+    setDetailLoading(true);
+    fetchPatientDetail(p.hc_number)
+      .then(full => { if (full) setDetailPatient(full); })
+      .catch(() => {})
+      .finally(() => setDetailLoading(false));
   }, []);
 
-  const onSaveEdit = useCallback(async (hcNumber: string, data: Record<string, any>) => {
-    await updatePatient(hcNumber, data);
-    const nombres = [data.fname, data.mname].filter(Boolean).join(' ');
-    const apellidos = [data.lname, data.lname2].filter(Boolean).join(' ');
+  const onSaveEdit = useCallback(async (hcNumber: string, data: WizardFormData) => {
+    const nombresParts = data.nombres.trim().split(/\s+/).filter(Boolean);
+    const apellidosParts = data.apellidos.trim().split(/\s+/).filter(Boolean);
+    const payload = {
+      fname: nombresParts[0] || '',
+      mname: nombresParts.slice(1).join(' '),
+      lname: apellidosParts[0] || '',
+      lname2: apellidosParts.slice(1).join(' '),
+      fecha_nacimiento: data.fecha_nac,
+      sexo: data.sexo,
+      celular: data.telefono,
+      afiliacion: data.afiliacion,
+      ciudad: data.ciudad,
+      email: data.email,
+      direccion: data.direccion,
+    };
+    await updatePatient(hcNumber, payload);
+    const nombres = data.nombres.trim();
+    const apellidos = data.apellidos.trim();
     const patch = {
       nombres,
       apellidos,
       full_name: `${apellidos} ${nombres}`.trim(),
       display_name: `${nombres} ${apellidos}`.trim(),
       sexo: data.sexo,
-      telefono: data.celular || '',
-      fecha_nac: data.fecha_nacimiento || '',
+      telefono: data.telefono || '',
+      telefono_alt: data.telefono_alt || null,
+      email: data.email || null,
+      direccion: data.direccion,
+      ciudad: data.ciudad,
+      sede: data.sede,
+      medico: data.medico,
+      fecha_nac: data.fecha_nac || '',
       afiliacion: data.afiliacion,
+      aseguradora: data.aseguradora || null,
+      poliza: data.poliza || null,
+      titular: data.titular || null,
+      alerta: data.alerta || null,
     };
     setPatients(list => list.map(p => p.hc_number === hcNumber ? { ...p, ...patch } : p));
     if (detailPatient?.hc_number === hcNumber) {
       setDetailPatient(prev => prev ? { ...prev, ...patch } : prev);
     }
     showToast('Paciente actualizado correctamente', 'mdi-account-check');
+    setRoute('detail');
   }, [detailPatient, showToast]);
 
   const onPatientCreated = useCallback(async (localPatient: Patient) => {
@@ -243,6 +275,7 @@ export default function App() {
 
       {route === 'create' && (
         <WizardView
+          mode="create"
           patients={patients}
           onCancel={goList}
           onCreate={onPatientCreated}
@@ -250,12 +283,17 @@ export default function App() {
         />
       )}
 
-      <EditPatientModal
-        patient={editar.patient}
-        open={editar.open}
-        onClose={() => setEditar({ patient: null, open: false })}
-        onSave={onSaveEdit}
-      />
+      {route === 'edit' && detailPatient && (
+        <WizardView
+          mode="edit"
+          patients={patients}
+          initialPatient={detailPatient}
+          onCancel={() => setRoute('detail')}
+          onCreate={onPatientCreated}
+          onUpdate={onSaveEdit}
+          onOpenExisting={openPatient}
+        />
+      )}
 
       <AgendarModal
         patient={agendar.patient}

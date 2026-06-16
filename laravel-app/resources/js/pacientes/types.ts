@@ -177,7 +177,7 @@ export interface WizardFormData {
   alerta: string;
 }
 
-export type AppRoute = 'list' | 'detail' | 'create';
+export type AppRoute = 'list' | 'detail' | 'create' | 'edit';
 
 export interface Toast {
   msg: string;

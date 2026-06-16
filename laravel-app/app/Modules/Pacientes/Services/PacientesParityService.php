@@ -490,6 +490,9 @@ class PacientesParityService
         $fechaNacimiento = trim((string) ($input['fecha_nacimiento'] ?? ''));
         $sexo = trim((string) ($input['sexo'] ?? ''));
         $celular = trim((string) ($input['celular'] ?? ''));
+        $ciudad = trim((string) ($input['ciudad'] ?? ''));
+        $email = trim((string) ($input['email'] ?? ''));
+        $direccion = trim((string) ($input['direccion'] ?? ''));
 
         $auditType = $sessionUserId !== null ? 'user' : 'api';
         $auditIdentifier = $sessionUserId !== null ? ('user:' . (string) $sessionUserId) : 'api:/v2/pacientes/detalles';
@@ -505,6 +508,9 @@ class PacientesParityService
                 fecha_nacimiento = :fecha_nacimiento,
                 sexo = :sexo,
                 celular = :celular,
+                ciudad = :ciudad,
+                email = :email,
+                direccion = :direccion,
                 updated_at = CURRENT_TIMESTAMP,
                 updated_by_type = :updated_by_type,
                 updated_by_identifier = :updated_by_identifier
@@ -521,6 +527,9 @@ class PacientesParityService
             ':fecha_nacimiento' => $fechaNacimiento,
             ':sexo' => $sexo,
             ':celular' => $celular,
+            ':ciudad' => $ciudad,
+            ':email' => $email,
+            ':direccion' => $direccion,
             ':updated_by_type' => $auditType,
             ':updated_by_identifier' => $auditIdentifier,
             ':hc_number' => $hcNumber,

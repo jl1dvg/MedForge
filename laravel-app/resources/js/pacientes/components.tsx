@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import type { Patient, Solicitud } from './types';
 import { SEDE_MAP, AFIL_MAP, ESTADO_SOL, TIPO_CITA, MEDICO_MAP } from './data';
 import { fmtMoney, fmtDateShort, fmtTime, hasTime, isToday, relDays } from './utils';
@@ -179,108 +179,6 @@ export function Section({ id, icon, title, count, badge, open, onToggle, childre
 /* ---- Empty mini state ---- */
 export function EmptyMini({ icon, msg, children }: { icon?: string; msg?: string; children?: React.ReactNode }) {
   return <div className="mini-empty"><i className={`mdi ${icon || 'mdi-information-outline'}`} />{children ?? msg}</div>;
-}
-
-/* ---- Edit patient modal ---- */
-export function EditPatientModal({ patient, open, onClose, onSave }: {
-  patient: Patient | null; open: boolean; onClose: () => void;
-  onSave: (hcNumber: string, data: Record<string, any>) => Promise<void>;
-}) {
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const [form, setForm] = useState({
-    fname: '', mname: '', lname: '', lname2: '',
-    fecha_nacimiento: '', sexo: 'M', celular: '', afiliacion: 'privado',
-  });
-
-  useEffect(() => {
-    if (open && patient) {
-      const nombres = patient.nombres.trim().split(/\s+/);
-      const apellidos = patient.apellidos.trim().split(/\s+/);
-      setForm({
-        fname: nombres[0] || '',
-        mname: nombres.slice(1).join(' ') || '',
-        lname: apellidos[0] || '',
-        lname2: apellidos.slice(1).join(' ') || '',
-        fecha_nacimiento: patient.fecha_nac?.slice(0, 10) || '',
-        sexo: patient.sexo || 'M',
-        celular: patient.telefono || '',
-        afiliacion: patient.afiliacion || 'privado',
-      });
-      setError('');
-    }
-  }, [open, patient?.hc_number]);
-
-  const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
-
-  const handleSave = async () => {
-    if (!patient) return;
-    setSaving(true);
-    setError('');
-    try {
-      await onSave(patient.hc_number, form);
-      onClose();
-    } catch (e: any) {
-      setError(e.message || 'Error al guardar');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className={`pac-modal-backdrop ${open ? 'open' : ''}`} onClick={onClose}>
-      <div className="pac-modal pac-modal-lg" onClick={e => e.stopPropagation()}>
-        <div className="pac-modal-head">
-          <span className="mh-ic"><i className="mdi mdi-account-edit-outline" /></span>
-          <div>
-            <h2>Editar paciente</h2>
-            {patient && <p>HC {patient.hc_number} · {patient.cedula}</p>}
-          </div>
-          <button className="mh-close" onClick={onClose}><i className="mdi mdi-close" /></button>
-        </div>
-        <div className="pac-modal-body">
-          {error && <div className="edit-error"><i className="mdi mdi-alert-circle-outline" />{error}</div>}
-          <p className="edit-section-label">Nombres</p>
-          <div className="form-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
-            <div className="field"><label>Primer nombre</label><input value={form.fname} onChange={e => set('fname', e.target.value)} /></div>
-            <div className="field"><label>Segundo nombre</label><input value={form.mname} onChange={e => set('mname', e.target.value)} /></div>
-          </div>
-          <p className="edit-section-label">Apellidos</p>
-          <div className="form-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
-            <div className="field"><label>Primer apellido</label><input value={form.lname} onChange={e => set('lname', e.target.value)} /></div>
-            <div className="field"><label>Segundo apellido</label><input value={form.lname2} onChange={e => set('lname2', e.target.value)} /></div>
-          </div>
-          <p className="edit-section-label">Datos personales</p>
-          <div className="form-grid" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
-            <div className="field"><label>Fecha de nacimiento</label><input type="date" value={form.fecha_nacimiento} onChange={e => set('fecha_nacimiento', e.target.value)} /></div>
-            <div className="field"><label>Sexo</label>
-              <select value={form.sexo} onChange={e => set('sexo', e.target.value)}>
-                <option value="M">Masculino</option>
-                <option value="F">Femenino</option>
-              </select>
-            </div>
-            <div className="field"><label>Teléfono / celular</label><input value={form.celular} onChange={e => set('celular', e.target.value)} /></div>
-          </div>
-          <p className="edit-section-label">Afiliación</p>
-          <div className="form-grid" style={{ gridTemplateColumns: '1fr' }}>
-            <div className="field"><label>Tipo de afiliación</label>
-              <select value={form.afiliacion} onChange={e => set('afiliacion', e.target.value)}>
-                <option value="privado">Privado</option>
-                <option value="iess">IESS</option>
-                <option value="seguro">Seguro privado</option>
-              </select>
-            </div>
-          </div>
-        </div>
-        <div className="pac-modal-foot">
-          <button className="wbtn ghost" onClick={onClose} disabled={saving}>Cancelar</button>
-          <button className="wbtn primary" onClick={handleSave} disabled={saving}>
-            {saving ? <><i className="mdi mdi-loading mdi-spin" />Guardando…</> : <><i className="mdi mdi-check" />Guardar cambios</>}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 /* ---- Agendar modal ---- */
