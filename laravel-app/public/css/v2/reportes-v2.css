@@ -66,16 +66,16 @@ body { background: var(--bg-soft); color: var(--fg-1); -webkit-font-smoothing: a
   border-bottom: 1px solid var(--border);
 }
 .rep-toolbar-inner {
-  max-width: 1240px; margin: 0 auto; padding: 11px 32px;
-  display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+  max-width: 1440px; margin: 0 auto; padding: 11px 28px;
+  display: flex; align-items: center; gap: 14px; flex-wrap: nowrap;
 }
-.rep-tb-brand { display: flex; align-items: center; gap: 11px; margin-right: auto; }
+.rep-tb-brand { display: flex; align-items: center; gap: 9px; margin-right: auto; flex-shrink: 0; }
 .rep-tb-brand img { height: 26px; width: auto; display: block; }
 .rep-tb-brand .rep-tb-div { width: 1px; height: 22px; background: var(--border-strong); }
 .rep-tb-brand .rep-tb-tag { font: 600 12px/1.1 var(--font-body); color: var(--fg-2); }
 .rep-tb-brand .rep-tb-tag small { display: block; font-weight: 500; font-size: 10.5px; color: var(--fg-mute); letter-spacing: .03em; }
 
-.rep-filters { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.rep-filters { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; flex-shrink: 0; }
 .rep-flabel { font: 600 10px/1 var(--font-body); text-transform: uppercase; letter-spacing: .09em; color: var(--fg-fade); margin-right: -3px; }
 
 .rep-seg { display: inline-flex; padding: 3px; gap: 2px; border-radius: var(--radius-pill); background: var(--bg-soft); border: 1px solid var(--border); }
@@ -91,6 +91,7 @@ body { background: var(--bg-soft); color: var(--fg-1); -webkit-font-smoothing: a
   display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
   padding: 9px 16px; border-radius: var(--radius-pill); border: 1px solid transparent;
   font: 600 13px var(--font-body); transition: all var(--dur-fast) var(--ease-out); white-space: nowrap;
+  flex-shrink: 0;
 }
 .rep-btn i { font-size: 17px; }
 .rep-btn--primary { background: var(--primary); color: #fff; box-shadow: 0 4px 12px rgba(81,86,190,.25); }
@@ -377,10 +378,14 @@ body { background: var(--bg-soft); color: var(--fg-1); -webkit-font-smoothing: a
   .rep-synth { grid-template-columns: repeat(2, 1fr); }
   .rep-synth-cell:nth-child(2) { border-right: 0; }
 }
+@media (max-width: 980px) {
+  .rep-toolbar-inner { flex-wrap: wrap; }
+}
 @media (max-width: 720px) {
   .rep-doc { padding: 20px 16px 60px; }
   .rep-toolbar-inner { padding: 10px 16px; gap: 12px; }
   .rep-tb-brand { margin-right: 0; }
+  .rep-filters { flex-wrap: wrap; }
   .rep-cover { padding: 28px 22px; }
   .rep-cover h1 { font-size: 28px; }
   .rep-grid--4, .rep-grid--3, .rep-grid--2 { grid-template-columns: 1fr; }
