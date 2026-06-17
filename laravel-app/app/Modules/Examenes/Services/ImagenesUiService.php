@@ -140,6 +140,9 @@ class ImagenesUiService
         $dashboard = $this->buildImagenesDashboardSummary($rows, $filters, $solicitudes);
         $t = $mark('summary_build', $t);
 
+        $tiempoAcceso = $this->fetchImagenesTiempoAccesoExamen($filters);
+        $t = $mark('tiempo_acceso', $t);
+
         $sedeOptions = [
             ['value' => '', 'label' => 'Todas las sedes'],
             ['value' => 'MATRIZ', 'label' => 'MATRIZ'],
@@ -156,6 +159,7 @@ class ImagenesUiService
             'sedeOptions' => $sedeOptions,
             'rowCount' => count($rows),
             'timings' => $timings,
+            'tiempoAcceso' => $tiempoAcceso,
         ];
     }
 
@@ -811,6 +815,94 @@ class ImagenesUiService
             'conversion_solicitud_realizacion_pct' => $total > 0 ? round(($realizadas * 100) / $total, 1) : null,
             'cumplimiento_realizacion_al_corte_pct' => $total > 0 ? round(($realizadasAlCorte * 100) / $total, 1) : null,
             'cumplimiento_realizacion_acumulado_pct' => $total > 0 ? round(($realizadas * 100) / $total, 1) : null,
+        ];
+    }
+
+    /**
+     * Tiempo de acceso al examen (solicitud -> realización), exclusivo del
+     * reporte ejecutivo (/v2/imagenes/dashboard/report). No se usa en el
+     * dashboard operativo ni en exportes Excel/PDF.
+     *
+     * @param array<string,string> $filters
+     * @return array{mediana_dias:?float,p90_dias:?float,promedio_dias:?float,muestra:int,fuente_confiable:int,fuente_fallback:int}
+     */
+    private function fetchImagenesTiempoAccesoExamen(array $filters): array
+    {
+        $default = [
+            'mediana_dias' => null,
+            'p90_dias' => null,
+            'promedio_dias' => null,
+            'muestra' => 0,
+            'fuente_confiable' => 0,
+            'fuente_fallback' => 0,
+        ];
+
+        if (!$this->tableExists('consulta_examenes')) {
+            return $default;
+        }
+
+        $flowSubquery = $this->buildImagenesSolicitudFlowSubquery($filters);
+
+        $sql = "SELECT
+                flow.fecha_solicitud,
+                flow.fecha_realizacion,
+                flow.fecha_agenda
+            FROM ({$flowSubquery}) flow
+            WHERE COALESCE(flow.realizada, 0) = 1
+              AND flow.fecha_solicitud IS NOT NULL
+              AND flow.fecha_realizacion IS NOT NULL
+              AND flow.examen_nombre IS NOT NULL
+              AND TRIM(flow.examen_nombre) <> ''";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute();
+
+        $dias = [];
+        $confiable = 0;
+        $fallback = 0;
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $fechaSolicitud = (string)($row['fecha_solicitud'] ?? '');
+            $fechaRealizacion = (string)($row['fecha_realizacion'] ?? '');
+            $fechaAgenda = $row['fecha_agenda'] !== null ? (string)$row['fecha_agenda'] : null;
+
+            try {
+                $solicitudDt = new DateTimeImmutable($fechaSolicitud);
+                $realizacionDt = new DateTimeImmutable($fechaRealizacion);
+            } catch (\Exception $e) {
+                continue;
+            }
+
+            $diff = (int)$solicitudDt->diff($realizacionDt)->days;
+            if ($realizacionDt < $solicitudDt) {
+                continue;
+            }
+
+            $dias[] = $diff;
+
+            if ($fechaAgenda !== null && $fechaAgenda === $fechaRealizacion) {
+                $confiable++;
+            } else {
+                $fallback++;
+            }
+        }
+
+        if ($dias === []) {
+            return $default;
+        }
+
+        sort($dias, SORT_NUMERIC);
+        $count = count($dias);
+        $mediana = $this->calcularPercentil($dias, 0.5);
+        $p90 = $this->calcularPercentil($dias, 0.9);
+        $promedio = array_sum($dias) / $count;
+
+        return [
+            'mediana_dias' => $mediana !== null ? round($mediana, 1) : null,
+            'p90_dias' => $p90 !== null ? round($p90, 1) : null,
+            'promedio_dias' => round($promedio, 1),
+            'muestra' => $count,
+            'fuente_confiable' => $confiable,
+            'fuente_fallback' => $fallback,
         ];
     }
 

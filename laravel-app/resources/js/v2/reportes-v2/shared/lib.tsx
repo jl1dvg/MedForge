@@ -136,9 +136,20 @@ export function ExecutiveMap({ exec, unit }: { exec: ExecMap; unit: string }) {
             ))}
           </div>
           <div className="rep-flow-summary">
-            <div><span className="s-l"><i className="mdi mdi-cash-multiple"></i>Oportunidad estimada</span><span className="s-v">{e.summary.oportunidad}</span></div>
-            <div><span className="s-l"><i className="mdi mdi-progress-clock"></i>Arrastre al corte</span><span className="s-v">{e.summary.arrastre}</span></div>
-            <div><span className="s-l"><i className="mdi mdi-timer-outline"></i>Informes / SLA</span><span className="s-v">{e.summary.sla}</span></div>
+            {e.summary.rows ? (
+              e.summary.rows.map((r, i) => (
+                <div key={i}>
+                  <span className="s-l"><i className={`mdi ${r.icon}`}></i>{r.label}</span>
+                  <span className="s-v">{r.value}{r.hint ? <small className="s-hint">{r.hint}</small> : null}</span>
+                </div>
+              ))
+            ) : (
+              <>
+                <div><span className="s-l"><i className="mdi mdi-cash-multiple"></i>Oportunidad estimada</span><span className="s-v">{e.summary.oportunidad}</span></div>
+                <div><span className="s-l"><i className="mdi mdi-progress-clock"></i>Arrastre al corte</span><span className="s-v">{e.summary.arrastre}</span></div>
+                <div><span className="s-l"><i className="mdi mdi-timer-outline"></i>Informes / SLA</span><span className="s-v">{e.summary.sla}</span></div>
+              </>
+            )}
           </div>
         </div>
         <aside className="rep-actions">

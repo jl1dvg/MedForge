@@ -319,7 +319,8 @@ body { background: var(--bg-soft); color: var(--fg-1); -webkit-font-smoothing: a
 .rep-flow-summary div { border: 1px dashed var(--border-strong); border-radius: var(--radius); background: var(--bg-soft); padding: 11px 13px; }
 .rep-flow-summary .s-l { font: 700 9.5px/1 var(--font-body); text-transform: uppercase; letter-spacing: .05em; color: var(--fg-mute); display: flex; align-items: center; gap: 5px; }
 .rep-flow-summary .s-l i { font-size: 13px; color: var(--unit, var(--primary)); }
-.rep-flow-summary .s-v { font: 600 17px/1.1 var(--font-display); color: var(--fg-1); margin-top: 5px; font-variant-numeric: tabular-nums; }
+.rep-flow-summary .s-v { font: 600 17px/1.1 var(--font-display); color: var(--fg-1); margin-top: 5px; font-variant-numeric: tabular-nums; display: flex; flex-direction: column; gap: 2px; }
+.rep-flow-summary .s-v .s-hint { font: 500 10px/1.2 var(--font-body); color: var(--fg-mute); text-transform: none; letter-spacing: 0; }
 
 .rep-actions { padding: 22px 22px 24px; display: flex; flex-direction: column; }
 .rep-action-list { display: flex; flex-direction: column; gap: 9px; }

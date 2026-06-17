@@ -35,10 +35,18 @@ export interface FlowLink {
   pct: number;
 }
 
+export interface ExecSummaryRow {
+  icon: string;
+  label: string;
+  value: string;
+  hint?: string;
+}
+
 export interface ExecSummary {
   oportunidad: string;
   arrastre: string;
   sla: string;
+  rows?: ExecSummaryRow[];
 }
 
 export interface ExecAction {

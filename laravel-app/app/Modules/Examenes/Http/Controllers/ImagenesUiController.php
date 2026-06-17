@@ -67,10 +67,15 @@ class ImagenesUiController
         $meta     = $db['meta'] ?? [];
         $charts   = $db['charts'] ?? [];
         $filters  = $payload['filters'];
+        $tiempoAcceso = $payload['tiempoAcceso'] ?? [];
 
         Log::info('imagenes.executive_report.timings', [
             'timings' => $payload['timings'] ?? [],
             'row_count' => $payload['rowCount'] ?? 0,
+            'tiempo_acceso_ms' => $payload['timings']['tiempo_acceso'] ?? null,
+            'tiempo_acceso_sample' => $tiempoAcceso['muestra'] ?? 0,
+            'tiempo_acceso_confiable' => $tiempoAcceso['fuente_confiable'] ?? 0,
+            'tiempo_acceso_fallback' => $tiempoAcceso['fuente_fallback'] ?? 0,
         ]);
 
         $startDate = $filters['fecha_inicio'] ?? date('Y-m-d', strtotime('-30 days'));
@@ -97,6 +102,13 @@ class ImagenesUiController
         $solicTotal       = (int)($meta['solicitudes_total'] ?? 0);
         $solAgendadas     = (int)($meta['solicitudes_agendadas'] ?? 0);
         $cumplPct         = $meta['cumplimiento_realizacion_al_corte_pct'] ?? null;
+        $sinAgenda        = (int)($meta['solicitudes_sin_agenda'] ?? 0);
+        $sinAgendaMonto   = (float)($meta['solicitudes_sin_agenda_monto_estimado'] ?? 0);
+        $conAgendaNoReal  = (int)($meta['solicitudes_ausentes'] ?? 0) + (int)($meta['solicitudes_canceladas'] ?? 0);
+        $arrastreCorte    = max(0, $solicTotal - $realizados);
+        $accesoMediana    = $tiempoAcceso['mediana_dias'] ?? null;
+        $accesoP90        = $tiempoAcceso['p90_dias'] ?? null;
+        $accesoMuestra    = (int)($tiempoAcceso['muestra'] ?? 0);
         $sla48Pct         = null;
         $atendidos        = 0;
         foreach ($db['cards'] ?? [] as $card) {
@@ -182,9 +194,17 @@ class ImagenesUiController
                 ['pct' => $realizados > 0 ? round($solicitudesFacturadas / $realizados * 100) : 0],
             ],
             'summary' => [
-                'oportunidad' => $fmtMoney($produccionFact + $montoPend),
-                'arrastre'    => number_format($pendFact) . ' estudios',
+                // Compatibilidad legacy (no usados cuando 'rows' está presente).
+                'oportunidad' => $fmtMoney($sinAgendaMonto),
+                'arrastre'    => number_format($arrastreCorte) . ' solicitudes',
                 'sla'         => $sla48Pct !== null ? round($sla48Pct) . '% ≤48h' : '—',
+                'rows' => [
+                    ['icon' => 'mdi-cash-multiple', 'label' => 'Oportunidad estimada', 'value' => $fmtMoney($sinAgendaMonto), 'hint' => 'Solicitudes sin agenda valorizadas'],
+                    ['icon' => 'mdi-progress-clock', 'label' => 'Arrastre al corte', 'value' => number_format($arrastreCorte) . ' solicitudes', 'hint' => 'Solicitudes aún no concretadas'],
+                    ['icon' => 'mdi-timer-sand', 'label' => 'Acceso al examen', 'value' => $accesoMediana !== null ? round($accesoMediana, 1) . ' días' : '—', 'hint' => $accesoMediana !== null ? 'P90: ' . round($accesoP90, 1) . ' días · ' . number_format($accesoMuestra) . ' casos' : 'Sin datos suficientes'],
+                    ['icon' => 'mdi-calendar-remove', 'label' => 'Sin agenda', 'value' => number_format($sinAgenda) . ' solicitudes', 'hint' => 'Aún no agendadas'],
+                    ['icon' => 'mdi-account-cancel', 'label' => 'Agendadas no realizadas', 'value' => number_format($conAgendaNoReal) . ' solicitudes', 'hint' => 'Ausentes o canceladas'],
+                ],
             ],
             'actions' => [
                 ['severity' => 'high',   'title' => 'Cerrar backlog de facturación', 'metric' => number_format($pendFact) . ' estudios', 'owner' => 'Billing', 'action' => 'Emitir billing para recuperar ' . $fmtMoney($montoPend)],
