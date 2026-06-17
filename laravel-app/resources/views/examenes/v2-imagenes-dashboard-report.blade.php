@@ -23,10 +23,10 @@
   </script>
 
   <div style="position:fixed;top:12px;left:16px;z-index:9999">
-    <a href="/v2/imagenes/dashboard"
+    <a href="/v2/dashboard"
        style="display:inline-flex;align-items:center;gap:6px;font:500 13px 'IBM Plex Sans',sans-serif;color:#5e6278;text-decoration:none;background:#fff;border:1px solid #e4e6ef;border-radius:8px;padding:6px 14px;box-shadow:0 1px 3px rgba(16,24,40,.08)">
       <i class="mdi mdi-arrow-left" style="font-size:16px"></i>
-      Volver al panel
+      Volver a MedForge
     </a>
   </div>
 

@@ -293,12 +293,6 @@ class MedforgeNavigation
             ])
                 : null,
             $canAccessImagenesDashboard
-                ? $link('Dashboard imagenes', '/v2/imagenes/dashboard', 'mdi mdi-monitor-dashboard', [
-                'prefix' => ['/v2/imagenes/dashboard'],
-                'exclude_prefix' => ['/v2/imagenes/dashboard/report'],
-            ])
-                : null,
-            $canAccessImagenesDashboard
                 ? $link('Reporte Ejecutivo Imágenes', '/v2/imagenes/dashboard/report', 'mdi mdi-file-chart-outline', [
                 'prefix' => ['/v2/imagenes/dashboard/report'],
             ], '_blank')
