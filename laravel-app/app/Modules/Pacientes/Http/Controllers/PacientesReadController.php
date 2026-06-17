@@ -2,10 +2,14 @@
 
 namespace App\Modules\Pacientes\Http\Controllers;
 
+use App\Modules\Pacientes\Http\Requests\StorePacienteRequest;
+use App\Modules\Pacientes\Http\Requests\UpdatePacienteRequest;
 use App\Modules\Pacientes\Services\Paciente360ParityService;
+use App\Modules\Pacientes\Services\PacienteWriteService;
 use App\Modules\Pacientes\Services\PacientesFlujoService;
 use App\Modules\Pacientes\Services\PacientesParityService;
 use App\Modules\Shared\Support\LegacyCurrentUser;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
@@ -20,7 +24,7 @@ class PacientesReadController
     private Paciente360ParityService $paciente360Service;
     private PacientesFlujoService $flujoService;
 
-    public function __construct()
+    public function __construct(private readonly PacienteWriteService $writeService)
     {
         /** @var PDO $pdo */
         $pdo = DB::connection()->getPdo();
@@ -146,37 +150,36 @@ class PacientesReadController
         ]);
     }
 
-    public function editar(Request $request): JsonResponse
+    public function editar(UpdatePacienteRequest $request): JsonResponse
     {
         if (!$this->isLegacyAuthenticated($request)) {
             return response()->json(['error' => 'Sesión expirada'], 401);
         }
 
-        $hcNumber = trim((string) $request->input('hc_number', ''));
-        if ($hcNumber === '') {
-            return response()->json(['error' => 'hc_number es requerido'], 422);
-        }
-
         try {
-            $this->service->actualizarPaciente($hcNumber, $request->all(), $this->legacyUserId($request));
+            $validated = $request->validated();
+            $hcNumber = trim((string) $validated['hc_number']);
+            $this->writeService->update($hcNumber, $validated, $this->legacyUserId($request));
             return response()->json(['success' => true]);
+        } catch (ModelNotFoundException) {
+            return response()->json(['error' => 'Paciente no encontrado'], 404);
         } catch (\Throwable $e) {
             \Illuminate\Support\Facades\Log::error('Error actualizando paciente', [
-                'hc_number' => $hcNumber,
+                'hc_number' => $request->input('hc_number'),
                 'error' => $e->getMessage(),
             ]);
             return response()->json(['error' => 'Error al actualizar el paciente'], 500);
         }
     }
 
-    public function crear(Request $request): JsonResponse
+    public function crear(StorePacienteRequest $request): JsonResponse
     {
         if (!$this->isLegacyAuthenticated($request)) {
             return response()->json(['error' => 'Sesión expirada'], 401);
         }
 
         try {
-            $payload = $this->service->crearPaciente($request->all(), $this->legacyUserId($request));
+            $payload = $this->writeService->store($request->validated(), $this->legacyUserId($request));
 
             return response()->json($payload, 201);
         } catch (\InvalidArgumentException $e) {

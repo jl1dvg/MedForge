@@ -147,13 +147,13 @@ export default function App() {
       fecha_nacimiento: data.fecha_nac,
       sexo: data.sexo,
       celular: data.telefono,
-      telefono_alt: data.telefono_alt,
+      telefono_alt: data.telefono_alt || null,
       afiliacion: data.afiliacion,
       ciudad: data.ciudad,
       email: data.email,
       direccion: data.direccion,
-      medico_tratante_id: data.medico,
-      sede_principal: data.sede,
+      medico_tratante_id: data.medico || null,
+      sede_principal: data.sede || null,
     };
     await updatePatient(hcNumber, payload);
     const patch = {
