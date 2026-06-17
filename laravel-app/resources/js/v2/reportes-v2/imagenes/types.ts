@@ -15,6 +15,8 @@ export interface ImagenesMetrics {
   tatMed: number | null;
   tatP90: number | null;
   sla48Pct: number | null;
+  arrastreCorte: number;
+  sinAgendaMonto: number;
 }
 
 export interface LabelTotal {
@@ -27,6 +29,17 @@ export interface MonthPoint {
   label: string;
   realizados: number;
   informados: number;
+}
+
+export interface ConvenioRentabilidad {
+  label: string;
+  produccion: number;
+  oportunidad: number;
+}
+
+export interface ConvenioLider {
+  label: string;
+  produccion: number;
 }
 
 export interface ImagenesReport {
@@ -44,6 +57,9 @@ export interface ImagenesReport {
   topExamenes: LabelTotal[];
   topDoctores: LabelTotal[];
   porConvenio: LabelTotal[];
+  produccionVsOportunidad: ConvenioRentabilidad[];
+  convenioLider: ConvenioLider;
+  examenesOportunidad: LabelTotal[];
 }
 
 export interface SedeOption {

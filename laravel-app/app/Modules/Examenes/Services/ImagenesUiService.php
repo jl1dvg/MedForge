@@ -643,6 +643,8 @@ class ImagenesUiService
             'solicitudes_ausentes' => 0,
             'solicitudes_sin_agenda_monto_estimado' => 0.0,
             'solicitudes_sin_agenda_sin_tarifa' => 0,
+            'solicitudes_sin_agenda_por_examen' => [],
+            'solicitudes_sin_agenda_por_convenio' => [],
             'conversion_solicitud_realizacion_pct' => null,
             'cumplimiento_realizacion_al_corte_pct' => null,
             'cumplimiento_realizacion_acumulado_pct' => null,
@@ -812,6 +814,8 @@ class ImagenesUiService
             'solicitudes_ausentes' => (int)($row['solicitudes_ausentes'] ?? 0),
             'solicitudes_sin_agenda_monto_estimado' => round((float)($sinAgendaEstimate['monto_estimado'] ?? 0), 2),
             'solicitudes_sin_agenda_sin_tarifa' => (int)($sinAgendaEstimate['sin_tarifa'] ?? 0),
+            'solicitudes_sin_agenda_por_examen' => is_array($sinAgendaEstimate['por_examen'] ?? null) ? $sinAgendaEstimate['por_examen'] : [],
+            'solicitudes_sin_agenda_por_convenio' => is_array($sinAgendaEstimate['por_convenio'] ?? null) ? $sinAgendaEstimate['por_convenio'] : [],
             'conversion_solicitud_realizacion_pct' => $total > 0 ? round(($realizadas * 100) / $total, 1) : null,
             'cumplimiento_realizacion_al_corte_pct' => $total > 0 ? round(($realizadasAlCorte * 100) / $total, 1) : null,
             'cumplimiento_realizacion_acumulado_pct' => $total > 0 ? round(($realizadas * 100) / $total, 1) : null,
@@ -908,12 +912,12 @@ class ImagenesUiService
 
     /**
      * @param array<string,string> $filters
-     * @return array{monto_estimado:float,sin_tarifa:int}
+     * @return array{monto_estimado:float,sin_tarifa:int,por_examen:array<string,float>,por_convenio:array<string,float>}
      */
     private function fetchImagenesSolicitudesSinAgendaEstimate(array $filters): array
     {
         if (!$this->tableExists('consulta_examenes')) {
-            return ['monto_estimado' => 0.0, 'sin_tarifa' => 0];
+            return ['monto_estimado' => 0.0, 'sin_tarifa' => 0, 'por_examen' => [], 'por_convenio' => []];
         }
 
         $flowSubquery = $this->buildImagenesSolicitudFlowSubquery($filters);
@@ -1014,6 +1018,8 @@ class ImagenesUiService
         $montoEstimado = 0.0;
         $sinTarifa = 0;
         $tarifarioCache = [];
+        $montoPorExamen = [];
+        $montoPorConvenio = [];
 
         while (($row = $stmt->fetch(PDO::FETCH_ASSOC)) !== false) {
             if (!is_array($row)) {
@@ -1033,7 +1039,25 @@ class ImagenesUiService
 
             $amount = $this->resolveImagenTarifaPendiente($codigo, $row, is_array($tarifa) ? $tarifa : null);
             if ($amount > 0) {
-                $montoEstimado += $amount * $solicitudesCount;
+                $montoTotal = $amount * $solicitudesCount;
+                $montoEstimado += $montoTotal;
+
+                $examenLabel = trim((string)($row['examen_nombre'] ?? '')) !== ''
+                    ? trim((string)$row['examen_nombre'])
+                    : ($codigo !== '' ? $codigo : 'Sin examen');
+                if (!isset($montoPorExamen[$examenLabel])) {
+                    $montoPorExamen[$examenLabel] = 0.0;
+                }
+                $montoPorExamen[$examenLabel] += $montoTotal;
+
+                $convenioLabel = strtoupper(trim((string)($row['empresa_seguro'] ?? '')));
+                if ($convenioLabel === '') {
+                    $convenioLabel = 'SIN CONVENIO';
+                }
+                if (!isset($montoPorConvenio[$convenioLabel])) {
+                    $montoPorConvenio[$convenioLabel] = 0.0;
+                }
+                $montoPorConvenio[$convenioLabel] += $montoTotal;
             } else {
                 $sinTarifa += $solicitudesCount;
             }
@@ -1042,6 +1066,8 @@ class ImagenesUiService
         return [
             'monto_estimado' => round($montoEstimado, 2),
             'sin_tarifa' => $sinTarifa,
+            'por_examen' => array_map(static fn(float $v): float => round($v, 2), $montoPorExamen),
+            'por_convenio' => array_map(static fn(float $v): float => round($v, 2), $montoPorConvenio),
         ];
     }
 
@@ -2558,6 +2584,8 @@ class ImagenesUiService
         $solicitudesSinAgenda = (int)($solicitudes['solicitudes_sin_agenda'] ?? 0);
         $solicitudesSinAgendaMontoEstimado = (float)($solicitudes['solicitudes_sin_agenda_monto_estimado'] ?? 0);
         $solicitudesSinAgendaSinTarifa = (int)($solicitudes['solicitudes_sin_agenda_sin_tarifa'] ?? 0);
+        $solicitudesSinAgendaPorExamen = is_array($solicitudes['solicitudes_sin_agenda_por_examen'] ?? null) ? $solicitudes['solicitudes_sin_agenda_por_examen'] : [];
+        $solicitudesSinAgendaPorConvenio = is_array($solicitudes['solicitudes_sin_agenda_por_convenio'] ?? null) ? $solicitudes['solicitudes_sin_agenda_por_convenio'] : [];
         $solicitudesAgendadasPendientes = (int)($solicitudes['solicitudes_agendadas_pendientes'] ?? 0);
         $solicitudesPendientesVigentes = (int)($solicitudes['solicitudes_pendientes_vigentes'] ?? 0);
         $solicitudesCanceladas = (int)($solicitudes['solicitudes_canceladas'] ?? 0);
@@ -2621,6 +2649,7 @@ class ImagenesUiService
         $aging = ['0-2 días' => 0, '3-7 días' => 0, '8-14 días' => 0, '15+ días' => 0];
         $empresaSeguroCounts = [];
         $seguroCounts = [];
+        $produccionPorConvenio = [];
         $empresaSeguroFilter = $this->normalizeAfiliacionFilter((string)($filters['afiliacion'] ?? ''));
         $selectedEmpresaSeguro = '';
 
@@ -2726,6 +2755,11 @@ class ImagenesUiService
                 } elseif ($esOtro) {
                     $facturadosOtros++;
                 }
+
+                if (!isset($produccionPorConvenio[$empresaSeguroLabel])) {
+                    $produccionPorConvenio[$empresaSeguroLabel] = 0.0;
+                }
+                $produccionPorConvenio[$empresaSeguroLabel] += $produccionRow;
             }
 
             if ($estadoRealizacion === 'CANCELADA') {
@@ -3061,7 +3095,65 @@ class ImagenesUiService
                     'labels' => array_keys($insuranceBreakdownTop),
                     'values' => array_values($insuranceBreakdownTop),
                 ],
+                'rentabilidad_convenio' => $this->buildImagenesRentabilidadConvenioChart($produccionPorConvenio, $solicitudesSinAgendaPorConvenio),
+                'top_examenes_oportunidad' => $this->buildImagenesTopOportunidadChart($solicitudesSinAgendaPorExamen),
             ],
+        ];
+    }
+
+    /**
+     * Producción facturada vs. oportunidad pendiente por convenio, exclusivo
+     * de la Sección "Rentabilidad y Oportunidad" del reporte ejecutivo. No se
+     * usa en el dashboard operativo.
+     *
+     * @param array<string,float> $produccionPorConvenio
+     * @param array<string,float> $oportunidadPorConvenio
+     * @return array{labels:array<int,string>,produccion:array<int,float>,oportunidad:array<int,float>}
+     */
+    private function buildImagenesRentabilidadConvenioChart(array $produccionPorConvenio, array $oportunidadPorConvenio): array
+    {
+        $convenios = array_unique(array_merge(array_keys($produccionPorConvenio), array_keys($oportunidadPorConvenio)));
+
+        $combined = [];
+        foreach ($convenios as $convenio) {
+            $combined[$convenio] = round((float)($produccionPorConvenio[$convenio] ?? 0), 2)
+                + round((float)($oportunidadPorConvenio[$convenio] ?? 0), 2);
+        }
+        arsort($combined);
+        $top = array_slice($combined, 0, 10, true);
+
+        $labels = [];
+        $produccion = [];
+        $oportunidad = [];
+        foreach (array_keys($top) as $convenio) {
+            $labels[] = $convenio;
+            $produccion[] = round((float)($produccionPorConvenio[$convenio] ?? 0), 2);
+            $oportunidad[] = round((float)($oportunidadPorConvenio[$convenio] ?? 0), 2);
+        }
+
+        return [
+            'labels' => $labels,
+            'produccion' => $produccion,
+            'oportunidad' => $oportunidad,
+        ];
+    }
+
+    /**
+     * Top exámenes con mayor oportunidad pendiente (solicitudes sin agenda
+     * valorizadas), exclusivo de la Sección "Rentabilidad y Oportunidad" del
+     * reporte ejecutivo. No se usa en el dashboard operativo.
+     *
+     * @param array<string,float> $oportunidadPorExamen
+     * @return array{labels:array<int,string>,values:array<int,float>}
+     */
+    private function buildImagenesTopOportunidadChart(array $oportunidadPorExamen): array
+    {
+        arsort($oportunidadPorExamen);
+        $top = array_slice($oportunidadPorExamen, 0, 10, true);
+
+        return [
+            'labels' => array_keys($top),
+            'values' => array_map(static fn(float $v): float => round($v, 2), array_values($top)),
         ];
     }
 

@@ -161,12 +161,39 @@ class ImagenesUiController
             $trazLabels, $trazValues, $trazColors
         );
 
-        // Insurance breakdown
+        // Insurance breakdown (legacy, ya no se renderiza en Sección 04; se mantiene por si otra vista lo consume)
         $insLabels = $charts['analisis_seguro']['labels'] ?? [];
         $insValues = $charts['analisis_seguro']['values'] ?? [];
         $porConvenio = [];
         foreach ($insLabels as $j => $lbl) {
             $porConvenio[] = ['label' => $lbl, 'total' => $insValues[$j] ?? 0];
+        }
+
+        // Rentabilidad y oportunidad por convenio (Sección 04)
+        $rentConvenioLabels = $charts['rentabilidad_convenio']['labels'] ?? [];
+        $rentConvenioProduccion = $charts['rentabilidad_convenio']['produccion'] ?? [];
+        $rentConvenioOportunidad = $charts['rentabilidad_convenio']['oportunidad'] ?? [];
+        $produccionVsOportunidad = [];
+        foreach ($rentConvenioLabels as $j => $lbl) {
+            $produccionVsOportunidad[] = [
+                'label' => $lbl,
+                'produccion' => (float)($rentConvenioProduccion[$j] ?? 0),
+                'oportunidad' => (float)($rentConvenioOportunidad[$j] ?? 0),
+            ];
+        }
+        $convenioLider = ['label' => '—', 'produccion' => 0.0];
+        foreach ($produccionVsOportunidad as $item) {
+            if ($item['produccion'] > $convenioLider['produccion']) {
+                $convenioLider = ['label' => $item['label'], 'produccion' => $item['produccion']];
+            }
+        }
+
+        // Exámenes con mayor oportunidad (Sección 04)
+        $oportExLabels = $charts['top_examenes_oportunidad']['labels'] ?? [];
+        $oportExValues = $charts['top_examenes_oportunidad']['values'] ?? [];
+        $examenesOportunidad = [];
+        foreach ($oportExLabels as $j => $lbl) {
+            $examenesOportunidad[] = ['label' => $lbl, 'total' => (float)($oportExValues[$j] ?? 0)];
         }
 
         // Exec map
@@ -247,12 +274,17 @@ class ImagenesUiController
                 'tatMed'          => $tatMed,
                 'tatP90'          => $tatP90,
                 'sla48Pct'        => $sla48Pct,
+                'arrastreCorte'   => $arrastreCorte,
+                'sinAgendaMonto'  => $sinAgendaMonto,
             ],
             'produccionMensual' => $produccionMensual,
             'trazabilidad'      => $trazabilidad,
             'topExamenes'       => $topExamenes,
             'topDoctores'       => $topDoctores,
             'porConvenio'       => $porConvenio,
+            'produccionVsOportunidad' => $produccionVsOportunidad,
+            'convenioLider'           => $convenioLider,
+            'examenesOportunidad'     => $examenesOportunidad,
         ];
 
         return view('examenes.v2-imagenes-dashboard-report', [

@@ -1,5 +1,5 @@
 import React from 'react';
-import { TrendArea, DonutChart } from '../shared/charts';
+import { TrendArea, DonutChart, GroupedColumnChart } from '../shared/charts';
 import { Section, Kpi, BarsList, DonutLegend, Read, Recs, RecsCard, fmt } from '../shared/lib';
 import type { ImagenesReport } from './types';
 
@@ -58,33 +58,45 @@ export function ImagenesContent({ r }: { r: ImagenesReport }) {
         </div>
       </Section>
 
-      <Section num="04" kicker="Pagadores y calidad"
-        title="Mezcla de financiadores e indicadores de calidad"
-        lede="La mezcla de convenios impacta el ciclo de cobro. Los indicadores de calidad —TAT de informe, SLA 48h— cierran la lectura clínica del período.">
+      <Section num="04" kicker="Rentabilidad y Oportunidad"
+        title="Rentabilidad y Oportunidad"
+        lede="Analiza qué pagadores generan valor, dónde existe demanda no capturada y qué oportunidades pueden transformarse en producción futura.">
         <div className="rep-grid rep-grid--4" style={{ marginBottom: 16 }}>
-          <Kpi icon="mdi-timer-sand" label="TAT informe (prom.)" value={m.tatProm !== null ? Math.round(m.tatProm) : '—'} unit="h" sub={`Mediana <b>${m.tatMed !== null ? Math.round(m.tatMed) : '—'}h</b>`} accent="var(--warning)" />
-          <Kpi icon="mdi-speedometer" label="TAT informe P90" value={m.tatP90 !== null ? Math.round(m.tatP90) : '—'} unit="h" sub="90% se cierra antes de este tiempo" accent="var(--warning)" />
-          <Kpi icon="mdi-clock-check-outline" label="SLA informe ≤48h" value={m.sla48Pct !== null ? Math.round(m.sla48Pct) : '—'} unit="%" sub="Objetivo: 100%" accent="var(--success)" />
           <Kpi icon="mdi-cash" label="Ticket promedio" value={'$' + fmt(Math.round(m.ticket))} sub={`${fmt(m.facturados)} estudios facturados`} accent="var(--primary)" />
+          <Kpi icon="mdi-bank-outline" label="Convenio líder" value={r.convenioLider.label} sub={`Producción facturada: $${fmt(Math.round(r.convenioLider.produccion))}`} accent="var(--info)" />
+          <Kpi icon="mdi-cash-multiple" label="Oportunidad pendiente" value={'$' + fmt(Math.round(m.sinAgendaMonto))} sub="Solicitudes sin agenda valorizadas" accent="var(--warning)" />
+          <Kpi icon="mdi-progress-clock" label="Solicitudes no concretadas" value={fmt(m.arrastreCorte)} sub="Arrastre al corte" accent="var(--danger)" />
+        </div>
+        <div className="rep-grid rep-grid--2" style={{ marginBottom: 16 }}>
+          <div className="rep-card rep-span2">
+            <div className="rep-card-head">
+              <h3><i className="mdi mdi-chart-bar"></i>Producción facturada vs oportunidad pendiente por convenio</h3>
+              <span className="rep-card-note">Top 10 convenios</span>
+            </div>
+            {r.produccionVsOportunidad.length > 0
+              ? <GroupedColumnChart data={r.produccionVsOportunidad} keys={['produccion', 'oportunidad']} names={['Producción facturada', 'Oportunidad pendiente']} colors={['#5156be', '#d59623']} />
+              : <p style={{ color: 'var(--fg-mute)', padding: '16px 0' }}>Sin datos de convenios.</p>
+            }
+          </div>
         </div>
         <div className="rep-grid rep-grid--2" style={{ marginBottom: 16 }}>
           <div className="rep-card">
             <div className="rep-card-head">
-              <h3><i className="mdi mdi-bank-outline"></i>Estudios por empresa de seguro</h3>
-              <span className="rep-card-note">Volumen realizado</span>
+              <h3><i className="mdi mdi-target"></i>Exámenes con mayor oportunidad</h3>
+              <span className="rep-card-note">Monto potencial sin agenda</span>
             </div>
-            {r.porConvenio.length > 0
-              ? <BarsList items={r.porConvenio} color="var(--primary)" />
-              : <p style={{ color: 'var(--fg-mute)', padding: '16px 0' }}>Sin datos de convenios.</p>
+            {r.examenesOportunidad.length > 0
+              ? <BarsList items={r.examenesOportunidad} color="var(--warning)" />
+              : <p style={{ color: 'var(--fg-mute)', padding: '16px 0' }}>Sin oportunidad detectada en el período.</p>
             }
           </div>
         </div>
         <RecsCard>
           <Recs items={[
-            `Cerrar los <b>${fmt(m.pendFact)} estudios pendientes de facturar</b> para destrabar billing y reducir el TAT P90 de ${m.tatP90 !== null ? Math.round(m.tatP90) : '—'}h.`,
-            `Emitir billing del backlog realizado para recuperar la oportunidad estimada del mapa ejecutivo.`,
+            `Cerrar los <b>${fmt(m.pendFact)} estudios pendientes de facturar</b> para destrabar billing y consolidar la producción facturada.`,
+            `Emitir billing del backlog realizado para recuperar la oportunidad estimada del mapa ejecutivo ($${fmt(Math.round(m.sinAgendaMonto))}).`,
             `Vigilar la concentración del sector público en cartera para anticipar el pendiente de pago (${fmt(m.pendPago)} registros).`,
-            `Monitorear el SLA de informe ≤48h (actual: ${m.sla48Pct !== null ? Math.round(m.sla48Pct) + '%' : '—'}) como indicador de calidad radiológica.`,
+            `Priorizar el agendamiento de las <b>${fmt(m.arrastreCorte)} solicitudes no concretadas</b> al corte para reducir el arrastre del próximo período.`,
           ]} />
         </RecsCard>
       </Section>

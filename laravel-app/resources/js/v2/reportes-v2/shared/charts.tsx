@@ -175,6 +175,38 @@ export function ColumnChart({ data, dataKey = 'value', labelKey = 'label', name 
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+type GroupedColumnDataItem = any;
+
+interface GroupedColumnChartProps {
+  data: GroupedColumnDataItem[];
+  keys: [string, string];
+  names: [string, string];
+  labelKey?: string;
+  colors?: [string, string];
+  height?: number;
+  money?: boolean;
+}
+
+export function GroupedColumnChart({ data, keys, names, labelKey = 'label', colors = ['#5156be', '#d59623'], height = 260, money = true }: GroupedColumnChartProps) {
+  const [k1, k2] = keys;
+  return (
+    <Measured height={height}>
+      {w => (
+        <BarChart width={w} height={height} data={data} margin={{ top: 8, right: 6, left: money ? -4 : -16, bottom: 0 }}>
+          <CartesianGrid vertical={false} stroke="#ebedf3" />
+          <XAxis dataKey={labelKey} axisLine={AXIS_LINE} tickLine={false} tick={AXIS_TICK} interval="preserveStartEnd" minTickGap={6} />
+          <YAxis axisLine={false} tickLine={false} tick={AXIS_TICK} width={money ? 52 : 42} allowDecimals={false}
+            tickFormatter={money ? (v: number) => '$' + (v >= 1000 ? (v / 1000).toFixed(0) + 'k' : v) : undefined} />
+          <Tooltip content={<RepTooltip prefix={money ? '$' : ''} />} cursor={{ fill: 'rgba(81,86,190,.05)' }} />
+          <Bar dataKey={k1} name={names[0]} fill={colors[0]} radius={[4, 4, 0, 0] as [number, number, number, number]} maxBarSize={36} isAnimationActive={false} />
+          <Bar dataKey={k2} name={names[1]} fill={colors[1]} radius={[4, 4, 0, 0] as [number, number, number, number]} maxBarSize={36} isAnimationActive={false} />
+        </BarChart>
+      )}
+    </Measured>
+  );
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type DonutDataItem = any;
 
 interface DonutChartProps {
