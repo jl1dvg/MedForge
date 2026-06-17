@@ -498,6 +498,49 @@ export function VerImagenesModal({ row, onClose }) {
   );
 }
 
+// ---- Modal: Reclamo de archivos NAS -------------------------------
+export function ReclamoArchivosModal({ row, onClose, onConfirm, loading }) {
+  const [message, setMessage] = useState(
+    'Solicito revisar/cargar los archivos de imágenes en la carpeta correcta para este examen.'
+  );
+
+  return (
+    <ModalShell size="md" icon="mdi-folder-alert-outline" iconTone="warning"
+      title="Reclamar archivos de imágenes"
+      sub={`${row.full_name} · ${row.tipo_short || row.tipo_label} · HC ${row.hc_number}`}
+      onClose={loading ? () => {} : onClose}
+      footer={
+        <>
+          <span className="imr-foot-note">Primero se revisó el NAS y sigue sin archivos.</span>
+          <div className="imr-modal-spacer"></div>
+          <button className="imr-btn imr-btn-ghost" disabled={loading} onClick={onClose}>Cancelar</button>
+          <button className="imr-btn imr-btn-danger" disabled={loading || !message.trim()} onClick={() => onConfirm(row, message)}>
+            <i className={`mdi ${loading ? 'mdi-loading mdi-spin' : 'mdi-send-outline'}`}></i> Enviar reclamo
+          </button>
+        </>
+      }>
+      <PatientStrip row={row} />
+      <div className="imr-callout imr-callout-warn" style={{ marginTop: 14 }}>
+        <i className="mdi mdi-information-outline"></i>
+        <div>
+          <b>Sin archivos después del re-chequeo</b>
+          <p>Se creará un reclamo operativo para que el área responsable suba o corrija la carpeta de este examen.</p>
+        </div>
+      </div>
+      <div className="imr-form-row" style={{ marginTop: 14 }}>
+        <label>Mensaje del reclamo</label>
+        <textarea
+          rows={4}
+          value={message}
+          disabled={loading}
+          onChange={(e) => setMessage(e.target.value)}
+          placeholder="Describe qué debe revisar el área técnica..."
+        />
+      </div>
+    </ModalShell>
+  );
+}
+
 // ---- Modal: Marcar urgente / editar prioridad ----------------------
 export function MarcarUrgenteModal({ rows, doctores, today, currentUser, defaultResponsable = '', onClose, onConfirm }) {
   const multi = rows.length > 1;

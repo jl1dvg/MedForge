@@ -26,6 +26,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Models\BillingMainModel;
 use Models\BillingProcedimientosModel;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
@@ -524,63 +525,15 @@ class ExamenesParityController
         }
 
         try {
-            $nasContext = $this->resolveNasContext($hcNumber, $formId);
-            $resolvedHcNumber = $nasContext['hc_number'];
-            $resolvedFormId = $nasContext['form_id'];
-
-            if (!$nasContext['has_image_context']) {
-                $probeError = null;
-                $probeFiles = $this->getSigcenterFiles($formId, $hcNumber, false, $probeError);
-                if ($probeFiles !== []) {
-                    $files = array_map(function (array $file) use ($hcNumber, $formId): array {
-                        $name = trim((string) ($file['name'] ?? ''));
-                        $file['url'] = $name === ''
-                            ? ''
-                            : '/v2/imagenes/examenes-realizados/nas/file?hc_number=' . rawurlencode($hcNumber)
-                                . '&form_id=' . rawurlencode($formId)
-                                . '&file=' . rawurlencode($name);
-
-                        return $file;
-                    }, $probeFiles);
-
-                    return response()->json([
-                        'success' => true,
-                        'files' => $files,
-                        'error' => null,
-                        'resolved_form_id' => $formId,
-                        'resolved_hc_number' => $hcNumber,
-                    ]);
-                }
-
-                return response()->json([
-                    'success' => true,
-                    'files' => [],
-                    'error' => null,
-                    'message' => 'No existe un procedimiento de imagenes asociado a este examen.',
-                    'resolved_form_id' => $formId,
-                    'resolved_hc_number' => $hcNumber,
-                ]);
-            }
-
-            $error = null;
-            $files = $this->getPreferredFilesWithCache($resolvedHcNumber, $resolvedFormId, false, $error);
-            $files = array_map(function (array $file) use ($resolvedHcNumber, $resolvedFormId): array {
-                $name = trim((string) ($file['name'] ?? ''));
-                $file['url'] = $name === ''
-                    ? ''
-                    : '/v2/imagenes/examenes-realizados/nas/file?hc_number=' . rawurlencode($resolvedHcNumber)
-                        . '&form_id=' . rawurlencode($resolvedFormId)
-                        . '&file=' . rawurlencode($name);
-
-                return $file;
-            }, $files);
+            $result = $this->resolveImagenesNasFilesPayload($hcNumber, $formId, false);
 
             return response()->json([
-                'success' => $error === null,
-                'files' => $files,
-                'error' => $error,
-                'resolved_form_id' => $resolvedFormId,
-                'resolved_hc_number' => $resolvedHcNumber,
+                'success' => $result['error'] === null,
+                'files' => $result['files'],
+                'error' => $result['error'],
+                'message' => $result['message'],
+                'resolved_form_id' => $result['resolved_form_id'],
+                'resolved_hc_number' => $result['resolved_hc_number'],
             ]);
         } catch (Throwable $e) {
             Log::error('imagenes.v2.nas_list.error', [
@@ -593,6 +546,70 @@ class ExamenesParityController
                 'success' => false,
                 'files' => [],
                 'error' => 'No se pudo consultar los archivos del examen.',
+                'resolved_form_id' => $formId,
+                'resolved_hc_number' => $hcNumber,
+            ], 200);
+        }
+    }
+
+    public function imagenesNasRecheck(Request $request): Response
+    {
+        if (!Auth::check()) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Sesión expirada',
+            ], 401);
+        }
+
+        $payload = $this->payload($request);
+        $hcNumber = trim((string) ($payload['hc_number'] ?? ''));
+        $formId = trim((string) ($payload['form_id'] ?? ''));
+        if ($hcNumber === '' || $formId === '') {
+            return response()->json([
+                'success' => false,
+                'error' => 'Faltan parámetros para rechequear imágenes.',
+            ], 422);
+        }
+
+        try {
+            $result = $this->resolveImagenesNasFilesPayload($hcNumber, $formId, true);
+            $files = is_array($result['files'] ?? null) ? $result['files'] : [];
+            $found = count($files) > 0;
+            $claim = null;
+
+            if ($found) {
+                $this->closeImagenesFileClaim($formId, $hcNumber);
+            } elseif (($result['error'] ?? null) === null && (bool) ($payload['create_claim'] ?? false)) {
+                $claim = $this->storeImagenesFileClaim($payload, $result);
+            }
+
+            return response()->json([
+                'success' => ($result['error'] ?? null) === null,
+                'found' => $found,
+                'files' => $files,
+                'files_count' => count($files),
+                'claim' => $claim,
+                'can_claim' => !$found && ($result['error'] ?? null) === null,
+                'error' => $result['error'] ?? null,
+                'message' => $result['message'] ?? null,
+                'resolved_form_id' => $result['resolved_form_id'] ?? $formId,
+                'resolved_hc_number' => $result['resolved_hc_number'] ?? $hcNumber,
+            ]);
+        } catch (Throwable $e) {
+            Log::error('imagenes.v2.nas_recheck.error', [
+                'form_id' => $formId,
+                'hc_number' => $hcNumber,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'found' => false,
+                'files' => [],
+                'files_count' => 0,
+                'claim' => null,
+                'can_claim' => false,
+                'error' => 'No se pudo verificar el repositorio de imágenes.',
                 'resolved_form_id' => $formId,
                 'resolved_hc_number' => $hcNumber,
             ], 200);
@@ -1067,6 +1084,154 @@ class ExamenesParityController
         } catch (Throwable $e) {
             return response()->json(['success' => false, 'error' => $e->getMessage()], 422);
         }
+    }
+
+    /**
+     * @return array{files:array<int,array<string,mixed>>,error:?string,message:?string,resolved_form_id:string,resolved_hc_number:string}
+     */
+    private function resolveImagenesNasFilesPayload(string $hcNumber, string $formId, bool $forceRefresh): array
+    {
+        $nasContext = $this->resolveNasContext($hcNumber, $formId);
+        $resolvedHcNumber = (string) $nasContext['hc_number'];
+        $resolvedFormId = (string) $nasContext['form_id'];
+
+        if (!$nasContext['has_image_context']) {
+            $probeError = null;
+            $probeFiles = $this->getSigcenterFiles($formId, $hcNumber, $forceRefresh, $probeError);
+
+            return [
+                'files' => $this->mapImagenesNasFilesForResponse($probeFiles, $hcNumber, $formId),
+                'error' => $probeError,
+                'message' => $probeFiles === [] && $probeError === null ? 'No existe un procedimiento de imagenes asociado a este examen.' : null,
+                'resolved_form_id' => $formId,
+                'resolved_hc_number' => $hcNumber,
+            ];
+        }
+
+        $error = null;
+        $files = $this->getPreferredFilesWithCache($resolvedHcNumber, $resolvedFormId, $forceRefresh, $error);
+
+        return [
+            'files' => $this->mapImagenesNasFilesForResponse($files, $resolvedHcNumber, $resolvedFormId),
+            'error' => $error,
+            'message' => $files === [] && $error === null ? 'Sin archivos asociados.' : null,
+            'resolved_form_id' => $resolvedFormId,
+            'resolved_hc_number' => $resolvedHcNumber,
+        ];
+    }
+
+    /**
+     * @param array<int,array<string,mixed>> $files
+     * @return array<int,array<string,mixed>>
+     */
+    private function mapImagenesNasFilesForResponse(array $files, string $hcNumber, string $formId): array
+    {
+        return array_map(function (array $file) use ($hcNumber, $formId): array {
+            $name = trim((string) ($file['name'] ?? ''));
+            $file['url'] = $name === ''
+                ? ''
+                : '/v2/imagenes/examenes-realizados/nas/file?hc_number=' . rawurlencode($hcNumber)
+                    . '&form_id=' . rawurlencode($formId)
+                    . '&file=' . rawurlencode($name);
+
+            return $file;
+        }, $files);
+    }
+
+    /**
+     * @param array<string,mixed> $payload
+     * @param array<string,mixed> $checkResult
+     * @return array{id:int,status:string,requested_at:string}|null
+     */
+    private function storeImagenesFileClaim(array $payload, array $checkResult): ?array
+    {
+        if (!Schema::hasTable('imagenes_file_claims')) {
+            Log::warning('imagenes.v2.file_claim.table_missing', [
+                'form_id' => $payload['form_id'] ?? null,
+                'hc_number' => $payload['hc_number'] ?? null,
+            ]);
+            return null;
+        }
+
+        $now = date('Y-m-d H:i:s');
+        $formId = trim((string) ($payload['form_id'] ?? ''));
+        $hcNumber = trim((string) ($payload['hc_number'] ?? ''));
+        $message = trim((string) ($payload['message'] ?? ''));
+        if ($message === '') {
+            $message = 'Solicito revisar/cargar los archivos de imágenes en la carpeta correcta para este examen.';
+        }
+
+        $attributes = [
+            'form_id' => $formId,
+            'hc_number' => $hcNumber,
+            'status' => 'abierto',
+        ];
+        $values = [
+            'procedimiento_id' => is_numeric($payload['id'] ?? null) ? (int) $payload['id'] : null,
+            'paciente' => $this->nullableTrimmed($payload['full_name'] ?? $payload['paciente'] ?? null),
+            'cedula' => $this->nullableTrimmed($payload['cedula'] ?? null),
+            'tipo_examen' => $this->nullableTrimmed($payload['tipo_examen'] ?? $payload['tipo_label'] ?? null),
+            'ojo' => $this->nullableTrimmed($payload['ojo'] ?? null),
+            'afiliacion' => $this->nullableTrimmed($payload['afiliacion'] ?? null),
+            'sede' => $this->nullableTrimmed($payload['sede'] ?? null),
+            'fecha_examen' => $this->normalizeDateOrNull($payload['fecha_examen'] ?? null),
+            'message' => $message,
+            'last_check_error' => $this->nullableTrimmed($checkResult['error'] ?? null),
+            'last_checked_at' => $now,
+            'requested_by' => is_numeric(Auth::id()) ? (int) Auth::id() : null,
+            'requested_at' => $now,
+            'updated_at' => $now,
+        ];
+
+        $existing = DB::table('imagenes_file_claims')->where($attributes)->first();
+        if ($existing) {
+            DB::table('imagenes_file_claims')->where('id', (int) $existing->id)->update($values);
+            $id = (int) $existing->id;
+        } else {
+            $id = (int) DB::table('imagenes_file_claims')->insertGetId($attributes + $values + ['created_at' => $now]);
+        }
+
+        return [
+            'id' => $id,
+            'status' => 'abierto',
+            'requested_at' => $now,
+        ];
+    }
+
+    private function closeImagenesFileClaim(string $formId, string $hcNumber): void
+    {
+        if (!Schema::hasTable('imagenes_file_claims')) {
+            return;
+        }
+
+        $now = date('Y-m-d H:i:s');
+        DB::table('imagenes_file_claims')
+            ->where('form_id', trim($formId))
+            ->where('hc_number', trim($hcNumber))
+            ->where('status', 'abierto')
+            ->update([
+                'status' => 'resuelto',
+                'resolved_at' => $now,
+                'last_checked_at' => $now,
+                'updated_at' => $now,
+            ]);
+    }
+
+    private function nullableTrimmed(mixed $value): ?string
+    {
+        $value = trim((string) ($value ?? ''));
+        return $value !== '' ? $value : null;
+    }
+
+    private function normalizeDateOrNull(mixed $value): ?string
+    {
+        $value = trim((string) ($value ?? ''));
+        if ($value === '') {
+            return null;
+        }
+
+        $timestamp = strtotime($value);
+        return $timestamp !== false ? date('Y-m-d', $timestamp) : null;
     }
 
     /**

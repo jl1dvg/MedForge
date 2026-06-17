@@ -39,6 +39,14 @@
 .imr-btn-outline-danger:hover { background: #fdecef; }
 .imr-btn:disabled { opacity: .45; cursor: not-allowed; }
 
+/* ---- Callouts ------------------------------------------------ */
+.imr-callout { display: flex; gap: 12px; align-items: flex-start; border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; background: #f8fafc; color: var(--fg-1); }
+.imr-callout i { font-size: 20px; line-height: 1.2; }
+.imr-callout b { display: block; margin-bottom: 3px; }
+.imr-callout p { margin: 0; color: var(--fg-mute); font-size: 13px; line-height: 1.45; }
+.imr-callout-warn { border-color: rgba(245, 158, 11, .32); background: #fffbeb; }
+.imr-callout-warn i { color: #d97706; }
+
 /* ---- KPI row ------------------------------------------------- */
 .imr-kpi-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 18px; }
 .imr-kpi {
