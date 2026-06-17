@@ -65,9 +65,38 @@ export default function App() {
     else showToast('Paciente sin teléfono registrado', 'mdi-alert-circle-outline', 'warn');
   }, [showToast]);
 
-  const onAgendar = useCallback((p: Patient) => {
-    setAgendar({ patient: p, open: true });
+  const openAgendaForPatient = useCallback((p: Patient) => {
+    const params = new URLSearchParams();
+    params.set('nuevo', '1');
+    params.set('hc_number', p.hc_number);
+    params.set('paciente', p.display_name || p.full_name || p.hc_number);
+    if (p.telefono) params.set('telefono', p.telefono);
+    if (p.afiliacion) params.set('afiliacion', p.afiliacion);
+    if (p.sede_info?.nombre || p.sede) params.set('sede', p.sede_info?.nombre || p.sede);
+    if (p.medico_tratante?.nombre || p.medico) params.set('doctor', p.medico_tratante?.nombre || p.medico);
+    window.location.href = `/v2/agenda?${params.toString()}`;
   }, []);
+
+  const openSolicitudesForPatient = useCallback((p: Patient) => {
+    const params = new URLSearchParams();
+    params.set('hc_number', p.hc_number);
+    params.set('paciente', p.display_name || p.full_name || p.hc_number);
+    if (p.telefono) params.set('telefono', p.telefono);
+    if (p.email) params.set('email', p.email);
+    window.location.href = `/v2/solicitudes?${params.toString()}`;
+  }, []);
+
+  const openSolicitudCrm = useCallback((solicitud: any) => {
+    const params = new URLSearchParams();
+    const solicitudId = String(solicitud?.id || solicitud?.solicitud_id || '').trim();
+    if (solicitudId) params.set('open_crm', solicitudId);
+    if (solicitud?.hc_number) params.set('hc_number', String(solicitud.hc_number));
+    window.location.href = `/v2/solicitudes${params.toString() ? `?${params.toString()}` : ''}`;
+  }, []);
+
+  const onAgendar = useCallback((p: Patient) => {
+    openAgendaForPatient(p);
+  }, [openAgendaForPatient]);
 
   const confirmAgendar = useCallback((patientId: number, data: { fecha: string; hora: string; tipo: string }) => {
     const iso = new Date(`${data.fecha}T${data.hora || '09:00'}:00`).toISOString();
@@ -268,9 +297,9 @@ export default function App() {
           onAgendar={onAgendar}
           onWhats={onWhats}
           onAddNote={onAddNote}
-          onOpenCRM={(s) => showToast(`Abriendo solicitud ${s.id}…`, 'mdi-arrow-top-right')}
+          onOpenCRM={openSolicitudCrm}
           onEditar={onEditar}
-          onNuevaSolicitud={(p) => showToast(`Nueva solicitud para ${p.nombres}…`, 'mdi-clipboard-plus-outline')}
+          onNuevaSolicitud={openSolicitudesForPatient}
         />
       )}
       {route === 'detail' && !detailPatient && (

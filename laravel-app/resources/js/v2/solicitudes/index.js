@@ -4,6 +4,7 @@
     const endpoints = config.endpoints || {};
     const columns = Array.isArray(config.columns) ? config.columns : [];
     const initialFilters = config.initialFilters || {};
+    const urlParams = new URLSearchParams(window.location.search);
     const rawRealtimeConfig = config.realtime && typeof config.realtime === 'object'
         ? config.realtime
         : {};
@@ -111,6 +112,7 @@
         },
         loading: false,
         exporting: false,
+        deepLinkHandled: false,
         notificationPanel: null,
         crmPanel: {
             api: null,
@@ -459,8 +461,13 @@
     };
 
     const applyInitialFilters = () => {
-        if (searchInput && typeof initialFilters.search === 'string') {
-            searchInput.value = initialFilters.search;
+        if (searchInput) {
+            const searchFromUrl = String(urlParams.get('search') || urlParams.get('hc_number') || '').trim();
+            if (searchFromUrl !== '') {
+                searchInput.value = searchFromUrl;
+            } else if (typeof initialFilters.search === 'string') {
+                searchInput.value = initialFilters.search;
+            }
         }
         if (dateFromInput && typeof initialFilters.date_from === 'string') {
             dateFromInput.value = initialFilters.date_from;
@@ -980,6 +987,25 @@
         } else {
             showToast('No se pudo abrir el panel CRM para la solicitud', false);
         }
+    };
+
+    const maybeOpenDeepLinkedCrm = async () => {
+        if (state.deepLinkHandled) {
+            return;
+        }
+        const params = new URLSearchParams(window.location.search);
+        const solicitudId = String(params.get('open_crm') || '').trim();
+        if (!solicitudId) {
+            state.deepLinkHandled = true;
+            return;
+        }
+
+        const row = state.rows.find((item) => String(item.id || item.solicitud_id || '') === solicitudId);
+        state.deepLinkHandled = true;
+        await openCrmPanelForSolicitud(
+            solicitudId,
+            row?.paciente || row?.full_name || row?.paciente_nombre || ''
+        );
     };
 
     const ensurePrefacturaModalApi = async () => {
@@ -1720,6 +1746,7 @@
             renderTable(state.filteredRows);
             initTooltips();
             await syncCrmPanel();
+            await maybeOpenDeepLinkedCrm();
 
             if (state.view === 'conciliacion') {
                 const panel = await ensureConciliacionPanel();

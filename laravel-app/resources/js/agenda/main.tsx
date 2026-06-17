@@ -20,24 +20,29 @@ function readBootstrap(): AgendaBootstrap {
 }
 
 function initialForm(bootstrap: AgendaBootstrap): AppointmentForm {
+  const params = new URLSearchParams(window.location.search);
+  const pick = (key: string): string => params.get(key)?.trim() || '';
+  const defaultTipo = bootstrap.options.tiposAtencion[0]?.value ?? '';
+
   return {
-    hc_number: '',
-    paciente: '',
-    telefono: '',
+    hc_number: pick('hc_number'),
+    paciente: pick('paciente'),
+    telefono: pick('telefono'),
     fecha: bootstrap.defaults.fecha,
     hora: bootstrap.defaults.hora,
-    tipo_atencion: bootstrap.options.tiposAtencion[0]?.value ?? '',
+    tipo_atencion: pick('tipo_atencion') || defaultTipo,
     codigo_atencion: '',
-    detalle_atencion: '',
-    doctor: '',
-    sede: '',
-    afiliacion: '',
+    detalle_atencion: pick('detalle_atencion') || 'Consulta',
+    doctor: pick('doctor'),
+    sede: pick('sede'),
+    afiliacion: pick('afiliacion'),
   };
 }
 
 function App() {
   const bootstrap = useMemo(() => readBootstrap(), []);
-  const [open, setOpen] = useState(false);
+  const shouldOpenFromUrl = useMemo(() => new URLSearchParams(window.location.search).get('nuevo') === '1', []);
+  const [open, setOpen] = useState(shouldOpenFromUrl);
   const [form, setForm] = useState<AppointmentForm>(() => initialForm(bootstrap));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
