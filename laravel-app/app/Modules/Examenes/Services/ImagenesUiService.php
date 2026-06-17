@@ -2841,6 +2841,7 @@ class ImagenesUiService
                 'tat_promedio_horas' => $tatPromedio !== null ? round($tatPromedio, 2) : null,
                 'tat_mediana_horas' => $tatMediana !== null ? round($tatMediana, 2) : null,
                 'tat_p90_horas' => $tatP90 !== null ? round($tatP90, 2) : null,
+                'facturados' => $facturados,
                 'produccion_facturada' => round($produccionFacturada, 2),
                 'produccion_facturada_publico' => round($produccionFacturadaPublico, 2),
                 'produccion_facturada_privado' => round($produccionFacturadaPrivado, 2),

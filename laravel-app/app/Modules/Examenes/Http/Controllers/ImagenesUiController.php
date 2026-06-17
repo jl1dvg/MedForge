@@ -97,11 +97,14 @@ class ImagenesUiController
         $solAgendadas     = (int)($meta['solicitudes_agendadas'] ?? 0);
         $cumplPct         = $meta['cumplimiento_realizacion_al_corte_pct'] ?? null;
         $sla48Pct         = null;
+        $atendidos        = 0;
         foreach ($db['cards'] ?? [] as $card) {
             if (($card['label'] ?? '') === 'SLA informe <= 48h') {
                 $raw = $card['value'] ?? '—';
                 if ($raw !== '—') { $sla48Pct = (float)str_replace('%', '', $raw); }
-                break;
+            }
+            if (($card['label'] ?? '') === 'Atendidos') {
+                $atendidos = (int)($card['value'] ?? 0);
             }
         }
 
@@ -159,7 +162,7 @@ class ImagenesUiController
         $exec = [
             'kpis' => [
                 ['cls' => 'primary',  'source' => 'Solicitudes', 'label' => 'Solicitados',          'value' => number_format($solicTotal),    'hint' => 'Origen de la demanda'],
-                ['cls' => 'blue',     'source' => 'Agenda',      'label' => 'Realizados',            'value' => number_format($realizados),    'hint' => 'Atendidos en el período'],
+                ['cls' => 'blue',     'source' => 'Agenda',      'label' => 'Atendidos',             'value' => number_format($atendidos),     'hint' => 'Producción real ejecutada'],
                 ['cls' => 'success',  'source' => 'Billing',     'label' => 'Facturados',            'value' => number_format($facturados),    'hint' => 'Con billing emitido'],
                 ['cls' => 'warning',  'source' => 'Backlog',     'label' => 'Pendiente facturar',    'value' => number_format($pendFact),      'hint' => 'Sin billing aún'],
                 ['cls' => 'money',    'source' => 'Producción',  'label' => 'Facturado real',        'value' => $fmtMoney($produccionFact),    'hint' => 'Monto cobrado'],
