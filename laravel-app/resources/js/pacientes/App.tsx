@@ -139,7 +139,7 @@ export default function App() {
     const nombres = [data.fname, data.mname].filter(Boolean).join(' ').trim();
     const apellidos = [data.lname, data.lname2].filter(Boolean).join(' ').trim();
     const payload = {
-      cedula: data.cedula,
+      cedula: data.cedula || hcNumber,
       fname: data.fname,
       mname: data.mname,
       lname: data.lname,

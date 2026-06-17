@@ -22,6 +22,7 @@ function buildTimeline(p: any): any[] {
 function normalizePatient(raw: any, id: number): Patient {
   const rawDisplayName = String(raw.display_name || '').trim();
   const rawFullName = String(raw.full_name || '').trim();
+  const cedula = String(raw.cedula || raw.identificacion || '').trim() || String(raw.hc_number || raw.hc || '').trim();
   const fname = String(raw.fname || '').trim();
   const mname = String(raw.mname || '').trim();
   const lname = String(raw.lname || '').trim();
@@ -79,7 +80,7 @@ function normalizePatient(raw: any, id: number): Patient {
     full_name: fullName,
     display_name: displayName,
     initials: ini,
-    cedula: String(raw.cedula || raw.identificacion || raw.hc_number || raw.hc || ''),
+    cedula,
     fecha_nac: fechaNac,
     edad,
     sexo: String(raw.sexo || raw.genero || 'M'),
