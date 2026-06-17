@@ -117,7 +117,6 @@ jobs:
 
             # Copiar assets Vite al public raíz (hasta migración completa a Laravel)
             rm -rf "$PROJECT/public/build"
-            rm -rf "$PROJECT/public/build"
             mkdir -p "$PROJECT/public/build"
             rsync -a --delete "$PROJECT/laravel-app/public/build/" "$PROJECT/public/build/"
 
@@ -292,6 +291,7 @@ jobs:
             $PHP artisan view:cache
 
             # Copiar assets Vite al public raíz (hasta migración completa a Laravel)
+            rm -rf "$PROJECT/public/build"
             mkdir -p "$PROJECT/public/build"
             rsync -a --delete "$PROJECT/laravel-app/public/build/" "$PROJECT/public/build/"
 
