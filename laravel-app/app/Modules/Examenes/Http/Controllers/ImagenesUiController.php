@@ -83,7 +83,8 @@ class ImagenesUiController
             if ($opt['value'] === $sedeFilter) { $sedeLabel = $opt['label']; break; }
         }
 
-        $realizados       = (int)($meta['solicitudes_realizadas'] ?? 0);
+        $realizados           = (int)($meta['solicitudes_realizadas'] ?? 0);
+        $solicitudesFacturadas = (int)($meta['solicitudes_facturadas'] ?? 0);
         $facturados       = (int)($meta['facturados'] ?? 0);
         $pendFact         = (int)($meta['pendientes_facturar'] ?? 0);
         $pendPago         = (int)($meta['pendientes_pago'] ?? 0);
@@ -171,16 +172,14 @@ class ImagenesUiController
             'flow' => [
                 ['key' => 'sol',   'cls' => 'neutral', 'label' => 'Solicitudes', 'value' => $solicTotal,   'context' => 'Origen de demanda',
                  'leak' => ['label' => 'Sin agenda', 'count' => (int)($meta['solicitudes_sin_agenda'] ?? 0), 'amount' => 0]],
-                ['key' => 'real',  'cls' => 'primary', 'label' => 'Realizados',  'value' => $realizados,   'context' => 'Atendidos',
-                 'leak' => ['label' => 'Ausentes/cancel.', 'count' => (int)($meta['solicitudes_ausentes'] ?? 0), 'amount' => 0]],
-                ['key' => 'fact',  'cls' => 'success', 'label' => 'Facturados',  'value' => $facturados,   'context' => 'Billing emitido',
-                 'leak' => ['label' => 'Pend. facturar', 'count' => $pendFact, 'amount' => 0]],
-                ['key' => 'cobro', 'cls' => 'money',   'label' => 'Cobrado est.','value' => (int)round($produccionFact), 'context' => 'Producción real', 'leak' => null],
+                ['key' => 'real',  'cls' => 'primary', 'label' => 'Realizadas',  'value' => $realizados,   'context' => 'Solicitudes ejecutadas',
+                 'leak' => ['label' => 'Ausentes/cancel.', 'count' => (int)($meta['solicitudes_ausentes'] ?? 0) + (int)($meta['solicitudes_canceladas'] ?? 0), 'amount' => 0]],
+                ['key' => 'fact',  'cls' => 'success', 'label' => 'Facturadas',  'value' => $solicitudesFacturadas, 'context' => 'Solicitudes con billing emitido',
+                 'leak' => ['label' => 'Realizadas sin facturar', 'count' => max(0, $realizados - $solicitudesFacturadas), 'amount' => 0]],
             ],
             'links' => [
                 ['pct' => $solicTotal > 0 ? round($realizados / $solicTotal * 100) : 0],
-                ['pct' => $realizados > 0 ? round($facturados / $realizados * 100) : 0],
-                ['pct' => 100],
+                ['pct' => $realizados > 0 ? round($solicitudesFacturadas / $realizados * 100) : 0],
             ],
             'summary' => [
                 'oportunidad' => $fmtMoney($produccionFact + $montoPend),
