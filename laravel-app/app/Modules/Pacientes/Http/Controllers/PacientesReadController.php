@@ -5,6 +5,7 @@ namespace App\Modules\Pacientes\Http\Controllers;
 use App\Modules\Pacientes\Http\Requests\StorePacienteRequest;
 use App\Modules\Pacientes\Http\Requests\UpdatePacienteRequest;
 use App\Modules\Pacientes\Services\Paciente360ParityService;
+use App\Modules\Pacientes\Services\PacienteDetailService;
 use App\Modules\Pacientes\Services\PacienteReadService;
 use App\Modules\Pacientes\Services\PacienteWriteService;
 use App\Modules\Pacientes\Services\PacientesFlujoService;
@@ -27,7 +28,8 @@ class PacientesReadController
 
     public function __construct(
         private readonly PacienteWriteService $writeService,
-        private readonly PacienteReadService $readService
+        private readonly PacienteReadService $readService,
+        private readonly PacienteDetailService $detailService
     )
     {
         /** @var PDO $pdo */
@@ -118,7 +120,7 @@ class PacientesReadController
         }
 
         try {
-            $context = $this->service->obtenerContextoPaciente($hcNumber);
+            $context = $this->detailService->obtenerContextoPaciente($hcNumber);
         } catch (\Throwable $e) {
             \Illuminate\Support\Facades\Log::error('Error cargando detalles de paciente', [
                 'hc_number' => $hcNumber,
