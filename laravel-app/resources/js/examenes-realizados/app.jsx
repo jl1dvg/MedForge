@@ -3,10 +3,30 @@ import { TABS, TIPOS } from './catalog';
 import { inferTipoKey, inferOjo } from './helpers';
 import { KpiRow, Tabs, TabDescription, DateRangeBanner, Filters, Toast } from './components';
 import { BulkBar, ExamTable } from './table';
-import { InformarModal, VerImagenesModal, MarcarUrgenteModal, HelpModal, TabHelpModal } from './modals';
+import { InformarModal, VerImagenesModal, ReclamoArchivosModal, MarcarUrgenteModal, HelpModal, TabHelpModal } from './modals';
 
 // Filters that are applied server-side (reload page on change)
 const SERVER_FILTER_KEYS = ['from', 'to', 'afiliacion', 'sede', 'tipo'];
+
+function csrfToken() {
+  return document.querySelector('meta[name="csrf-token"]')?.content || '';
+}
+
+async function parseJsonResponse(response) {
+  const text = await response.text();
+  let data = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch (e) {
+    throw new Error('El servidor devolvió una respuesta inválida al verificar el NAS.');
+  }
+
+  if (!response.ok || !data || data.success === false) {
+    throw new Error(data?.error || 'No se pudo verificar el NAS.');
+  }
+
+  return data;
+}
 
 function buildUrl(baseUrl, serverFilters) {
   const params = new URLSearchParams();
@@ -60,6 +80,9 @@ function normalizeRow(raw) {
     nas_status: nasHasFiles ? 'con-archivos' : 'sin-archivos',
     nas_files_count: count,
     nas_files: nasFiles,
+    file_claim_id: raw.file_claim_id || null,
+    file_claim_status: raw.file_claim_status || null,
+    file_claim_requested_at: raw.file_claim_requested_at || null,
     // priority fields – from server (imagenes_bandeja_prioridad join)
     prioridad: raw.bandeja_prioridad || null,
     fecha_limite: raw.bandeja_fecha_limite || null,
@@ -84,6 +107,9 @@ export default function App({ config }) {
   const [kpiFilter, setKpiFilter] = useState('');
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [toast, setToast] = useState(null);
+  const [recheckingIds, setRecheckingIds] = useState(() => new Set());
+  const [claimRow, setClaimRow] = useState(null);
+  const [claimLoading, setClaimLoading] = useState(false);
 
   // modals
   const [informarRow, setInformarRow] = useState(null);
@@ -240,6 +266,116 @@ export default function App({ config }) {
     }).catch(() => showToast('Error al quitar de la bandeja', 'mdi-alert', 'warn'));
   }, [showToast]);
 
+  const updateRowWithNasFiles = useCallback((row, files) => {
+    const normalizedFiles = Array.isArray(files) ? files : [];
+    const updatedRow = {
+      ...row,
+      nas_status: normalizedFiles.length > 0 ? 'con-archivos' : 'sin-archivos',
+      nas_files_count: normalizedFiles.length,
+      nas_files: normalizedFiles,
+      file_claim_id: normalizedFiles.length > 0 ? null : row.file_claim_id,
+      file_claim_status: normalizedFiles.length > 0 ? null : row.file_claim_status,
+      file_claim_requested_at: normalizedFiles.length > 0 ? null : row.file_claim_requested_at,
+    };
+
+    setRows((rs) => rs.map((r) => r.id === row.id ? updatedRow : r));
+    return updatedRow;
+  }, []);
+
+  const markRowClaimed = useCallback((row, claim) => {
+    const updatedRow = {
+      ...row,
+      file_claim_id: claim?.id || row.file_claim_id || null,
+      file_claim_status: claim?.status || row.file_claim_status || 'abierto',
+      file_claim_requested_at: claim?.requested_at || row.file_claim_requested_at || null,
+    };
+
+    setRows((rs) => rs.map((r) => r.id === row.id ? updatedRow : r));
+    return updatedRow;
+  }, []);
+
+  const postNasRecheck = useCallback((row, { createClaim = false, message = '' } = {}) => {
+    return fetch('/v2/imagenes/examenes-realizados/nas/recheck', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken() },
+      body: JSON.stringify({
+        id: row.id,
+        form_id: row.form_id,
+        hc_number: row.hc_number,
+        full_name: row.full_name,
+        paciente: row.full_name,
+        cedula: row.cedula,
+        tipo_examen: row.tipo_label,
+        tipo_label: row.tipo_label,
+        ojo: row.ojo,
+        afiliacion: row.afiliacion,
+        sede: row.sede,
+        fecha_examen: row.fecha_examen,
+        create_claim: createClaim,
+        message,
+      }),
+    }).then(parseJsonResponse);
+  }, []);
+
+  const revisarArchivos = useCallback((row) => {
+    setRecheckingIds((prev) => new Set(prev).add(row.id));
+    postNasRecheck(row)
+      .then((data) => {
+        if (data.found) {
+          const updatedRow = updateRowWithNasFiles(row, data.files || []);
+          setClaimRow(null);
+          setActiveTab('no-informados');
+          setVerImagenesRow(updatedRow);
+          showToast(`${data.files_count || 0} archivo(s) encontrados. Ya puedes informar.`, 'mdi-folder-check-outline');
+          return;
+        }
+        if (row.file_claim_id) {
+          setClaimRow(null);
+          showToast(`Sigue sin archivos. Reclamo #${row.file_claim_id} abierto.`, 'mdi-folder-alert-outline', 'warn');
+          return;
+        }
+        setClaimRow(row);
+        showToast('El NAS sigue sin archivos. Puedes crear el reclamo operativo.', 'mdi-folder-alert-outline', 'warn');
+      })
+      .catch((e) => {
+        showToast(e.message || 'No se pudo verificar el NAS. No se creó reclamo.', 'mdi-alert-circle-outline', 'warn');
+      })
+      .finally(() => {
+        setRecheckingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(row.id);
+          return next;
+        });
+      });
+  }, [postNasRecheck, showToast, updateRowWithNasFiles]);
+
+  const confirmarReclamoArchivos = useCallback((row, message) => {
+    setClaimLoading(true);
+    postNasRecheck(row, { createClaim: true, message })
+      .then((data) => {
+        if (data.found) {
+          const updatedRow = updateRowWithNasFiles(row, data.files || []);
+          setClaimRow(null);
+          setActiveTab('no-informados');
+          setVerImagenesRow(updatedRow);
+          showToast(`${data.files_count || 0} archivo(s) encontrados. No se creó reclamo.`, 'mdi-folder-check-outline');
+          return;
+        }
+        if (data.claim) {
+          markRowClaimed(row, data.claim);
+          setClaimRow(null);
+          showToast(`Reclamo #${data.claim.id} creado para revisión de archivos.`, 'mdi-send-check-outline');
+          return;
+        }
+        throw new Error('No se pudo crear el reclamo.');
+      })
+      .catch((e) => {
+        showToast(e.message || 'No se pudo crear el reclamo.', 'mdi-alert-circle-outline', 'warn');
+      })
+      .finally(() => setClaimLoading(false));
+  }, [markRowClaimed, postNasRecheck, showToast, updateRowWithNasFiles]);
+
   const sendSelectedToBandeja = useCallback(() => {
     const sel = rows.filter((r) => selectedIds.has(r.id) && !r.informado);
     if (sel.length) setUrgenteRows(sel);
@@ -300,6 +436,8 @@ export default function App({ config }) {
             onMarcarUrgente={(r) => setUrgenteRows([r])}
             onQuitarBandeja={quitarBandeja}
             onPrint={printRows}
+            onRevisarArchivos={revisarArchivos}
+            recheckingIds={recheckingIds}
           />
         </div>
       </div>
@@ -310,6 +448,14 @@ export default function App({ config }) {
           showToast={showToast} doctores={doctores} />
       )}
       {verImagenesRow && <VerImagenesModal row={verImagenesRow} onClose={() => setVerImagenesRow(null)} />}
+      {claimRow && (
+        <ReclamoArchivosModal
+          row={claimRow}
+          loading={claimLoading}
+          onClose={() => setClaimRow(null)}
+          onConfirm={confirmarReclamoArchivos}
+        />
+      )}
       {urgenteRows && (
         <MarcarUrgenteModal rows={urgenteRows} doctores={doctores} today={today}
           currentUser={currentUser} defaultResponsable={defaultResponsable} onClose={() => setUrgenteRows(null)} onConfirm={confirmUrgente} />
