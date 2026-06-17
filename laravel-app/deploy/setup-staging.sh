@@ -59,8 +59,10 @@ $COMPOSER install --no-interaction
 echo ""
 echo "=== Configurando Laravel ==="
 $PHP_BIN artisan config:clear
+$PHP_BIN artisan cache:clear
 $PHP_BIN artisan route:clear
 $PHP_BIN artisan view:clear
+$PHP_BIN artisan imagenes:nas-diagnose || echo "[AVISO] imagenes:nas-diagnose reportó NAS no disponible"
 
 # 5. Permisos
 echo ""

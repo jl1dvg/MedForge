@@ -23,8 +23,12 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
         apiPrefix: '',
     )
+    ->withEvents(false)
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->encryptCookies(except: ['PHPSESSID', 'app_timezone']);
+        $middleware->validateCsrfTokens(except: [
+            'auth/login',
+        ]);
         // LegacySessionBridge runs after Laravel session; ApplyBrowserTimezone reads cookie.
         $middleware->web(append: [LegacySessionBridge::class, ApplyBrowserTimezone::class]);
         $middleware->api(append: [LegacySessionBridge::class]);
@@ -45,7 +49,9 @@ return Application::configure(basePath: dirname(__DIR__))
                 return response()->json(['error' => 'Sesión expirada'], 419);
             }
 
-            return redirect('/auth/login?expired=1')
-                ->withInput($request->only('username'));
+            // Avoid ->withInput() here: the session may be in an inconsistent
+            // state when CSRF validation fails, causing a secondary exception
+            // that would render the raw 419 page instead of this redirect.
+            return redirect('/auth/login?expired=1');
         });
     })->create();

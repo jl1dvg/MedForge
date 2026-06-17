@@ -26,7 +26,7 @@
         <link rel="stylesheet" href="/css/skin_color.css">
         <link rel="stylesheet" href="/css/pages/medforge-datatables.css">
     @endif
-    <link rel="stylesheet" href="/css/feedback-widget.css">
+    {{-- <link rel="stylesheet" href="/css/feedback-widget.css"> --}}
 
     @stack('styles')
 </head>
@@ -47,7 +47,7 @@
         </div>
     </div>
 
-    @include('layouts.partials.feedback_widget')
+    {{-- @include('layouts.partials.feedback_widget') --}}
     @include('layouts.partials.welcome_tour')
 
     <footer class="main-footer">
@@ -73,7 +73,7 @@
     @endif
     <script src="/js/pages/global-search.js"></script>
 @endif
-<script src="/js/pages/feedback-widget.js"></script>
+{{-- <script src="/js/pages/feedback-widget.js"></script> --}}
 
 {{-- El tour de bienvenida al nuevo menú se gestiona desde welcome_tour.blade.php via localStorage --}}
 
@@ -101,6 +101,20 @@
                 document.cookie = 'app_timezone=' + encodeURIComponent(tz) + '; path=/; max-age=86400; SameSite=Lax';
             }
         } catch (e) {}
+    })();
+    (function () {
+        // When a fetch call returns 419 (stale CSRF token after session expiry),
+        // reload the page to pick up the new session's CSRF token.
+        var _origFetch = window.fetch;
+        window.fetch = function () {
+            return _origFetch.apply(this, arguments).then(function (response) {
+                if (response.status === 419) {
+                    window.location.reload();
+                    return new Promise(function () {});
+                }
+                return response;
+            });
+        };
     })();
 </script>
 </body>
