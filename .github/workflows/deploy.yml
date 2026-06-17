@@ -104,6 +104,9 @@ jobs:
             fi
             $PHP composer.phar install --no-interaction 2>&1
 
+            # Aplicar cambios de esquema antes de exponer el nuevo código.
+            $PHP artisan migrate --force
+
             # Recrear symlink storage → public (se borra en cada rsync porque está en .gitignore)
             $PHP artisan storage:link --force 2>/dev/null || true
 
@@ -271,6 +274,9 @@ jobs:
 
             # Composer (producción ya tiene composer.phar)
             $PHP composer.phar install --no-dev --optimize-autoloader --no-interaction 2>&1
+
+            # Aplicar cambios de esquema antes de exponer el nuevo código.
+            $PHP artisan migrate --force
 
             # Recrear symlink storage → public (se borra en cada rsync porque está en .gitignore)
             $PHP artisan storage:link --force 2>/dev/null || true
