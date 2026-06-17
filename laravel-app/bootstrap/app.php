@@ -51,4 +51,22 @@ return Application::configure(basePath: dirname(__DIR__))
             // that would render the raw 419 page instead of this redirect.
             return redirect('/auth/login?expired=1');
         });
+        $exceptions->respond(function ($response, \Throwable $e, $request) {
+            if ((int) $response->getStatusCode() !== 419 || $request->expectsJson()) {
+                return $response;
+            }
+
+            try {
+                if ($request->hasSession()) {
+                    $request->session()->invalidate();
+                    $request->session()->regenerateToken();
+                }
+            } catch (\Throwable) {
+                // Keep the fallback response reliable even if the stale session
+                // cannot be mutated.
+            }
+
+            return redirect('/auth/login?expired=1')
+                ->header('Cache-Control', 'no-store, no-cache, must-revalidate');
+        });
     })->create();
