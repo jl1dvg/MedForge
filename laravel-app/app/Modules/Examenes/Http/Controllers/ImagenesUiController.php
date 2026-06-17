@@ -234,8 +234,8 @@ class ImagenesUiController
             ],
             'actions' => [
                 ['severity' => 'high',   'title' => 'Cerrar backlog de facturación', 'metric' => number_format($pendFact) . ' estudios', 'owner' => 'Billing', 'action' => 'Emitir billing para recuperar ' . $fmtMoney($montoPend)],
-                ['severity' => 'medium', 'title' => 'Reducir TAT de informe',        'metric' => ($tatP90 ? round($tatP90) . 'h P90' : '—'),  'owner' => 'Radiología', 'action' => 'Objetivo ≤48h SLA (actual: ' . ($sla48Pct !== null ? round($sla48Pct) . '%' : '—') . ')'],
-                ['severity' => 'medium', 'title' => 'Resolver pendientes de pago',   'metric' => number_format($pendPago) . ' registros',     'owner' => 'Tesorería', 'action' => 'Seguimiento de cartera facturada sin cobro'],
+                ['severity' => 'medium', 'title' => 'Reducir solicitudes sin agenda', 'metric' => number_format($sinAgenda) . ' solicitudes', 'owner' => 'Agendamiento', 'action' => 'Oportunidad económica estimada: ' . $fmtMoney($sinAgendaMonto)],
+                ['severity' => 'medium', 'title' => 'Reducir tiempo de acceso al examen', 'metric' => ($accesoP90 !== null ? round($accesoP90) . ' días P90' : '—'), 'owner' => 'Agenda/Radiología', 'action' => 'Volumen analizado: ' . number_format($accesoMuestra) . ' casos'],
             ],
             'ledger' => [
                 ['label' => 'Producción facturada',    'value' => $fmtMoney($produccionFact)],
