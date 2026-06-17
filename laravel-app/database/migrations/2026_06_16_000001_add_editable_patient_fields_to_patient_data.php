@@ -9,9 +9,6 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('patient_data', function (Blueprint $table): void {
-            if (!Schema::hasColumn('patient_data', 'cedula')) {
-                $table->string('cedula', 64)->nullable()->after('hc_number')->index();
-            }
             if (!Schema::hasColumn('patient_data', 'telefono_alt')) {
                 $table->string('telefono_alt', 64)->nullable()->after('celular');
             }
@@ -37,10 +34,6 @@ return new class extends Migration
             }
             if (Schema::hasColumn('patient_data', 'telefono_alt')) {
                 $table->dropColumn('telefono_alt');
-            }
-            if (Schema::hasColumn('patient_data', 'cedula')) {
-                $table->dropIndex(['cedula']);
-                $table->dropColumn('cedula');
             }
         });
     }
