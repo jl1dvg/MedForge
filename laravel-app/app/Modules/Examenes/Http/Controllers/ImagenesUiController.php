@@ -106,7 +106,6 @@ class ImagenesUiController
         $sinAgendaMonto   = (float)($meta['solicitudes_sin_agenda_monto_estimado'] ?? 0);
         $conAgendaNoReal  = (int)($meta['solicitudes_ausentes'] ?? 0) + (int)($meta['solicitudes_canceladas'] ?? 0);
         $arrastreCorte    = max(0, $solicTotal - $realizados);
-        $accesoMediana    = $tiempoAcceso['mediana_dias'] ?? null;
         $accesoP90        = $tiempoAcceso['p90_dias'] ?? null;
         $accesoMuestra    = (int)($tiempoAcceso['muestra'] ?? 0);
         $sla48Pct         = null;
@@ -201,7 +200,7 @@ class ImagenesUiController
                 'rows' => [
                     ['icon' => 'mdi-cash-multiple', 'label' => 'Oportunidad estimada', 'value' => $fmtMoney($sinAgendaMonto), 'hint' => 'Solicitudes sin agenda valorizadas'],
                     ['icon' => 'mdi-progress-clock', 'label' => 'Arrastre al corte', 'value' => number_format($arrastreCorte) . ' solicitudes', 'hint' => 'Solicitudes aún no concretadas'],
-                    ['icon' => 'mdi-timer-sand', 'label' => 'Acceso al examen', 'value' => $accesoMediana !== null ? round($accesoMediana, 1) . ' días' : '—', 'hint' => $accesoMediana !== null ? 'P90: ' . round($accesoP90, 1) . ' días · ' . number_format($accesoMuestra) . ' casos' : 'Sin datos suficientes'],
+                    ['icon' => 'mdi-timer-sand', 'label' => 'Acceso al examen', 'value' => $accesoP90 !== null ? round($accesoP90) . ' días' : '—', 'hint' => $accesoP90 !== null ? 'P90 · ' . number_format($accesoMuestra) . ' casos analizados · 90% de los pacientes accede en ≤' . round($accesoP90) . ' días' : 'Sin datos suficientes'],
                     ['icon' => 'mdi-calendar-remove', 'label' => 'Sin agenda', 'value' => number_format($sinAgenda) . ' solicitudes', 'hint' => 'Aún no agendadas'],
                     ['icon' => 'mdi-account-cancel', 'label' => 'Agendadas no realizadas', 'value' => number_format($conAgendaNoReal) . ' solicitudes', 'hint' => 'Ausentes o canceladas'],
                 ],
