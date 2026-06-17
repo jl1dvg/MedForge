@@ -60,9 +60,18 @@ export default function App() {
   }, []);
 
   const onWhats = useCallback((p: Patient) => {
-    const tel = p.telefono.replace(/\D/g, '');
-    if (tel) window.open(`https://wa.me/593${tel.replace(/^0/, '')}`, '_blank');
-    else showToast('Paciente sin teléfono registrado', 'mdi-alert-circle-outline', 'warn');
+    const tel = (p.telefono || '').replace(/\D/g, '');
+    const search = tel || p.hc_number || p.display_name || p.full_name;
+    if (!search) {
+      showToast('Paciente sin teléfono ni HC registrado', 'mdi-alert-circle-outline', 'warn');
+      return;
+    }
+
+    const params = new URLSearchParams();
+    params.set('search', search);
+    if (p.hc_number) params.set('hc_number', p.hc_number);
+    if (tel) params.set('number', tel);
+    window.location.href = `/v3/whatsapp/chat?${params.toString()}`;
   }, [showToast]);
 
   const openAgendaForPatient = useCallback((p: Patient) => {
