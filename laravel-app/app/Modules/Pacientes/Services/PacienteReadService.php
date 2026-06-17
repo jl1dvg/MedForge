@@ -29,7 +29,8 @@ class PacienteReadService
         $hcNumbers = $pageRows->pluck('hc_number')->map(fn(mixed $value): string => (string) $value)->filter()->values()->all();
 
         $latestVisitByHc = $this->latestVisitByHc($hcNumbers);
-        $appointmentsByHc = $this->appointmentsByHc($hcNumbers);
+        $medicosTratantesByHc = $this->medicosTratantesByHc($hcNumbers);
+        $appointmentsByHc = $this->appointmentsByHc($hcNumbers, $medicosTratantesByHc);
         $activeRequestsByHc = $this->activeRequestsByHc($hcNumbers);
         $alertsByHc = $this->alertsByHc($hcNumbers);
         $manualDoctors = $this->manualDoctorsById(
@@ -299,7 +300,7 @@ class PacienteReadService
      * @param array<int,string> $hcNumbers
      * @return array<string,array<string,mixed>>
      */
-    private function appointmentsByHc(array $hcNumbers): array
+    private function appointmentsByHc(array $hcNumbers, array $medicosTratantesByHc = []): array
     {
         if ($hcNumbers === [] || !$this->tableExists('procedimiento_proyectado')) {
             return [];
@@ -323,18 +324,9 @@ class PacienteReadService
 
             $sedeInfo = $this->normalizarSedePrincipal((string) ($row->id_sede ?? ''))
                 ?? $this->normalizarSedePrincipal((string) ($row->sede_departamento ?? ''));
-            $doctor = trim((string) ($row->doctor ?? ''));
             if (!isset($items[$hcNumber])) {
                 $items[$hcNumber] = [
-                    'medico_tratante' => $doctor !== '' ? [
-                        'id' => $this->catalogKey($doctor),
-                        'nombre' => $doctor,
-                        'especialidad' => '',
-                        'procedimientos_count' => 0,
-                        'ultima_fecha' => null,
-                        'confirmado' => true,
-                        'origen' => 'procedimiento',
-                    ] : null,
+                    'medico_tratante' => $medicosTratantesByHc[$hcNumber] ?? null,
                     'sede_info' => $sedeInfo,
                     'proxima_cita' => null,
                 ];
@@ -342,6 +334,7 @@ class PacienteReadService
 
             $fecha = (string) ($row->fecha ?? '');
             if ($fecha !== '' && $fecha >= $today && ($items[$hcNumber]['proxima_cita'] ?? null) === null) {
+                $doctor = trim((string) ($row->doctor ?? ''));
                 $items[$hcNumber]['proxima_cita'] = [
                     'fecha' => $fecha,
                     'hora' => (string) ($row->hora ?? ''),
@@ -352,6 +345,23 @@ class PacienteReadService
         }
 
         return $items;
+    }
+
+    /**
+     * @param array<int,string> $hcNumbers
+     * @return array<string,array<string,mixed>>
+     */
+    private function medicosTratantesByHc(array $hcNumbers): array
+    {
+        if ($hcNumbers === [] || !$this->tableExists('users') || !$this->tableExists('procedimiento_proyectado')) {
+            return [];
+        }
+
+        try {
+            return (new MedicoTratanteResolver(DB::connection()->getPdo()))->resolveMany($hcNumbers);
+        } catch (\Throwable) {
+            return [];
+        }
     }
 
     /**
@@ -423,14 +433,20 @@ class PacienteReadService
         foreach ($rows as $row) {
             $id = (string) ($row->id ?? '');
             $nombre = trim((string) (($row->nombre ?? '') ?: ($row->full_name ?? '')));
+            $especialidadBase = trim((string) ($row->especialidad ?? ''));
+            $subespecialidad = trim((string) ($row->subespecialidad ?? ''));
             if ($id === '' || $nombre === '') {
+                continue;
+            }
+
+            if (!$this->isEspecialidadTratante($especialidadBase . ' ' . $subespecialidad)) {
                 continue;
             }
 
             $items[$id] = [
                 'id' => (int) $id,
                 'nombre' => $nombre,
-                'especialidad' => trim((string) (($row->especialidad ?? '') ?: ($row->subespecialidad ?? ''))),
+                'especialidad' => $especialidadBase !== '' ? $especialidadBase : $subespecialidad,
                 'procedimientos_count' => 0,
                 'ultima_fecha' => null,
                 'confirmado' => true,

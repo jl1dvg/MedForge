@@ -113,6 +113,96 @@ class PacientesReadServiceTest extends TestCase
         $this->assertSame('DRA UNO', $catalogos['medicos'][0]['nombre']);
     }
 
+    public function test_patient_list_only_shows_treating_doctors_with_ophthalmologist_surgeon_specialty(): void
+    {
+        $this->createMinimalPatientDataTable();
+        $this->createProcedimientosTable();
+        $this->createUsersTable();
+
+        \DB::table('patient_data')->insert([
+            [
+                'hc_number' => '100',
+                'fname' => 'ANA',
+                'mname' => '',
+                'lname' => 'PEREZ',
+                'lname2' => '',
+                'afiliacion' => 'PARTICULAR',
+                'fecha_nacimiento' => '1990-01-01',
+                'sexo' => 'F',
+                'celular' => '',
+                'email' => '',
+                'direccion' => '',
+                'ciudad' => '',
+                'created_at' => '2026-06-02 09:00:00',
+            ],
+            [
+                'hc_number' => '101',
+                'fname' => 'LUIS',
+                'mname' => '',
+                'lname' => 'MORA',
+                'lname2' => '',
+                'afiliacion' => 'PARTICULAR',
+                'fecha_nacimiento' => '1991-01-01',
+                'sexo' => 'M',
+                'celular' => '',
+                'email' => '',
+                'direccion' => '',
+                'ciudad' => '',
+                'created_at' => '2026-06-02 09:00:00',
+            ],
+        ]);
+
+        \DB::table('users')->insert([
+            [
+                'nombre' => 'OPTOMETRIA OPT',
+                'full_name' => 'OPTOMETRIA OPT',
+                'subespecialidad' => 'Optometria',
+                'especialidad' => 'Optometria',
+                'sede' => 'MATRIZ',
+                'id_trabajador' => 'OPT',
+            ],
+            [
+                'nombre' => 'Andres Fernando Polit Hoyos',
+                'full_name' => 'Andres Fernando Polit Hoyos',
+                'subespecialidad' => 'Cornea',
+                'especialidad' => 'Cirujano Oftalmologo',
+                'sede' => 'MATRIZ',
+                'id_trabajador' => '32',
+            ],
+        ]);
+
+        \DB::table('procedimiento_proyectado')->insert([
+            [
+                'hc_number' => '100',
+                'doctor' => 'OPTOMETRIA OPT',
+                'procedimiento_proyectado' => 'CONSULTA',
+                'fecha' => '2026-06-17',
+                'hora' => '09:00',
+                'id_sede' => 'MATRIZ',
+                'sede_departamento' => '',
+                'sigcenter_present' => 1,
+            ],
+            [
+                'hc_number' => '101',
+                'doctor' => 'POLIT HOYOS ANDRES FERNANDO',
+                'procedimiento_proyectado' => 'CONSULTA',
+                'fecha' => '2026-06-17',
+                'hora' => '09:00',
+                'id_sede' => 'MATRIZ',
+                'sede_departamento' => '',
+                'sigcenter_present' => 1,
+            ],
+        ]);
+
+        $payload = (new PacienteReadService())->obtenerPacientesReact(null, 0);
+        $byHc = collect($payload['data'])->keyBy('hc_number');
+
+        $this->assertSame('', $byHc['100']['medico']);
+        $this->assertNull($byHc['100']['medico_tratante']);
+        $this->assertSame('Andres Fernando Polit Hoyos', $byHc['101']['medico']);
+        $this->assertSame('Cirujano Oftalmologo', $byHc['101']['medico_tratante']['especialidad']);
+    }
+
     public function test_kpis_count_valid_patients_current_month_appointments_and_active_requests(): void
     {
         $this->createMinimalPatientDataTable();
