@@ -104,6 +104,11 @@ jobs:
             fi
             $PHP composer.phar install --no-interaction 2>&1
 
+            # Limpiar caches antes de migrar para evitar config/rutas/vistas obsoletas
+            # después de rsync. Esto evita sesiones/CSRF y servicios con estado viejo.
+            $PHP artisan optimize:clear
+            $PHP artisan cache:clear
+
             # Aplicar cambios de esquema antes de exponer el nuevo código.
             $PHP artisan migrate --force
 
@@ -112,8 +117,13 @@ jobs:
 
             # Limpiar caches (staging no las cachea para facilitar cambios)
             $PHP artisan config:clear
+            $PHP artisan cache:clear
             $PHP artisan route:clear
             $PHP artisan view:clear
+
+            # Verificar NAS después de limpiar caché para que el módulo de imágenes
+            # no quede mostrando "NAS no disponible" por estado previo al deploy.
+            $PHP artisan imagenes:nas-diagnose || echo "::warning::NAS no disponible durante post-deploy staging"
 
             # Copiar assets Vite al public raíz (hasta migración completa a Laravel)
             rm -rf "$PROJECT/public/build"
@@ -190,7 +200,10 @@ jobs:
             fi
 
             $PHP composer.phar install --no-interaction 2>&1
+            $PHP artisan optimize:clear
+            $PHP artisan cache:clear
             $PHP artisan config:clear
+            $PHP artisan cache:clear
             $PHP artisan route:clear
             $PHP artisan view:clear
 
@@ -279,6 +292,11 @@ jobs:
             # Composer (producción ya tiene composer.phar)
             $PHP composer.phar install --no-dev --optimize-autoloader --no-interaction 2>&1
 
+            # Limpiar caches antes de migrar para evitar config/rutas/vistas obsoletas
+            # después de rsync.
+            $PHP artisan optimize:clear
+            $PHP artisan cache:clear
+
             # Aplicar cambios de esquema antes de exponer el nuevo código.
             $PHP artisan migrate --force
 
@@ -286,9 +304,13 @@ jobs:
             $PHP artisan storage:link --force 2>/dev/null || true
 
             # Cachear para producción
+            $PHP artisan cache:clear
             $PHP artisan config:cache
             $PHP artisan route:cache
             $PHP artisan view:cache
+
+            # Verificar NAS después de limpiar caché para no servir estado obsoleto.
+            $PHP artisan imagenes:nas-diagnose || echo "::warning::NAS no disponible durante post-deploy production"
 
             # Copiar assets Vite al public raíz (hasta migración completa a Laravel)
             rm -rf "$PROJECT/public/build"
@@ -361,6 +383,8 @@ jobs:
             fi
 
             $PHP composer.phar install --no-dev --optimize-autoloader --no-interaction 2>&1
+            $PHP artisan optimize:clear
+            $PHP artisan cache:clear
             $PHP artisan config:cache
             $PHP artisan route:cache
             $PHP artisan view:cache
