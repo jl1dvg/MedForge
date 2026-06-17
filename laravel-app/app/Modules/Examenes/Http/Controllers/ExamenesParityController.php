@@ -1723,194 +1723,56 @@ class ExamenesParityController
             $payload = $this->imagenesUi->imagenesDashboardExportPayload($request->query());
             $detailRows = is_array($payload['detailRows'] ?? null) ? $payload['detailRows'] : [];
             $requestRows = is_array($payload['requestRows'] ?? null) ? $payload['requestRows'] : [];
-            $filtersSummary = is_array($payload['filtersSummary'] ?? null) ? $payload['filtersSummary'] : [];
             $report = is_array($payload['report'] ?? null) ? $payload['report'] : [];
+            $filters = is_array($payload['filters'] ?? null) ? $payload['filters'] : [];
             $filename = 'dashboard_imagenes_' . date('Ymd_His') . '.xlsx';
+
+            $findKpi = static function (array $kpis, string $label): string {
+                foreach ($kpis as $kpi) {
+                    if ((string) ($kpi['label'] ?? '') === $label) {
+                        return (string) ($kpi['value'] ?? '—');
+                    }
+                }
+
+                return '—';
+            };
+            $cohortKpis = is_array($report['cohortKpis'] ?? null) ? $report['cohortKpis'] : [];
+            $operationalKpis = is_array($report['operationalKpis'] ?? null) ? $report['operationalKpis'] : [];
 
             $spreadsheet = new Spreadsheet();
             $sheet = $spreadsheet->getActiveSheet();
-            $sheet->setTitle('Resumen KPI');
+            $sheet->setTitle('Resumen Operativo');
             $generatedAt = (new DateTimeImmutable('now'))->format('d/m/Y H:i');
             $row = 1;
 
-            $this->writeExcelMergedTitle($sheet, $row, 'Dashboard de KPIs de imágenes', 'G');
+            $this->writeExcelMergedTitle($sheet, $row, 'Resumen operativo de imágenes', 'B');
             $row++;
             $sheet->setCellValue("A{$row}", 'Generado:');
             $sheet->setCellValue("B{$row}", $generatedAt);
-            $sheet->setCellValue("D{$row}", 'Periodo:');
-            $sheet->setCellValue("E{$row}", (string) ($report['rangeLabel'] ?? ''));
-            $sheet->setCellValue("F{$row}", 'Agendas:');
-            $sheet->setCellValueExplicit("G{$row}", (string) count($detailRows), DataType::TYPE_STRING);
-            $sheet->getStyle("A{$row}:G{$row}")->getFont()->setBold(true);
-
-            $row++;
-            $sheet->setCellValue("F{$row}", 'Solicitudes:');
-            $sheet->setCellValueExplicit("G{$row}", (string) count($requestRows), DataType::TYPE_STRING);
-            $sheet->getStyle("F{$row}:G{$row}")->getFont()->setBold(true);
-
-            $scopeNotice = trim((string) ($report['scopeNotice'] ?? ''));
-            if ($scopeNotice !== '') {
-                $row += 2;
-                $sheet->setCellValue("A{$row}", $scopeNotice);
-                $sheet->mergeCells("A{$row}:G{$row}");
-                $sheet->getStyle("A{$row}:G{$row}")->applyFromArray($this->excelNoticeStyle('EFF6FF', '1D4ED8'));
-                $sheet->getStyle("A{$row}:G{$row}")->getAlignment()->setWrapText(true);
-            }
+            $sheet->getStyle("A{$row}")->getFont()->setBold(true);
 
             $row += 2;
-            $row = $this->writeExcelSectionHeader($sheet, $row, 'Filtros aplicados', 'G');
-            $filterRows = [];
-            foreach ($filtersSummary as $filter) {
-                $filterRows[] = [
-                    (string) ($filter['label'] ?? ''),
-                    (string) ($filter['value'] ?? ''),
-                ];
-            }
+            $summaryRows = [
+                ['Período', (string) ($report['rangeLabel'] ?? '')],
+                ['Sede', trim((string) ($filters['sede'] ?? '')) !== '' ? (string) $filters['sede'] : 'Todas'],
+                ['Solicitudes', $findKpi($cohortKpis, 'Solicitudes de exámenes')],
+                ['Realizadas', $findKpi($operationalKpis, 'Atendidos')],
+                ['Facturadas', $findKpi($operationalKpis, 'Facturados')],
+                ['Pendiente de facturar', $findKpi($operationalKpis, 'Pendiente de facturar')],
+                ['Solicitudes sin agenda', $findKpi($cohortKpis, 'Solicitudes sin agenda')],
+                ['Oportunidad estimada', $findKpi($cohortKpis, 'Pérdida económica por no agendar')],
+            ];
             $row = $this->writeExcelTable(
                 $sheet,
                 $row,
-                ['Filtro', 'Valor'],
-                $filterRows,
-                'Sin filtros específicos.',
-                [26, 62]
+                ['Campo', 'Valor'],
+                $summaryRows,
+                'Sin datos para el rango seleccionado.',
+                [28, 32]
             );
-
-            $row += 2;
-            $row = $this->writeExcelSectionHeader($sheet, $row, 'Hallazgos clave', 'G');
-            $hallazgosRows = array_map(
-                static fn(string $item): array => [$item],
-                array_values(array_filter(
-                    is_array($report['hallazgosClave'] ?? null) ? $report['hallazgosClave'] : [],
-                    static fn($item): bool => trim((string) $item) !== ''
-                ))
-            );
-            $row = $this->writeExcelTable(
-                $sheet,
-                $row,
-                ['Hallazgo'],
-                $hallazgosRows,
-                'No hubo suficientes datos para generar hallazgos destacados.',
-                [96]
-            );
-
-            $row += 2;
-            $row = $this->writeExcelSectionHeader($sheet, $row, 'Metodología', 'G');
-            $methodologyRows = array_map(
-                static fn(string $item): array => [$item],
-                array_values(array_filter(
-                    is_array($report['methodology'] ?? null) ? $report['methodology'] : [],
-                    static fn($item): bool => trim((string) $item) !== ''
-                ))
-            );
-            $row = $this->writeExcelTable(
-                $sheet,
-                $row,
-                ['Criterio'],
-                $methodologyRows,
-                'Sin metodología documentada.',
-                [96]
-            );
-
-            $row += 2;
-            $row = $this->writeExcelSectionHeader($sheet, $row, 'Bloque 1 - Operación del periodo', 'G');
-            $row = $this->writeExcelTable(
-                $sheet,
-                $row,
-                ['KPI', 'Valor', 'Detalle'],
-                $this->normalizeExcelRows(is_array($report['operationalKpis'] ?? null) ? $report['operationalKpis'] : [], ['label', 'value', 'note']),
-                'Sin KPI operativos para el rango seleccionado.',
-                [28, 16, 54]
-            );
-
-            $row += 2;
-            $row = $this->writeExcelSectionHeader($sheet, $row, 'Cumplimiento y oportunidad', 'G');
-            $row = $this->writeExcelTable(
-                $sheet,
-                $row,
-                ['KPI', 'Valor', 'Detalle'],
-                $this->normalizeExcelRows(is_array($report['qualityKpis'] ?? null) ? $report['qualityKpis'] : [], ['label', 'value', 'note']),
-                'Sin KPI de oportunidad para el rango seleccionado.',
-                [28, 16, 54]
-            );
-
-            $row += 2;
-            $row = $this->writeExcelSectionHeader($sheet, $row, 'Economía y facturación', 'G');
-            $row = $this->writeExcelTable(
-                $sheet,
-                $row,
-                ['KPI', 'Valor', 'Qué significa', 'Cómo se calcula'],
-                $this->normalizeExcelRows(is_array($report['economicKpis'] ?? null) ? $report['economicKpis'] : [], ['label', 'value', 'meaning', 'formula']),
-                'Sin KPI económicos para el rango seleccionado.',
-                [24, 16, 34, 34]
-            );
-
-            $operationalTables = is_array($report['operationalTables'] ?? null) ? $report['operationalTables'] : [];
-            foreach ($operationalTables as $table) {
-                $title = trim((string) ($table['title'] ?? 'Tabla'));
-                $subtitle = trim((string) ($table['subtitle'] ?? ''));
-                $row += 2;
-                $row = $this->writeExcelSectionHeader($sheet, $row, $title, 'G');
-                if ($subtitle !== '') {
-                    $sheet->setCellValue("A{$row}", $subtitle);
-                    $sheet->mergeCells("A{$row}:G{$row}");
-                    $sheet->getStyle("A{$row}:G{$row}")->getFont()->setItalic(true)->getColor()->setRGB('64748B');
-                    $sheet->getStyle("A{$row}:G{$row}")->getAlignment()->setWrapText(true);
-                    $row++;
-                }
-                $headers = array_values(array_map(static fn($value): string => (string) $value, is_array($table['columns'] ?? null) ? $table['columns'] : []));
-                $tableRows = [];
-                foreach (is_array($table['rows'] ?? null) ? $table['rows'] : [] as $tableRow) {
-                    $tableRows[] = array_map(static fn($value): string => (string) $value, is_array($tableRow) ? $tableRow : []);
-                }
-                $row = $this->writeExcelTable(
-                    $sheet,
-                    $row,
-                    $headers,
-                    $tableRows,
-                    trim((string) ($table['empty_message'] ?? 'Sin datos.'))
-                );
-            }
-
-            $row += 2;
-            $row = $this->writeExcelSectionHeader($sheet, $row, 'Bloque 2 - Solicitudes', 'G');
-            $row = $this->writeExcelTable(
-                $sheet,
-                $row,
-                ['KPI', 'Valor', 'Detalle'],
-                $this->normalizeExcelRows(is_array($report['cohortKpis'] ?? null) ? $report['cohortKpis'] : [], ['label', 'value', 'note']),
-                'Sin KPI de solicitudes para el rango seleccionado.',
-                [28, 16, 54]
-            );
-
-            $cohortTables = is_array($report['cohortTables'] ?? null) ? $report['cohortTables'] : [];
-            foreach ($cohortTables as $table) {
-                $title = trim((string) ($table['title'] ?? 'Tabla'));
-                $subtitle = trim((string) ($table['subtitle'] ?? ''));
-                $row += 2;
-                $row = $this->writeExcelSectionHeader($sheet, $row, $title, 'G');
-                if ($subtitle !== '') {
-                    $sheet->setCellValue("A{$row}", $subtitle);
-                    $sheet->mergeCells("A{$row}:G{$row}");
-                    $sheet->getStyle("A{$row}:G{$row}")->getFont()->setItalic(true)->getColor()->setRGB('64748B');
-                    $sheet->getStyle("A{$row}:G{$row}")->getAlignment()->setWrapText(true);
-                    $row++;
-                }
-                $headers = array_values(array_map(static fn($value): string => (string) $value, is_array($table['columns'] ?? null) ? $table['columns'] : []));
-                $tableRows = [];
-                foreach (is_array($table['rows'] ?? null) ? $table['rows'] : [] as $tableRow) {
-                    $tableRows[] = array_map(static fn($value): string => (string) $value, is_array($tableRow) ? $tableRow : []);
-                }
-                $row = $this->writeExcelTable(
-                    $sheet,
-                    $row,
-                    $headers,
-                    $tableRows,
-                    trim((string) ($table['empty_message'] ?? 'Sin datos.'))
-                );
-            }
 
             $sheet->freezePane('A4');
-            foreach (['A' => 28, 'B' => 18, 'C' => 28, 'D' => 20, 'E' => 24, 'F' => 18, 'G' => 18] as $column => $width) {
+            foreach (['A' => 28, 'B' => 32] as $column => $width) {
                 $sheet->getColumnDimension($column)->setWidth($width);
             }
 
@@ -1999,6 +1861,73 @@ class ExamenesParityController
                 'Q' => 14, 'R' => 18, 'S' => 14, 'T' => 12, 'U' => 16, 'V' => 12, 'W' => 14, 'X' => 56,
             ] as $column => $width) {
                 $detailSheet->getColumnDimension($column)->setWidth($width);
+            }
+
+            $backlogSheet = $spreadsheet->createSheet();
+            $backlogSheet->setTitle('Backlog de Facturacion');
+            $backlogHeaders = [
+                '#',
+                'Paciente',
+                'HC',
+                'Examen',
+                'Sede',
+                'Empresa seguro',
+                'Afiliación / Categoría',
+                'Fecha del examen',
+                'Estado de realización',
+                'Estado de informe',
+                'Estado de facturación',
+                'Monto pendiente estimado',
+                'Sin tarifa nivel 3',
+                'Form ID',
+            ];
+
+            $backlogRow = 1;
+            foreach ($backlogHeaders as $idx => $label) {
+                $column = $this->excelColumnByIndex($idx);
+                $backlogSheet->setCellValue("{$column}{$backlogRow}", $label);
+            }
+            $lastBacklogColumn = $this->excelColumnByIndex(count($backlogHeaders) - 1);
+            $backlogSheet->getStyle("A1:{$lastBacklogColumn}1")->applyFromArray($this->excelTableHeaderStyle());
+            $backlogSheet->setAutoFilter("A1:{$lastBacklogColumn}1");
+
+            $backlogItems = array_values(array_filter($detailRows, static fn($item): bool => empty($item['facturado'])));
+            foreach ($backlogItems as $index => $item) {
+                $backlogRow++;
+                $afiliacion = trim(((string) ($item['afiliacion'] ?? '')) . ' / ' . ((string) ($item['afiliacion_categoria'] ?? '')), ' /');
+                $values = [
+                    (string) ($index + 1),
+                    (string) ($item['paciente'] ?? ''),
+                    (string) ($item['hc_number'] ?? ''),
+                    (string) ($item['examen'] ?? ''),
+                    (string) ($item['sede'] ?? ''),
+                    (string) ($item['empresa_seguro'] ?? ''),
+                    $afiliacion,
+                    (string) ($item['fecha_examen'] ?? '—'),
+                    (string) ($item['estado_realizacion'] ?? ''),
+                    (string) ($item['estado_informe'] ?? ''),
+                    (string) ($item['estado_facturacion'] ?? ''),
+                    (float) ($item['monto_pendiente_estimado'] ?? 0) > 0 ? number_format((float) ($item['monto_pendiente_estimado'] ?? 0), 2, '.', '') : '',
+                    !empty($item['sin_tarifa_publica']) ? 'SI' : 'NO',
+                    (string) ($item['form_id'] ?? ''),
+                ];
+
+                foreach ($values as $idx => $value) {
+                    $column = $this->excelColumnByIndex($idx);
+                    $backlogSheet->setCellValueExplicit("{$column}{$backlogRow}", $value, DataType::TYPE_STRING);
+                }
+            }
+
+            if ($backlogRow > 1) {
+                $backlogSheet->getStyle("A1:{$lastBacklogColumn}{$backlogRow}")->applyFromArray($this->excelTableBodyStyle());
+            }
+
+            $backlogSheet->freezePane('A2');
+            foreach ([
+                'A' => 6, 'B' => 30, 'C' => 14, 'D' => 30, 'E' => 14, 'F' => 24, 'G' => 26,
+                'H' => 16, 'I' => 18, 'J' => 16, 'K' => 24, 'L' => 18, 'M' => 14, 'N' => 16,
+            ] as $column => $width) {
+                $backlogSheet->getColumnDimension($column)->setWidth($width);
             }
 
             $requestSheet = $spreadsheet->createSheet();

@@ -187,7 +187,8 @@ class MedforgeNavigation
             string $label,
             string $href,
             string $icon,
-            array  $active = []
+            array  $active = [],
+            ?string $target = null
         ): array {
             return [
                 'type' => 'item',
@@ -195,6 +196,7 @@ class MedforgeNavigation
                 'href' => $href,
                 'icon' => $icon,
                 'active' => $active,
+                'target' => $target,
             ];
         };
 
@@ -291,9 +293,9 @@ class MedforgeNavigation
             ])
                 : null,
             $canAccessImagenesDashboard
-                ? $link('Dashboard imagenes', '/v2/imagenes/dashboard', 'mdi mdi-monitor-dashboard', [
-                'prefix' => ['/v2/imagenes/dashboard'],
-            ])
+                ? $link('Reporte Ejecutivo Imágenes', '/v2/imagenes/dashboard/report', 'mdi mdi-file-chart-outline', [
+                'prefix' => ['/v2/imagenes/dashboard/report'],
+            ], '_blank')
                 : null,
         ]));
 
