@@ -62,10 +62,10 @@ export function ImagenesContent({ r }: { r: ImagenesReport }) {
         title="Rentabilidad y Oportunidad"
         lede="Analiza qué pagadores generan valor, dónde existe demanda no capturada y qué oportunidades pueden transformarse en producción futura.">
         <div className="rep-grid rep-grid--4" style={{ marginBottom: 16 }}>
-          <Kpi icon="mdi-cash" label="Ticket promedio" value={'$' + fmt(Math.round(m.ticket))} sub={`${fmt(m.facturados)} estudios facturados`} accent="var(--primary)" />
-          <Kpi icon="mdi-bank-outline" label="Convenio líder" value={r.convenioLider.label} sub={`Producción facturada: $${fmt(Math.round(r.convenioLider.produccion))}`} accent="var(--info)" />
-          <Kpi icon="mdi-cash-multiple" label="Oportunidad pendiente" value={'$' + fmt(Math.round(m.sinAgendaMonto))} sub="Solicitudes sin agenda valorizadas" accent="var(--warning)" />
-          <Kpi icon="mdi-progress-clock" label="Solicitudes no concretadas" value={fmt(m.arrastreCorte)} sub="Arrastre al corte" accent="var(--danger)" />
+          <Kpi compact icon="mdi-cash" label="Ticket promedio" value={'$' + fmt(Math.round(m.ticket))} sub={`${fmt(m.facturados)} estudios facturados`} accent="var(--primary)" />
+          <Kpi compact icon="mdi-bank-outline" label="Convenio líder" value={r.convenioLider.label} sub={`Producción facturada: $${fmt(Math.round(r.convenioLider.produccion))}`} accent="var(--info)" />
+          <Kpi compact icon="mdi-cash-multiple" label="Oportunidad pendiente" value={'$' + fmt(Math.round(m.sinAgendaMonto))} sub="Solicitudes sin agenda valorizadas" accent="var(--warning)" />
+          <Kpi compact icon="mdi-progress-clock" label="Solicitudes no concretadas" value={fmt(m.arrastreCorte)} sub="Arrastre al corte" accent="var(--danger)" />
         </div>
         <div className="rep-grid rep-grid--2" style={{ marginBottom: 16 }}>
           <div className="rep-card rep-span2">
@@ -78,9 +78,7 @@ export function ImagenesContent({ r }: { r: ImagenesReport }) {
               : <p style={{ color: 'var(--fg-mute)', padding: '16px 0' }}>Sin datos de convenios.</p>
             }
           </div>
-        </div>
-        <div className="rep-grid rep-grid--2" style={{ marginBottom: 16 }}>
-          <div className="rep-card">
+          <div className="rep-card rep-span2">
             <div className="rep-card-head">
               <h3><i className="mdi mdi-target"></i>Exámenes con mayor oportunidad</h3>
               <span className="rep-card-note">Monto potencial sin agenda</span>

@@ -174,6 +174,10 @@ body { background: var(--bg-soft); color: var(--fg-1); -webkit-font-smoothing: a
 .rep-kpi-value small { font-size: 17px; font-weight: 500; color: var(--fg-3); margin-left: 1px; }
 .rep-kpi-sub { font: 400 12px/1.4 var(--font-body); color: var(--fg-mute); margin-top: 9px; }
 .rep-kpi-sub b { color: var(--fg-2); font-weight: 600; }
+.rep-kpi.is-compact .rep-kpi-value { font-size: 22px; line-height: 1.05; word-break: break-word; }
+.rep-kpi.is-compact .rep-kpi-value small { font-size: 13px; }
+.rep-kpi.is-compact .rep-kpi-valrow { margin-top: 10px; }
+.rep-kpi.is-compact .rep-kpi-sub { margin-top: 7px; }
 
 /* delta chip */
 .rep-delta { display: inline-flex; align-items: center; gap: 2px; padding: 2px 7px 2px 5px; border-radius: var(--radius-pill); font: 700 11px var(--font-body); font-variant-numeric: tabular-nums; margin-bottom: 4px; }

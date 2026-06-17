@@ -187,11 +187,12 @@ interface KpiProps {
   unit?: string;
   sub?: string;
   accent?: string;
+  compact?: boolean;
 }
 
-export function Kpi({ icon, label, value, unit, sub, accent }: KpiProps) {
+export function Kpi({ icon, label, value, unit, sub, accent, compact }: KpiProps) {
   return (
-    <div className="rep-kpi" style={accent ? { '--kpi-accent': accent } as React.CSSProperties : undefined}>
+    <div className={`rep-kpi${compact ? ' is-compact' : ''}`} style={accent ? { '--kpi-accent': accent } as React.CSSProperties : undefined}>
       <div className="rep-kpi-top">
         {icon ? <span className="rep-kpi-ic"><i className={`mdi ${icon}`}></i></span> : null}
         <span className="rep-kpi-label">{label}</span>
