@@ -38,6 +38,8 @@ export function Toolbar({ startDate, endDate, sede, sedeOptions }: ToolbarProps)
       <div className="rep-toolbar">
         <div className="rep-toolbar-inner">
           <div className="rep-tb-brand">
+            <img src="/images/logo-light-text.png" alt="MedForge" />
+            <span className="rep-tb-div"></span>
             <span className="rep-tb-tag">
               Reporte ejecutivo<small>Imágenes</small>
             </span>
@@ -51,7 +53,7 @@ export function Toolbar({ startDate, endDate, sede, sedeOptions }: ToolbarProps)
                 max={end}
                 onChange={e => setStart(e.target.value)}
                 disabled={loading}
-                style={{ border: 'none', background: 'transparent', font: 'inherit', color: 'inherit' }}
+                className="rep-date-input"
               />
               <span>→</span>
               <input
@@ -60,7 +62,7 @@ export function Toolbar({ startDate, endDate, sede, sedeOptions }: ToolbarProps)
                 min={start}
                 onChange={e => setEnd(e.target.value)}
                 disabled={loading}
-                style={{ border: 'none', background: 'transparent', font: 'inherit', color: 'inherit' }}
+                className="rep-date-input"
               />
               <button onClick={applyRange} disabled={loading}>Aplicar</button>
             </div>
