@@ -3,7 +3,6 @@
 namespace Tests\Unit;
 
 use App\Modules\Pacientes\Services\MedicoTratanteResolver;
-use App\Modules\Pacientes\Services\PacientesParityService;
 use App\Modules\Pacientes\Services\SedePacienteResolver;
 use App\Modules\Pacientes\Services\TipoAfiliacionResolver;
 use PDO;
@@ -99,119 +98,6 @@ class PacientesV2ResolversTest extends TestCase
         $this->assertSame('particular', $resolver->classify('PARTICULAR'));
         $this->assertSame('fundacional', $resolver->classify('FUNDACIONES'));
         $this->assertSame('otros', $resolver->classify('ALQUILER'));
-    }
-
-    public function test_patient_list_contract_uses_resolved_medico_sede_and_affiliation_type(): void
-    {
-        $pdo = $this->makePdo();
-        $this->createPatientDataTable($pdo);
-        $this->createUsersTable($pdo);
-        $this->createProcedimientosTable($pdo);
-        $this->createConsultaDataTable($pdo);
-        $this->createSolicitudProcedimientoTable($pdo);
-
-        $pdo->exec("
-            INSERT INTO patient_data (
-                hc_number, fname, mname, lname, lname2, afiliacion, fecha_nacimiento,
-                sexo, celular, email, direccion, ciudad, created_at
-            ) VALUES (
-                'HC1', 'ADRIANA', 'SOFIA', 'PINOS', 'AGUILAR', 'ISSPOL', '2012-01-01',
-                'F', '0999999999', 'paciente@example.test', 'Direccion', 'Guayaquil', '2026-06-01 09:00:00'
-            )
-        ");
-
-        $this->insertUser($pdo, 'OPTOMETRIA OPT', 'Optometria');
-        $this->insertUser($pdo, 'DRA UNO', 'Cirujano Oftalmologo');
-        $this->insertUser($pdo, 'DR DOS', 'Cirujano Oftalmologo');
-
-        $this->insertProcedimiento($pdo, 'HC1', 'OPTOMETRIA OPT', '2026-06-20', '08:00', 'CEIBOS');
-        $this->insertProcedimiento($pdo, 'HC1', 'DRA UNO', '2026-06-10', '08:00', 'VILLA CLUB');
-        $this->insertProcedimiento($pdo, 'HC1', 'DR DOS', '2026-06-15', '08:00', 'CEIBOS');
-        $this->insertProcedimiento($pdo, 'HC1', 'DR DOS', '2026-06-16', '08:00', 'CEIBOS');
-
-        $patient = (new PacientesParityService($pdo))->obtenerPacientesReact(null, 0)['data'][0];
-
-        $this->assertSame('DR DOS', $patient['medico']);
-        $this->assertSame('DR DOS', $patient['medico_tratante']['nombre']);
-        $this->assertSame(2, $patient['medico_tratante']['procedimientos_count']);
-        $this->assertSame('ceibos', $patient['sede']);
-        $this->assertSame('CEIBOS', $patient['sede_info']['nombre']);
-        $this->assertSame('publico', $patient['tipo_afiliacion']);
-    }
-
-    public function test_patient_list_contract_exposes_editable_legacy_fields_and_manual_assignments(): void
-    {
-        $pdo = $this->makePdo();
-        $this->createPatientDataTable($pdo);
-        $this->createUsersTable($pdo);
-        $this->createProcedimientosTable($pdo);
-        $this->createConsultaDataTable($pdo);
-        $this->createSolicitudProcedimientoTable($pdo);
-
-        $pdo->exec("
-            INSERT INTO users (id, nombre, full_name, subespecialidad, especialidad, sede, id_trabajador)
-            VALUES (99, 'DRA MANUAL', 'DRA MANUAL', 'Cirujano Oftalmologo', 'Cirujano Oftalmologo', 'MATRIZ', '99')
-        ");
-        $pdo->exec("
-            INSERT INTO patient_data (
-                hc_number, fname, mname, lname, lname2, afiliacion, fecha_nacimiento,
-                sexo, celular, telefono_alt, email, direccion, ciudad, medico_tratante_id,
-                sede_principal, created_at
-            ) VALUES (
-                '0201019485', 'NARCISA', 'ANATILA', 'GUAMAN', 'CHACAN', 'CONFIAMED 100%', '1966-10-08',
-                'F', '0969720084', '042681140', 'info@cive.ec', 'GUAYAQUIL', 'GUAYAQUIL',
-                99, 'matriz', '2026-06-01 09:00:00'
-            )
-        ");
-
-        $patient = (new PacientesParityService($pdo))->obtenerPacientesReact(null, 0)['data'][0];
-
-        $this->assertSame('0201019485', $patient['cedula']);
-        $this->assertSame('NARCISA', $patient['fname']);
-        $this->assertSame('ANATILA', $patient['mname']);
-        $this->assertSame('GUAMAN', $patient['lname']);
-        $this->assertSame('CHACAN', $patient['lname2']);
-        $this->assertSame('042681140', $patient['telefono_alt']);
-        $this->assertSame('99', $patient['medico']);
-        $this->assertSame('DRA MANUAL', $patient['medico_tratante']['nombre']);
-        $this->assertSame('matriz', $patient['sede']);
-        $this->assertSame('MATRIZ', $patient['sede_info']['nombre']);
-    }
-
-    public function test_patient_list_excludes_projected_procedure_rows_imported_as_patients(): void
-    {
-        $pdo = $this->makePdo();
-        $this->createPatientDataTable($pdo);
-        $this->createUsersTable($pdo);
-        $this->createProcedimientosTable($pdo);
-        $this->createConsultaDataTable($pdo);
-        $this->createSolicitudProcedimientoTable($pdo);
-
-        $pdo->exec("
-            INSERT INTO patient_data (
-                hc_number, fname, mname, lname, lname2, afiliacion, fecha_nacimiento,
-                sexo, celular, email, direccion, ciudad, created_at
-            ) VALUES
-            (
-                '12345', 'PACIENTE', '', 'REAL', '', 'PARTICULAR', '1990-01-01',
-                'M', '', '', '', '', '2026-06-01 09:00:00'
-            ),
-            (
-                '2024-11-08 09:20:00', 'IMA-DIA-017', '-', 'IMAGENES', '-', '129.1100', NULL,
-                '', '', '', '', '', '2026-06-16 09:00:00'
-            ),
-            (
-                '281295-RETINOGRAFIA PANORAMICA (AO) AMBOS OJOS', 'ANGGIE', 'CRISTELL', 'CORONEL', 'CARPIO', '16.55', NULL,
-                '', '', '', '', '', '2026-06-16 09:00:00'
-            )
-        ");
-
-        $payload = (new PacientesParityService($pdo))->obtenerPacientesReact(null, 0);
-
-        $this->assertSame(1, $payload['meta']['total']);
-        $this->assertCount(1, $payload['data']);
-        $this->assertSame('12345', $payload['data'][0]['hc_number']);
-        $this->assertSame('PARTICULAR', $payload['data'][0]['afiliacion']);
     }
 
     private function makePdo(): PDO

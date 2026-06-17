@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import type { PacientesCatalogos, Patient, WizardFormData } from '../types';
 import { MEDICOS, SEDES, ASEGURADORAS } from '../data';
-import { validarCedula, emailOk, telOk, edadDe, fmtDateLong, initials } from '../utils';
+import { emailOk, telOk, edadDe, fmtDateLong, initials } from '../utils';
 import { Avatar } from '../components';
 import { MEDICO_MAP, SEDE_MAP } from '../data';
 
@@ -60,9 +60,7 @@ export default function WizardView({ patients, catalogos = null, mode = 'create'
 
   const cedulaValida = isEdit && !f.cedula.trim()
     ? true
-    : f.docTipo === 'pasaporte'
-      ? f.cedula.trim().length >= 5
-      : validarCedula(f.cedula);
+    : f.cedula.trim().length > 0;
 
   useEffect(() => {
     if (isEdit && initialPatient) {
@@ -78,28 +76,18 @@ export default function WizardView({ patients, catalogos = null, mode = 'create'
   useEffect(() => {
     setDup(null);
     if (isEdit && !f.cedula.trim()) return;
-    if (f.docTipo === 'pasaporte') {
-      if (f.cedula.trim().length >= 5) {
-        const ex = patients.find(p =>
-          p.cedula.toLowerCase() === f.cedula.trim().toLowerCase()
-          && (!isEdit || p.hc_number !== initialPatient?.hc_number)
-        );
-        if (ex) setDup(ex);
-      }
-      return;
-    }
-    if (!validarCedula(f.cedula)) return;
+    if (!f.cedula.trim()) return;
     setChecking(true);
     const t = setTimeout(() => {
       const ex = patients.find(p =>
-        p.cedula === f.cedula
+        p.hc_number === f.cedula
         && (!isEdit || p.hc_number !== initialPatient?.hc_number)
       );
       setDup(ex || null);
       setChecking(false);
     }, 650);
     return () => { clearTimeout(t); setChecking(false); };
-  }, [f.cedula, f.docTipo, patients, isEdit, initialPatient?.hc_number]);
+  }, [f.cedula, patients, isEdit, initialPatient?.hc_number]);
 
   const valid1 = isEdit
     ? !!(f.fname.trim() && f.lname.trim() && cedulaValida && !dup && !checking)
@@ -163,14 +151,14 @@ export default function WizardView({ patients, catalogos = null, mode = 'create'
             {/* Step 1 — Datos básicos */}
             {step === 1 && (
               <>
-                <div className="wiz-card-head"><h2>Datos básicos</h2><p>Identificación del paciente. Verificamos la cédula automáticamente para evitar duplicados.</p></div>
+                <div className="wiz-card-head"><h2>Datos básicos</h2><p>Identificación del paciente. Verificamos el HC automáticamente para evitar duplicados.</p></div>
                 <div className="wiz-card-body">
                   <div className="form-grid">
                     <div className="field fg-span2">
-                      <label>Tipo de documento</label>
+                      <label>Tipo de identificación</label>
                       <div className="seg-radio">
                         <button className={f.docTipo === 'cedula' ? 'sel' : ''} onClick={() => { set('docTipo', 'cedula'); set('cedula', ''); }} type="button">
-                          <i className="mdi mdi-card-account-details-outline" />Cédula
+                          <i className="mdi mdi-card-account-details-outline" />HC / cédula
                         </button>
                         <button className={f.docTipo === 'pasaporte' ? 'sel' : ''} onClick={() => { set('docTipo', 'pasaporte'); set('cedula', ''); }} type="button">
                           <i className="mdi mdi-passport" />Pasaporte
@@ -179,25 +167,25 @@ export default function WizardView({ patients, catalogos = null, mode = 'create'
                     </div>
 
                     <div className="field fg-span2">
-                      <label>{f.docTipo === 'cedula' ? 'Cédula' : 'Pasaporte'} <span className="req">*</span></label>
+                      <label>{f.docTipo === 'cedula' ? 'HC / identificación' : 'Pasaporte'} <span className="req">*</span></label>
                       <div className="input-icon">
                         <input
-                          inputMode={f.docTipo === 'cedula' ? 'numeric' : 'text'}
-                          maxLength={f.docTipo === 'cedula' ? 10 : 20}
+                          inputMode="text"
+                          maxLength={f.docTipo === 'cedula' ? 64 : 20}
                           className={showFor('cedula') && f.cedula && !cedulaValida ? 'invalid' : cedulaValida && !dup ? 'valid' : ''}
-                          placeholder={f.docTipo === 'cedula' ? 'Ingresa los 10 dígitos' : 'Ej. AB123456'}
+                          placeholder={f.docTipo === 'cedula' ? 'Ingresa el HC del paciente' : 'Ej. AB123456'}
                           value={f.cedula}
-                          onChange={e => set('cedula', f.docTipo === 'cedula' ? e.target.value.replace(/\D/g, '') : e.target.value)}
+                          onChange={e => set('cedula', e.target.value.trim())}
                           onBlur={() => touch('cedula')}
                         />
                         {cedulaState && <i className={`mdi ${cedulaState === 'load' ? 'mdi-loading load' : cedulaState === 'ok' ? 'mdi-check-circle ok' : 'mdi-alert-circle err'} ii`} />}
                       </div>
                       {f.docTipo === 'cedula' && showFor('cedula') && f.cedula && !cedulaValida && !checking && (
-                        <div className="field-msg err"><i className="mdi mdi-alert-circle-outline" />La cédula ecuatoriana no es válida.</div>
+                        <div className="field-msg err"><i className="mdi mdi-alert-circle-outline" />Ingresa un HC válido.</div>
                       )}
                       {checking && <div className="field-msg hint"><i className="mdi mdi-magnify" />Verificando si el paciente ya existe…</div>}
-                      {f.cedula && cedulaValida && !dup && !checking && <div className="field-msg ok"><i className="mdi mdi-check" />Documento válido y disponible.</div>}
-                      {isEdit && !f.cedula && <div className="field-msg hint"><i className="mdi mdi-information-outline" />Este registro no tiene documento guardado; puedes conservarlo vacío.</div>}
+                      {f.cedula && cedulaValida && !dup && !checking && <div className="field-msg ok"><i className="mdi mdi-check" />HC disponible.</div>}
+                      {isEdit && !f.cedula && <div className="field-msg hint"><i className="mdi mdi-information-outline" />Este registro no tiene HC guardado; puedes conservarlo vacío.</div>}
                     </div>
 
                     {dup && (
@@ -421,7 +409,7 @@ function ConfirmStep({ f, catalogos, onEdit }: { f: WizardFormData; catalogos?: 
             <div className="cs-head"><i className="mdi mdi-card-account-details-outline" /><h3>Datos básicos</h3><button className="cs-edit" onClick={() => onEdit(1)}><i className="mdi mdi-pencil-outline" />Editar</button></div>
             <div className="cs-grid">
               <div className="ci span2"><div className="k">Nombre completo</div><div className="v">{[f.fname, f.mname, f.lname, f.lname2].filter(Boolean).join(' ')}</div></div>
-              <div className="ci"><div className="k">{f.docTipo === 'cedula' ? 'Cédula' : 'Pasaporte'}</div><div className="v">{f.cedula}</div></div>
+              <div className="ci"><div className="k">{f.docTipo === 'cedula' ? 'HC / identificación' : 'Pasaporte'}</div><div className="v">{f.cedula}</div></div>
               <div className="ci"><div className="k">Nacimiento</div><div className="v">{fmtDateLong(f.fecha_nac)}</div></div>
               <div className="ci"><div className="k">Edad</div><div className="v">{edadDe(f.fecha_nac)} años</div></div>
               <div className="ci"><div className="k">Sexo</div><div className="v">{f.sexo === 'F' ? 'Femenino' : 'Masculino'}</div></div>
@@ -460,7 +448,7 @@ function ConfirmStep({ f, catalogos, onEdit }: { f: WizardFormData; catalogos?: 
 }
 
 function formFromPatient(p: Patient): WizardFormData {
-  const cedula = p.cedula || '';
+  const cedula = p.hc_number || p.cedula || '';
   const sexo = String(p.sexo || '').toLowerCase().startsWith('f')
     ? 'F'
     : String(p.sexo || '').toLowerCase().startsWith('m')
@@ -468,7 +456,7 @@ function formFromPatient(p: Patient): WizardFormData {
       : p.sexo || '';
 
   return {
-    docTipo: cedula && !validarCedula(cedula) ? 'pasaporte' : 'cedula',
+    docTipo: 'cedula',
     cedula,
     fname: p.fname || p.nombres?.split(/\s+/)[0] || '',
     mname: p.mname || p.nombres?.split(/\s+/).slice(1).join(' ') || '',
@@ -498,7 +486,7 @@ function formFromPatient(p: Patient): WizardFormData {
 function buildPatient(f: WizardFormData, patients: Patient[]): Patient {
   const nowIso = new Date().toISOString();
   const maxHc = Math.max(...patients.map(p => parseInt(p.hc_number, 10) || 0), 10000);
-  const hc = String(maxHc + 1).padStart(6, '0');
+  const hc = f.cedula.trim() || String(maxHc + 1).padStart(6, '0');
   const nombres = [f.fname, f.mname].filter(Boolean).join(' ').trim();
   const apellidos = [f.lname, f.lname2].filter(Boolean).join(' ').trim();
   const ini = initials(nombres || 'P', apellidos || 'P');
@@ -508,7 +496,7 @@ function buildPatient(f: WizardFormData, patients: Patient[]): Patient {
     id: Math.max(...patients.map(x => x.id), 0) + 1,
     hc_number: hc, fname: f.fname, mname: f.mname, lname: f.lname, lname2: f.lname2, nombres, apellidos,
     full_name: `${apellidos} ${nombres}`, display_name: `${nombres} ${apellidos}`, initials: ini,
-    cedula: f.cedula, fecha_nac: f.fecha_nac, edad: edadDe(f.fecha_nac), sexo: f.sexo,
+    cedula: hc, fecha_nac: f.fecha_nac, edad: edadDe(f.fecha_nac), sexo: f.sexo,
     telefono: f.telefono, telefono_alt: f.telefono_alt || null, email: f.email || null,
     direccion: f.direccion, ciudad: f.ciudad, sede: f.sede, sede_info: null, medico: f.medico, medico_tratante: null,
     afiliacion: f.afiliacion, tipo_afiliacion: 'otros', afiliacion_info: null, aseguradora: f.aseguradora || null, poliza: f.poliza || null, titular: f.titular || null,

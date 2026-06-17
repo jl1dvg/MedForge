@@ -79,7 +79,7 @@ function normalizePatient(raw: any, id: number): Patient {
     full_name: fullName,
     display_name: displayName,
     initials: ini,
-    cedula: String(raw.cedula || raw.identificacion || raw.hc_number || raw.hc || ''),
+    cedula: String(raw.hc_number || raw.hc || raw.cedula || raw.identificacion || ''),
     fecha_nac: fechaNac,
     edad,
     sexo: String(raw.sexo || raw.genero || 'M'),
@@ -194,7 +194,7 @@ export async function createPatient(data: Record<string, any>): Promise<{ hc_num
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.message || 'Error al crear paciente');
+    throw new Error(err.error || err.message || 'Error al crear paciente');
   }
   return res.json();
 }

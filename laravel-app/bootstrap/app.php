@@ -26,6 +26,9 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withEvents(false)
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->encryptCookies(except: ['PHPSESSID', 'app_timezone']);
+        $middleware->validateCsrfTokens(except: [
+            'auth/login',
+        ]);
         // LegacySessionBridge runs after Laravel session; ApplyBrowserTimezone reads cookie.
         $middleware->web(append: [LegacySessionBridge::class, ApplyBrowserTimezone::class]);
         $middleware->api(append: [LegacySessionBridge::class]);

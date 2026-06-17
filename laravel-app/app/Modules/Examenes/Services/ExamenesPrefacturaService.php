@@ -19,7 +19,7 @@ use Modules\Examenes\Services\ExamenMailLogService;
 use App\Modules\Mail\Services\MailProfileService;
 use App\Modules\Mail\Services\NotificationMailer;
 use App\Modules\MailTemplates\Services\CoberturaMailTemplateService;
-use App\Modules\Pacientes\Services\PacientesParityService;
+use App\Modules\Pacientes\Services\PacienteDetailService;
 use PDO;
 use RuntimeException;
 use Throwable;
@@ -32,7 +32,7 @@ class ExamenesPrefacturaService
     private PDO $db;
     private ExamenModel $examenModel;
     private ExamenEstadoService $estadoService;
-    private PacientesParityService $pacienteService;
+    private PacienteDetailService $pacienteService;
     private ExamenCrmService $crmService;
     private ReportPdfService $reportPdfService;
 
@@ -43,7 +43,7 @@ class ExamenesPrefacturaService
         $this->db = $pdo ?? DB::connection()->getPdo();
         $this->examenModel = new ExamenModel($this->db);
         $this->estadoService = new ExamenEstadoService();
-        $this->pacienteService = new PacientesParityService($this->db);
+        $this->pacienteService = new PacienteDetailService();
         $this->crmService = new ExamenCrmService($this->db);
         $this->reportPdfService = new ReportPdfService();
     }

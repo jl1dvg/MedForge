@@ -109,8 +109,12 @@ jobs:
 
             # Limpiar caches (staging no las cachea para facilitar cambios)
             $PHP artisan config:clear
+            $PHP artisan cache:clear
             $PHP artisan route:clear
             $PHP artisan view:clear
+
+            # Validar disponibilidad NAS post-deploy; deja log claro sin bloquear assets/app.
+            $PHP artisan imagenes:nas-diagnose || echo "WARN: imagenes:nas-diagnose reportó NAS no disponible"
 
             # Copiar assets Vite al public raíz (hasta migración completa a Laravel)
             mkdir -p "$PROJECT/public/build"
@@ -187,6 +191,7 @@ jobs:
 
             $PHP composer.phar install --no-interaction 2>&1
             $PHP artisan config:clear
+            $PHP artisan cache:clear
             $PHP artisan route:clear
             $PHP artisan view:clear
 

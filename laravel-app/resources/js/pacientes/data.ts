@@ -1,8 +1,8 @@
 import type { Sede, Medico, Afiliacion } from './types';
 
 export const SEDES: Sede[] = [
-  { id: 'ceibos', label: 'Ceibos', short: 'CEI', color: '#5156be' },
-  { id: 'villaclub', label: 'Villa Club', short: 'VCL', color: '#3596f7' },
+  { id: 'matriz', label: 'MATRIZ', short: 'MAT', color: '#5156be' },
+  { id: 'ceibos', label: 'CEIBOS', short: 'CEI', color: '#3596f7' },
 ];
 
 export const MEDICOS: Medico[] = [

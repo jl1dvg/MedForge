@@ -139,7 +139,6 @@ export default function App() {
     const nombres = [data.fname, data.mname].filter(Boolean).join(' ').trim();
     const apellidos = [data.lname, data.lname2].filter(Boolean).join(' ').trim();
     const payload = {
-      cedula: data.cedula,
       fname: data.fname,
       mname: data.mname,
       lname: data.lname,
@@ -191,10 +190,10 @@ export default function App() {
 
   const onPatientCreated = useCallback(async (localPatient: Patient) => {
     try {
-      await createPatient({
+      const created = await createPatient({
+        hc_number: localPatient.hc_number,
         nombres: localPatient.nombres,
         apellidos: localPatient.apellidos,
-        cedula: localPatient.cedula,
         fecha_nac: localPatient.fecha_nac,
         sexo: localPatient.sexo,
         telefono: localPatient.telefono,
@@ -215,7 +214,7 @@ export default function App() {
       const list = await fetchPatientList();
       setPatients(list);
       setLoading(false);
-      const newP = list.find(p => p.cedula === localPatient.cedula || p.hc_number === localPatient.hc_number);
+      const newP = list.find(p => p.hc_number === created.hc_number || p.hc_number === localPatient.hc_number);
       if (newP) openPatient(newP.id);
       else goList();
     } catch (err: any) {
