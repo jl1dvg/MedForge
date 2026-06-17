@@ -5,6 +5,7 @@ namespace App\Modules\Pacientes\Http\Controllers;
 use App\Modules\Pacientes\Http\Requests\StorePacienteRequest;
 use App\Modules\Pacientes\Http\Requests\UpdatePacienteRequest;
 use App\Modules\Pacientes\Services\Paciente360ParityService;
+use App\Modules\Pacientes\Services\PacienteReadService;
 use App\Modules\Pacientes\Services\PacienteWriteService;
 use App\Modules\Pacientes\Services\PacientesFlujoService;
 use App\Modules\Pacientes\Services\PacientesParityService;
@@ -24,7 +25,10 @@ class PacientesReadController
     private Paciente360ParityService $paciente360Service;
     private PacientesFlujoService $flujoService;
 
-    public function __construct(private readonly PacienteWriteService $writeService)
+    public function __construct(
+        private readonly PacienteWriteService $writeService,
+        private readonly PacienteReadService $readService
+    )
     {
         /** @var PDO $pdo */
         $pdo = DB::connection()->getPdo();
@@ -53,7 +57,7 @@ class PacientesReadController
 
         $limit = $request->has('limit') ? (int) $request->query('limit') : null;
         $offset = (int) $request->query('offset', 0);
-        $payload = $this->service->obtenerPacientesReact($limit, $offset);
+        $payload = $this->readService->obtenerPacientesReact($limit, $offset);
 
         return response()->json($payload);
     }
@@ -200,7 +204,7 @@ class PacientesReadController
         }
 
         return response()->json([
-            'data' => $this->service->obtenerCatalogosReact(),
+            'data' => $this->readService->obtenerCatalogosReact(),
         ]);
     }
 
@@ -211,7 +215,7 @@ class PacientesReadController
         }
 
         return response()->json([
-            'data' => $this->service->obtenerKpisReact(),
+            'data' => $this->readService->obtenerKpisReact(),
         ]);
     }
 
