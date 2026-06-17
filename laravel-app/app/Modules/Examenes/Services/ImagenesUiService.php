@@ -114,7 +114,71 @@ class ImagenesUiService
      * @param array<string,mixed> $query
      * @return array{filters:array<string,mixed>,dashboard:array<string,mixed>,sedeOptions:array<int,array{value:string,label:string}>,rowCount:int,timings:array<string,float>}
      */
-    public function buildExecutiveReportPayload(array $query): array
+    private const EXECUTIVE_REPORT_CACHE_TTL = 600;
+
+    public function buildExecutiveReportPayload(array $query, bool $forceRefresh = false): array
+    {
+        $start = microtime(true);
+
+        $filters = $this->buildFilters($query);
+        $filters['afiliacion_match_mode'] = 'grouped';
+
+        $cacheKey = 'imagenes_report:' . $this->executiveReportCacheHash($filters);
+
+        if ($forceRefresh) {
+            try {
+                Cache::forget($cacheKey);
+            } catch (\Throwable) {
+                // Redis no disponible: continuar sin cache.
+            }
+        }
+
+        $cacheHit = true;
+        $compute = function () use ($filters, &$cacheHit): array {
+            $cacheHit = false;
+
+            return $this->computeExecutiveReportPayload($filters);
+        };
+
+        try {
+            $payload = Cache::remember($cacheKey, self::EXECUTIVE_REPORT_CACHE_TTL, $compute);
+        } catch (\Throwable) {
+            $payload = $compute();
+        }
+
+        $payload['timings']['total'] = round((microtime(true) - $start) * 1000, 2);
+        $payload['timings']['cache_hit'] = $cacheHit;
+        $payload['timings']['cache_key'] = $cacheKey;
+        $payload['timings']['ttl'] = self::EXECUTIVE_REPORT_CACHE_TTL;
+        $payload['timings']['total_ms'] = $payload['timings']['total'];
+
+        return $payload;
+    }
+
+    /**
+     * @param array<string,string> $filters
+     */
+    private function executiveReportCacheHash(array $filters): string
+    {
+        $relevant = [
+            'fecha_inicio' => $filters['fecha_inicio'] ?? '',
+            'fecha_fin' => $filters['fecha_fin'] ?? '',
+            'sede' => $filters['sede'] ?? '',
+            'tipo_examen' => $filters['tipo_examen'] ?? '',
+            'afiliacion' => $filters['afiliacion'] ?? '',
+            'afiliacion_categoria' => $filters['afiliacion_categoria'] ?? '',
+            'seguro' => $filters['seguro'] ?? '',
+            'paciente' => $filters['paciente'] ?? '',
+            'estado_agenda' => $filters['estado_agenda'] ?? '',
+        ];
+
+        return md5(json_encode($relevant));
+    }
+
+    /**
+     * @param array<string,string> $filters
+     */
+    private function computeExecutiveReportPayload(array $filters): array
     {
         $timings = [];
         $start = microtime(true);
@@ -126,9 +190,6 @@ class ImagenesUiService
         };
 
         $t = $start;
-        $filters = $this->buildFilters($query);
-        $filters['afiliacion_match_mode'] = 'grouped';
-        $t = $mark('filters', $t);
 
         $rows = $this->fetchImagenesRealizadas($filters, true);
         $rows = array_map(fn (array $row): array => $this->decorateImagenRow($row), $rows);

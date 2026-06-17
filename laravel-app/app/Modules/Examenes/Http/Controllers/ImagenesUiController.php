@@ -62,7 +62,9 @@ class ImagenesUiController
             $query['fecha_fin'] = $query['end_date'];
         }
 
-        $payload  = $this->service->buildExecutiveReportPayload($query);
+        $forceRefresh = $request->boolean('refresh');
+
+        $payload  = $this->service->buildExecutiveReportPayload($query, $forceRefresh);
         $db       = $payload['dashboard'];
         $meta     = $db['meta'] ?? [];
         $charts   = $db['charts'] ?? [];
@@ -76,6 +78,10 @@ class ImagenesUiController
             'tiempo_acceso_sample' => $tiempoAcceso['muestra'] ?? 0,
             'tiempo_acceso_confiable' => $tiempoAcceso['fuente_confiable'] ?? 0,
             'tiempo_acceso_fallback' => $tiempoAcceso['fuente_fallback'] ?? 0,
+            'cache_hit' => $payload['timings']['cache_hit'] ?? null,
+            'cache_key' => $payload['timings']['cache_key'] ?? null,
+            'ttl' => $payload['timings']['ttl'] ?? null,
+            'total_ms' => $payload['timings']['total_ms'] ?? null,
         ]);
 
         $startDate = $filters['fecha_inicio'] ?? date('Y-m-d', strtotime('-30 days'));
