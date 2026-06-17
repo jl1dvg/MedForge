@@ -194,7 +194,10 @@ jobs:
             $PHP artisan view:clear
 
             if command -v supervisorctl >/dev/null 2>&1 && supervisorctl status medforge-staging-worker:* >/dev/null 2>&1; then
-              supervisorctl restart medforge-staging-worker:*
+              supervisorctl restart medforge-staging-worker:* || {
+                echo "::warning::Supervisor worker staging no reinicio correctamente; deploy de app completado."
+                supervisorctl status medforge-staging-worker:* || true
+              }
             else
               echo "Supervisor worker staging no configurado todavia; deploy de archivos completado."
             fi
@@ -361,7 +364,10 @@ jobs:
             $PHP artisan view:cache
 
             if command -v supervisorctl >/dev/null 2>&1 && supervisorctl status medforge-production-worker:* >/dev/null 2>&1; then
-              supervisorctl restart medforge-production-worker:*
+              supervisorctl restart medforge-production-worker:* || {
+                echo "::warning::Supervisor worker production no reinicio correctamente; deploy de app completado."
+                supervisorctl status medforge-production-worker:* || true
+              }
             else
               echo "Supervisor worker production no configurado todavia; deploy de archivos completado."
             fi
