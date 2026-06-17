@@ -341,7 +341,7 @@ body { background: var(--bg-soft); color: var(--fg-1); -webkit-font-smoothing: a
 .rep-action .a-meta { font: 600 11px/1.2 var(--font-body); color: var(--fg-mute); margin-top: 4px; display: block; font-variant-numeric: tabular-nums; }
 .rep-action .a-meta b { color: var(--fg-2); }
 .rep-action .a-do { font: 400 11.5px/1.35 var(--font-body); color: var(--fg-3); margin-top: 5px; display: block; }
-.rep-ledger { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: auto; padding-top: 16px; }
+.rep-ledger { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: auto; padding-top: 16px; }
 .rep-ledger div { border-radius: var(--radius); background: var(--bg-soft); border: 1px solid var(--border-soft); padding: 10px 11px; }
 .rep-ledger .l-l { font: 700 9px/1.1 var(--font-body); text-transform: uppercase; letter-spacing: .04em; color: var(--fg-mute); }
 .rep-ledger .l-v { font: 600 14.5px/1.1 var(--font-display); color: var(--fg-1); margin-top: 5px; font-variant-numeric: tabular-nums; }
