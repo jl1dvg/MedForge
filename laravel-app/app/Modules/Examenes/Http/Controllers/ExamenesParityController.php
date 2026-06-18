@@ -1450,12 +1450,7 @@ class ExamenesParityController
 
     private function imagenesUseNasFallback(): bool
     {
-        $raw = trim((string) ($_ENV['IMAGENES_ENABLE_NAS_FALLBACK'] ?? $_SERVER['IMAGENES_ENABLE_NAS_FALLBACK'] ?? '1'));
-        if ($raw === '') {
-            return true;
-        }
-
-        return in_array(strtolower($raw), ['1', 'true', 'yes', 'on'], true);
+        return (bool) config('nas-imagenes.enable_fallback', true);
     }
 
     /**
@@ -2245,7 +2240,7 @@ class ExamenesParityController
             return false;
         }
 
-        $ttl = (int) ($_ENV['IMAGENES_LIST_CACHE_TTL'] ?? $_SERVER['IMAGENES_LIST_CACHE_TTL'] ?? $_ENV['NAS_IMAGES_LIST_CACHE_TTL'] ?? $_SERVER['NAS_IMAGES_LIST_CACHE_TTL'] ?? 90);
+        $ttl = (int) config('nas-imagenes.list_cache_ttl', 90);
         if ($ttl <= 0) {
             return false;
         }
@@ -2324,9 +2319,9 @@ class ExamenesParityController
 
     private function resolveNasCacheDir(): ?string
     {
-        $fromEnv = trim((string) ($_ENV['IMAGENES_CACHE_DIR'] ?? $_SERVER['IMAGENES_CACHE_DIR'] ?? $_ENV['NAS_IMAGES_CACHE_DIR'] ?? $_SERVER['NAS_IMAGES_CACHE_DIR'] ?? ''));
-        if ($fromEnv !== '') {
-            return $fromEnv;
+        $fromConfig = trim((string) (config('nas-imagenes.cache_dir') ?? ''));
+        if ($fromConfig !== '') {
+            return $fromConfig;
         }
 
         $tmp = sys_get_temp_dir();
@@ -2343,7 +2338,7 @@ class ExamenesParityController
             return false;
         }
 
-        $ttl = (int) ($_ENV['IMAGENES_CACHE_TTL'] ?? $_SERVER['IMAGENES_CACHE_TTL'] ?? $_ENV['NAS_IMAGES_CACHE_TTL'] ?? $_SERVER['NAS_IMAGES_CACHE_TTL'] ?? 1800);
+        $ttl = (int) config('nas-imagenes.cache_ttl', 1800);
         if ($ttl <= 0) {
             return false;
         }
