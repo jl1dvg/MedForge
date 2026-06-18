@@ -27,10 +27,12 @@
         <link rel="stylesheet" href="/css/pages/medforge-datatables.css">
     @endif
     {{-- <link rel="stylesheet" href="/css/feedback-widget.css"> --}}
+    <link rel="stylesheet" href="/css/medforge-global-banner.css">
 
     @stack('styles')
 </head>
-<body class="hold-transition light-skin sidebar-mini sidebar-collapse theme-primary fixed">
+<body class="hold-transition light-skin sidebar-mini sidebar-collapse theme-primary fixed @if(!empty(config('medforge-banner.enabled'))) has-medforge-banner @endif">
+@include('layouts.partials.global_banner')
 @php
     $appNavigation = \App\Modules\Shared\Support\MedforgeNavigation::build(request());
 @endphp
