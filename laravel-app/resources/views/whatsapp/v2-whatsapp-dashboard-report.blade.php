@@ -15,8 +15,8 @@
   <script>
     window.MF_WA_REPORT = @json($report);
     window.MF_WA_FILTERS = {
-      startDate: @json($startDate),
-      endDate: @json($endDate),
+      period: @json($period),
+      agentId: @json($agentId),
     };
   </script>
 
