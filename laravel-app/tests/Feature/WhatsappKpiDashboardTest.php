@@ -24,6 +24,8 @@ class WhatsappKpiDashboardTest extends TestCase
             'whatsapp_conversation_attributions',
             'whatsapp_messages',
             'whatsapp_conversations',
+            'procedimiento_proyectado',
+            'patient_data',
             'users',
             'roles',
         ] as $table) {
@@ -71,6 +73,8 @@ class WhatsappKpiDashboardTest extends TestCase
             $table->unsignedBigInteger('conversation_id');
             $table->string('direction', 16);
             $table->string('message_type', 64)->default('text');
+            $table->string('sender_type', 16)->nullable();
+            $table->unsignedBigInteger('sender_id')->nullable();
             $table->longText('body')->nullable();
             $table->longText('raw_payload')->nullable();
             $table->string('status', 32)->nullable();
@@ -107,11 +111,36 @@ class WhatsappKpiDashboardTest extends TestCase
             $table->unsignedBigInteger('conversation_id')->nullable();
             $table->string('wa_number', 32);
             $table->string('status', 32)->default('created');
+            $table->string('patient_hc_number', 64)->nullable();
             $table->string('sede_id', 64)->nullable();
             $table->string('sede_nombre', 191)->nullable();
             $table->string('procedimiento_id', 64)->nullable();
             $table->string('procedimiento_nombre', 191)->nullable();
+            $table->timestamp('fecha_inicio')->nullable();
             $table->timestamp('booked_at')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('patient_data', function (Blueprint $table): void {
+            $table->id();
+            $table->string('hc_number')->nullable()->unique();
+            $table->string('celular', 32)->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('procedimiento_proyectado', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('form_id')->unique();
+            $table->text('procedimiento_proyectado');
+            $table->string('doctor')->nullable();
+            $table->string('hc_number');
+            $table->string('sede_departamento')->nullable();
+            $table->string('estado_agenda', 64)->nullable();
+            $table->date('fecha')->nullable();
+            $table->time('hora')->nullable();
+            $table->boolean('sigcenter_present')->default(true);
+            $table->timestamp('sigcenter_last_seen_at')->nullable();
+            $table->timestamp('sigcenter_missing_at')->nullable();
             $table->timestamps();
         });
 
@@ -166,6 +195,8 @@ class WhatsappKpiDashboardTest extends TestCase
                 'conversation_id' => $conversationId,
                 'direction' => 'inbound',
                 'message_type' => 'text',
+                'sender_type' => null,
+                'sender_id' => null,
                 'body' => 'Hola',
                 'status' => null,
                 'message_timestamp' => now()->subDays(2)->addMinutes(1),
@@ -176,6 +207,8 @@ class WhatsappKpiDashboardTest extends TestCase
                 'conversation_id' => $conversationId,
                 'direction' => 'outbound',
                 'message_type' => 'text',
+                'sender_type' => 'agent',
+                'sender_id' => 44,
                 'body' => 'Respuesta humana',
                 'status' => 'sent',
                 'message_timestamp' => now()->subDays(2)->addMinutes(4),
@@ -209,10 +242,12 @@ class WhatsappKpiDashboardTest extends TestCase
             'conversation_id' => $conversationId,
             'wa_number' => '593999111222',
             'status' => 'created',
+            'patient_hc_number' => '0925619736',
             'sede_id' => '1',
             'sede_nombre' => 'Villa Club',
             'procedimiento_id' => '530',
             'procedimiento_nombre' => 'Consulta nuevo',
+            'fecha_inicio' => now()->addDays(3)->setTime(9, 0),
             'booked_at' => now()->subDays(2)->addMinutes(10),
             'created_at' => now()->subDays(2)->addMinutes(10),
             'updated_at' => now(),
@@ -236,8 +271,9 @@ class WhatsappKpiDashboardTest extends TestCase
             ])
             ->getJson('/v2/whatsapp/api/kpis');
 
+        $this->assertSame(200, $response->getStatusCode(), $response->getContent());
+
         $response
-            ->assertOk()
             ->assertJsonPath('ok', true)
             ->assertJsonPath('data.summary.people_inbound', 1)
             ->assertJsonPath('data.summary.messages_inbound', 1)
@@ -249,6 +285,102 @@ class WhatsappKpiDashboardTest extends TestCase
             ->assertJsonPath('data.summary.sigcenter_bookings_created', 1)
             ->assertJsonPath('data.summary.sigcenter_booking_patients', 1)
             ->assertJsonPath('data.breakdowns.sigcenter_bookings_by_sede.0.sede_nombre', 'Villa Club');
+    }
+
+    public function test_it_attributes_sigcenter_appointments_to_human_attention_without_counting_bot_bookings(): void
+    {
+        $humanConversationId = \DB::table('whatsapp_conversations')->insertGetId([
+            'wa_number' => '593988777666',
+            'display_name' => 'Paciente Humano',
+            'patient_hc_number' => 'HC-HUMAN-1',
+            'last_message_at' => now()->subDay()->addMinutes(7),
+            'last_message_direction' => 'outbound',
+            'last_message_type' => 'text',
+            'needs_human' => true,
+            'handoff_role_id' => 1,
+            'assigned_user_id' => 44,
+            'handoff_requested_at' => now()->subDay()->addMinutes(1),
+            'unread_count' => 0,
+            'created_at' => now()->subDay(),
+            'updated_at' => now(),
+        ]);
+
+        \DB::table('whatsapp_messages')->insert([
+            [
+                'conversation_id' => $humanConversationId,
+                'direction' => 'inbound',
+                'message_type' => 'text',
+                'sender_type' => null,
+                'sender_id' => null,
+                'body' => 'Quiero agendar',
+                'status' => null,
+                'message_timestamp' => now()->subDay(),
+                'created_at' => now()->subDay(),
+                'updated_at' => now()->subDay(),
+            ],
+            [
+                'conversation_id' => $humanConversationId,
+                'direction' => 'outbound',
+                'message_type' => 'text',
+                'sender_type' => 'agent',
+                'sender_id' => 44,
+                'body' => 'Le ayudo con su cita',
+                'status' => 'sent',
+                'message_timestamp' => now()->subDay()->addMinutes(5),
+                'created_at' => now()->subDay()->addMinutes(5),
+                'updated_at' => now()->subDay()->addMinutes(5),
+            ],
+        ]);
+
+        \DB::table('procedimiento_proyectado')->insert([
+            [
+                'form_id' => 7001,
+                'procedimiento_proyectado' => 'Consulta oftalmológica',
+                'doctor' => 'Dra. Demo',
+                'hc_number' => 'HC-HUMAN-1',
+                'sede_departamento' => 'Villa Club',
+                'estado_agenda' => 'Agendado',
+                'fecha' => now()->addDays(5)->toDateString(),
+                'hora' => '09:30:00',
+                'sigcenter_present' => true,
+                'sigcenter_last_seen_at' => now(),
+                'created_at' => now()->subDay()->addMinutes(8),
+                'updated_at' => now()->subDay()->addMinutes(8),
+            ],
+            [
+                'form_id' => 7002,
+                'procedimiento_proyectado' => 'Consulta creada por bot',
+                'doctor' => 'Dr. Bot',
+                'hc_number' => '0925619736',
+                'sede_departamento' => 'Villa Club',
+                'estado_agenda' => 'Agendado',
+                'fecha' => now()->addDays(3)->toDateString(),
+                'hora' => '09:00:00',
+                'sigcenter_present' => true,
+                'sigcenter_last_seen_at' => now(),
+                'created_at' => now()->subDays(2)->addMinutes(11),
+                'updated_at' => now()->subDays(2)->addMinutes(11),
+            ],
+        ]);
+
+        $response = $this
+            ->withoutMiddleware([
+                RequireAppPermission::class,
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->getJson('/v2/whatsapp/api/kpis');
+
+        $this->assertSame(200, $response->getStatusCode(), $response->getContent());
+
+        $response
+            ->assertJsonPath('data.summary.human_attributed_appointments_strong', 1)
+            ->assertJsonPath('data.summary.human_attributed_appointment_conversations_strong', 1)
+            ->assertJsonPath('data.summary.human_attributed_appointments_medium', 1)
+            ->assertJsonPath('data.summary.sigcenter_bookings_created', 1)
+            ->assertJsonPath('data.breakdowns.human_attributed_appointments_by_agent.0.agent_name', 'Jorge Vera')
+            ->assertJsonPath('data.breakdowns.human_attributed_appointments_by_agent.0.appointment_slots', 1);
     }
 
     public function test_it_returns_drilldown_for_supported_metric(): void
@@ -308,6 +440,7 @@ class WhatsappKpiDashboardTest extends TestCase
         $content = $response->streamedContent();
         $this->assertStringContainsString("section,label,value,detail", $content);
         $this->assertStringContainsString("summary,\"Mensajes inbound\",1", $content);
+        $this->assertStringContainsString("summary,\"Citas Sigcenter atribuibles a atención humana (24h)\",0", $content);
     }
 
     public function test_it_exports_dashboard_pdf(): void
@@ -343,10 +476,14 @@ class WhatsappKpiDashboardTest extends TestCase
             ->assertSee('WhatsApp KPI Dashboard')
             ->assertSee('Personas que escribieron')
             ->assertSee('Tiempo a primera respuesta humana')
+            ->assertSee('Citas humanas atribuibles')
+            ->assertSee('Citas bot / integración')
+            ->assertSee('Citas atribuibles por agente')
             ->assertSee('Desde handoff · mediana 3 min')
             ->assertSee('Respondidos a tiempo')
             ->assertSee('Atención humana por agente')
-            ->assertSee('Exportar CSV');
+            ->assertSee('Exportar')
+            ->assertSee('CSV');
     }
 
     /** @test */

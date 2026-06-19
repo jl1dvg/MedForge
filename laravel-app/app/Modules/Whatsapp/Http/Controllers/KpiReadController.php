@@ -237,9 +237,22 @@ class KpiReadController
         $frictions = is_array($analytics['frictions'] ?? null) ? $analytics['frictions'] : [];
 
         $recommendations = [];
+        $humanAppointments = (int) ($summary['human_attributed_appointments_strong'] ?? 0);
+        $botAppointments = (int) ($summary['sigcenter_bookings_created'] ?? 0);
+        $totalAppointments = $humanAppointments + $botAppointments;
+        $peopleInbound = (int) ($summary['people_inbound'] ?? 0);
+        $attributedBookingRate = $peopleInbound > 0 ? ($totalAppointments / $peopleInbound) * 100 : 0.0;
 
-        if (((float) ($analyticsSummary['booking_rate'] ?? 0)) < 1.0) {
-            $recommendations[] = 'Priorizar una revisión del flujo de captación: el volumen ya existe, pero la conversión total a cita sigue por debajo de 1%.';
+        if ($humanAppointments > 0) {
+            $recommendations[] = sprintf(
+                'Separar el análisis de cierre humano: hay %d citas Sigcenter atribuibles a conversaciones atendidas por agentes, frente a %d creadas por bot/integración.',
+                $humanAppointments,
+                $botAppointments
+            );
+        }
+
+        if ($attributedBookingRate < 1.0) {
+            $recommendations[] = 'Priorizar una revisión del flujo de captación: el volumen ya existe, pero la conversión atribuida total a cita sigue por debajo de 1%.';
         }
 
         if (((int) ($summary['conversations_abandoned_with_handoff'] ?? 0)) > 0) {

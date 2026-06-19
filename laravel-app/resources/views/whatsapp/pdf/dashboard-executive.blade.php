@@ -137,9 +137,9 @@
                     <div class="sub">{{ $summary['conversations_attended_human'] ?? 0 }} conversaciones atendidas</div>
                 </td>
                 <td class="card" width="25%">
-                    <div class="label">Citas creadas</div>
-                    <div class="value">{{ $summary['sigcenter_bookings_created'] ?? 0 }}</div>
-                    <div class="sub">Booking rate {{ $analyticsSummary['booking_rate'] ?? 0 }}%</div>
+                    <div class="label">Citas humanas atribuibles</div>
+                    <div class="value">{{ $summary['human_attributed_appointments_strong'] ?? 0 }}</div>
+                    <div class="sub">{{ $summary['sigcenter_bookings_created'] ?? 0 }} bot/integración · 72h: {{ $summary['human_attributed_appointments_medium'] ?? 0 }}</div>
                 </td>
             </tr>
         </table>

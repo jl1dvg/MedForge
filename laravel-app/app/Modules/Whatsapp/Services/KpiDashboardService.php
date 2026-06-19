@@ -57,6 +57,7 @@ class KpiDashboardService
         $sla = $this->slaSummary($fromSql, $toSql, $roleId, $agentId, $slaTargetMinutes);
         $transfers = $this->transferSummary($fromSql, $toSql, $roleId, $agentId);
         $bookings = $this->sigcenterBookingSummary($fromSql, $toSql);
+        $humanAppointmentAttribution = $this->humanAppointmentAttribution($fromSql, $toSql, $roleId, $agentId);
         $analytics = $this->conversationAnalytics($fromSql, $toSql, $roleId, $agentId);
         $reminders = $this->appointmentReminderAnalytics($reminderFromSql, $reminderToSql);
         $closeReasons = $this->closeReasonSummary($fromSql, $toSql, $roleId, $agentId);
@@ -65,7 +66,7 @@ class KpiDashboardService
         $summary = array_merge($summary, $human, $queue, $window, $sla, [
             'handoff_transfers' => $transfers,
             'peak_open_conversations' => (int) ($human['peak_open_conversations'] ?? 0),
-        ], $bookings, $closeReasons, $operationalInbox);
+        ], $bookings, $humanAppointmentAttribution['summary'], $closeReasons, $operationalInbox);
 
         return [
             'period' => [
@@ -127,6 +128,11 @@ class KpiDashboardService
                     $from,
                     $toExclusive
                 ),
+                'human_attributed_appointments' => $this->mapTrend(
+                    $humanAppointmentAttribution['trend_rows'],
+                    $from,
+                    $toExclusive
+                ),
             ],
             'breakdowns' => [
                 'handoffs_by_role' => $this->handoffsByRole($fromSql, $toSql, $roleId, $agentId),
@@ -135,6 +141,8 @@ class KpiDashboardService
                 'agent_live_status' => $this->agentLiveStatus($roleId, $agentId),
                 'human_response_by_queue' => $this->humanResponseByQueue($fromSql, $toSql, $roleId, $agentId),
                 'sigcenter_bookings_by_sede' => $this->sigcenterBookingsBySede($fromSql, $toSql),
+                'human_attributed_appointments_by_agent' => $humanAppointmentAttribution['by_agent'],
+                'human_attributed_appointments_by_sede' => $humanAppointmentAttribution['by_sede'],
             ],
             'analytics' => $analytics,
             'reminders' => $reminders,
@@ -228,11 +236,24 @@ class KpiDashboardService
             'queue_awaiting_template_reply' => 'Esperando respuesta a plantilla',
             'sla_assignments_rate' => 'SLA asignación (%)',
             'handoff_transfers' => 'Transferencias',
-            'sigcenter_bookings_created' => 'Citas Sigcenter creadas desde WhatsApp',
-            'sigcenter_booking_patients' => 'Pacientes agendados desde WhatsApp',
+            'human_attributed_appointments_strong' => 'Citas Sigcenter atribuibles a atención humana (24h)',
+            'human_attributed_appointment_conversations_strong' => 'Conversaciones humanas con cita atribuible (24h)',
+            'human_attributed_appointments_medium' => 'Citas Sigcenter atribuibles a atención humana (72h)',
+            'sigcenter_bookings_created' => 'Citas Sigcenter creadas por bot/integración',
+            'sigcenter_booking_patients' => 'Pacientes agendados por bot/integración',
             'sigcenter_booking_failures' => 'Citas Sigcenter fallidas desde WhatsApp',
         ] as $key => $label) {
             $rows[] = ['summary', $label, $summary[$key] ?? null, null];
+        }
+
+        $rows[] = ['breakdown', 'Citas atribuibles a atención humana por agente', null, null];
+        foreach (($breakdowns['human_attributed_appointments_by_agent'] ?? []) as $row) {
+            $rows[] = [
+                'human_attributed_appointments_by_agent',
+                (string) ($row['agent_name'] ?? ''),
+                (int) ($row['appointment_slots'] ?? 0),
+                'Conversaciones ' . ((int) ($row['conversations'] ?? 0)) . ' · Pacientes ' . ((int) ($row['patients'] ?? 0)),
+            ];
         }
 
         $rows[] = ['breakdown', 'Atención humana por agente', null, null];
@@ -1853,7 +1874,7 @@ class KpiDashboardService
      */
     private function handoffsByAgent(string $fromSql, string $toSql, ?int $roleId, ?int $agentId): array
     {
-        // Muestra carga ACTUAL sin filtro de fecha — el workload es estado presente, no volumen del día.
+        // Muestra carga vigente e histórica reciente por agente para no perder handoffs ya cerrados.
         $filter = $this->handoffFilterSql('h', $roleId, $agentId, 'agent');
         $sql = 'SELECT
                     h.assigned_agent_id AS user_id,
@@ -1864,7 +1885,7 @@ class KpiDashboardService
                 FROM whatsapp_handoffs h
                 LEFT JOIN users u ON u.id = h.assigned_agent_id
                 WHERE h.assigned_agent_id IS NOT NULL
-                  AND h.status IN ("assigned", "queued")';
+                  AND h.status IN ("assigned", "queued", "resolved")';
         $params = [];
         if ($filter['where'] !== '') {
             $sql .= ' AND ' . $filter['where'];
@@ -1956,6 +1977,9 @@ class KpiDashboardService
             ? 'c.last_message_at'
             : 'NULL';
         $cutoff7d = Carbon::now()->subDays(7)->format('Y-m-d H:i:s');
+        $unreadWaitMinutesSql = $this->isSqlite()
+            ? 'CAST(((julianday("now") - julianday(' . $lastMsgAt . ')) * 1440) AS INTEGER)'
+            : 'TIMESTAMPDIFF(MINUTE, ' . $lastMsgAt . ', NOW())';
 
         $sql = 'SELECT
                     c.assigned_user_id AS user_id,
@@ -1963,7 +1987,7 @@ class KpiDashboardService
                     COUNT(*) AS active_conversations,
                     SUM(CASE WHEN c.unread_count > 0 THEN 1 ELSE 0 END) AS unread_conversations,
                     MAX(CASE WHEN c.unread_count > 0 AND c.last_message_direction = "inbound"
-                             THEN TIMESTAMPDIFF(MINUTE, ' . $lastMsgAt . ', NOW())
+                             THEN ' . $unreadWaitMinutesSql . '
                              ELSE 0 END) AS max_unread_wait_minutes
                 FROM whatsapp_conversations c
                 LEFT JOIN users u ON u.id = c.assigned_user_id
@@ -2186,6 +2210,548 @@ class KpiDashboardService
              ORDER BY total DESC, sede_nombre ASC',
             [$fromSql, $toSql]
         ));
+    }
+
+    /**
+     * @return array{
+     *     summary:array<string,int>,
+     *     trend_rows:array<int,array{period_date:string,total:int}>,
+     *     by_agent:array<int,array<string,mixed>>,
+     *     by_sede:array<int,array<string,mixed>>
+     * }
+     */
+    private function humanAppointmentAttribution(string $fromSql, string $toSql, ?int $roleId, ?int $agentId): array
+    {
+        $empty = $this->emptyHumanAppointmentAttribution();
+        if (!Schema::hasTable('procedimiento_proyectado')
+            || !Schema::hasColumn('procedimiento_proyectado', 'hc_number')
+            || !Schema::hasColumn('procedimiento_proyectado', 'fecha')
+            || !Schema::hasTable('whatsapp_conversations')
+        ) {
+            return $empty;
+        }
+
+        $events = $this->humanAppointmentEventRows($fromSql, $toSql, $roleId, $agentId);
+        if ($events === []) {
+            return $empty;
+        }
+
+        $conversations = [];
+        $phoneTails = [];
+        foreach ($events as $row) {
+            $conversationId = (int) ($row->conversation_id ?? 0);
+            $eventAt = isset($row->event_at) ? Carbon::parse((string) $row->event_at) : null;
+            if ($conversationId <= 0 || $eventAt === null) {
+                continue;
+            }
+
+            $waNumber = (string) ($row->wa_number ?? '');
+            $tail = $this->phoneTail($waNumber);
+            $patientHcNumber = trim((string) ($row->patient_hc_number ?? ''));
+            if ($patientHcNumber === '' && $tail !== '') {
+                $phoneTails[$tail] = true;
+            }
+
+            $agentFromEvent = (int) ($row->agent_id ?? 0);
+            $assignedUserId = (int) ($row->assigned_user_id ?? 0);
+            $agentForEvent = $agentFromEvent > 0 ? $agentFromEvent : ($assignedUserId > 0 ? $assignedUserId : null);
+
+            if (!isset($conversations[$conversationId])) {
+                $conversations[$conversationId] = [
+                    'conversation_id' => $conversationId,
+                    'wa_number' => $waNumber,
+                    'phone_tail' => $tail,
+                    'patient_hc_number' => $patientHcNumber,
+                    'first_human_at' => $eventAt,
+                    'last_human_at' => $eventAt,
+                    'last_agent_id' => $agentForEvent,
+                ];
+                continue;
+            }
+
+            if ($eventAt->lessThan($conversations[$conversationId]['first_human_at'])) {
+                $conversations[$conversationId]['first_human_at'] = $eventAt;
+            }
+            if ($eventAt->greaterThanOrEqualTo($conversations[$conversationId]['last_human_at'])) {
+                $conversations[$conversationId]['last_human_at'] = $eventAt;
+                if ($agentForEvent !== null) {
+                    $conversations[$conversationId]['last_agent_id'] = $agentForEvent;
+                }
+            }
+        }
+
+        if ($conversations === []) {
+            return $empty;
+        }
+
+        $hcByTail = $this->patientHcByPhoneTail(array_keys($phoneTails));
+        $conversationsByHc = [];
+        foreach ($conversations as $conversation) {
+            $hcNumber = $conversation['patient_hc_number'];
+            if ($hcNumber === '' && $conversation['phone_tail'] !== '') {
+                $hcNumber = (string) ($hcByTail[$conversation['phone_tail']] ?? '');
+            }
+            if ($hcNumber === '') {
+                continue;
+            }
+            $conversation['patient_hc_number'] = $hcNumber;
+            $conversationsByHc[$hcNumber][] = $conversation;
+        }
+
+        if ($conversationsByHc === []) {
+            return $empty;
+        }
+
+        $appointments = [];
+        $hcNumbers = array_keys($conversationsByHc);
+        foreach (array_chunk($hcNumbers, 500) as $hcChunk) {
+            $query = DB::table('procedimiento_proyectado')
+                ->select([
+                    'form_id',
+                    'hc_number',
+                    'fecha',
+                    'created_at',
+                ])
+                ->whereIn('hc_number', $hcChunk)
+                ->whereNotNull('fecha');
+
+            if (Schema::hasColumn('procedimiento_proyectado', 'hora')) {
+                $query->addSelect('hora');
+            }
+            if (Schema::hasColumn('procedimiento_proyectado', 'sede_departamento')) {
+                $query->addSelect('sede_departamento');
+            }
+            if (Schema::hasColumn('procedimiento_proyectado', 'sigcenter_present')) {
+                $query->where('sigcenter_present', 1);
+            }
+
+            foreach ($query->get() as $appointment) {
+                $appointments[] = $appointment;
+            }
+        }
+
+        if ($appointments === []) {
+            return $empty;
+        }
+
+        $botExclusions = $this->botAppointmentExclusions($fromSql, $toSql);
+        $agentIds = [];
+        $strongSlots = [];
+        $strongForms = [];
+        $strongConversations = [];
+        $strongPatients = [];
+        $mediumSlots = [];
+        $mediumForms = [];
+        $mediumConversations = [];
+        $mediumPatients = [];
+        $weakSlots = [];
+        $trendSlotDates = [];
+        $agentGroups = [];
+        $sedeGroups = [];
+
+        foreach ($appointments as $appointment) {
+            $hcNumber = trim((string) ($appointment->hc_number ?? ''));
+            $appointmentDate = $this->dateOnly($appointment->fecha ?? null);
+            if ($hcNumber === '' || $appointmentDate === '' || empty($conversationsByHc[$hcNumber])) {
+                continue;
+            }
+
+            $appointmentTime = $this->timeOnly($appointment->hora ?? null);
+            $createdAt = isset($appointment->created_at) ? Carbon::parse((string) $appointment->created_at) : null;
+            if ($createdAt === null) {
+                continue;
+            }
+
+            $slotKey = $hcNumber . '|' . $appointmentDate . '|' . $appointmentTime;
+            if (isset($botExclusions['hc_slots'][$slotKey])
+                || (isset($botExclusions['hc_dates'][$hcNumber . '|' . $appointmentDate]) && $appointmentTime === '')
+            ) {
+                continue;
+            }
+
+            foreach ($conversationsByHc[$hcNumber] as $conversation) {
+                $conversationId = (int) $conversation['conversation_id'];
+                if (isset($botExclusions['conversation_dates'][$conversationId . '|' . $appointmentDate])) {
+                    continue;
+                }
+
+                $firstHumanAt = $conversation['first_human_at'];
+                $lastHumanAt = $conversation['last_human_at'];
+                $minAppointmentDate = $firstHumanAt->copy()->startOfDay();
+                $maxAppointmentDate = $firstHumanAt->copy()->addDays(30)->endOfDay();
+                $appointmentDay = Carbon::parse($appointmentDate)->startOfDay();
+                if ($appointmentDay->lessThan($minAppointmentDate) || $appointmentDay->greaterThan($maxAppointmentDate)) {
+                    continue;
+                }
+
+                $strongWindowStart = $firstHumanAt->copy()->subMinutes(15);
+                $strongWindowEnd = $lastHumanAt->copy()->addDay();
+                $mediumWindowEnd = $lastHumanAt->copy()->addDays(3);
+                $weakWindowEnd = $firstHumanAt->copy()->addDays(30);
+                $formId = (string) ($appointment->form_id ?? $slotKey);
+                $agentIdForGroup = (int) ($conversation['last_agent_id'] ?? 0);
+                $sedeNombre = trim((string) ($appointment->sede_departamento ?? ''));
+                $sedeNombre = $sedeNombre !== '' ? $sedeNombre : 'Sin sede';
+
+                if ($createdAt->betweenIncluded($strongWindowStart, $strongWindowEnd)) {
+                    $strongSlots[$slotKey] = true;
+                    $strongForms[$formId] = true;
+                    $strongConversations[$conversationId] = true;
+                    $strongPatients[$hcNumber] = true;
+                    $trendSlotDates[$slotKey] = $createdAt->toDateString();
+                    $mediumSlots[$slotKey] = true;
+                    $mediumForms[$formId] = true;
+                    $mediumConversations[$conversationId] = true;
+                    $mediumPatients[$hcNumber] = true;
+
+                    if ($agentIdForGroup > 0) {
+                        $agentIds[$agentIdForGroup] = true;
+                        if (!isset($agentGroups[$agentIdForGroup])) {
+                            $agentGroups[$agentIdForGroup] = [
+                                'user_id' => $agentIdForGroup,
+                                'agent_name' => '',
+                                'slot_keys' => [],
+                                'conversation_ids' => [],
+                                'patient_hcs' => [],
+                            ];
+                        }
+                        $agentGroups[$agentIdForGroup]['slot_keys'][$slotKey] = true;
+                        $agentGroups[$agentIdForGroup]['conversation_ids'][$conversationId] = true;
+                        $agentGroups[$agentIdForGroup]['patient_hcs'][$hcNumber] = true;
+                    }
+
+                    if (!isset($sedeGroups[$sedeNombre])) {
+                        $sedeGroups[$sedeNombre] = [
+                            'sede_nombre' => $sedeNombre,
+                            'slot_keys' => [],
+                            'conversation_ids' => [],
+                            'patient_hcs' => [],
+                        ];
+                    }
+                    $sedeGroups[$sedeNombre]['slot_keys'][$slotKey] = true;
+                    $sedeGroups[$sedeNombre]['conversation_ids'][$conversationId] = true;
+                    $sedeGroups[$sedeNombre]['patient_hcs'][$hcNumber] = true;
+                    continue;
+                }
+
+                if ($createdAt->betweenIncluded($strongWindowStart, $mediumWindowEnd)) {
+                    $mediumSlots[$slotKey] = true;
+                    $mediumForms[$formId] = true;
+                    $mediumConversations[$conversationId] = true;
+                    $mediumPatients[$hcNumber] = true;
+                    continue;
+                }
+
+                if ($createdAt->betweenIncluded($strongWindowStart, $weakWindowEnd)) {
+                    $weakSlots[$slotKey] = true;
+                }
+            }
+        }
+
+        $agentNames = $this->agentNamesById(array_keys($agentIds));
+        $byAgent = array_values(array_map(function (array $group) use ($agentNames): array {
+            $userId = (int) $group['user_id'];
+            return [
+                'user_id' => $userId,
+                'agent_name' => (string) ($agentNames[$userId] ?? ('Agente #' . $userId)),
+                'appointment_slots' => count($group['slot_keys']),
+                'conversations' => count($group['conversation_ids']),
+                'patients' => count($group['patient_hcs']),
+            ];
+        }, $agentGroups));
+        usort($byAgent, fn (array $a, array $b): int => ($b['appointment_slots'] <=> $a['appointment_slots']) ?: strcmp($a['agent_name'], $b['agent_name']));
+
+        $bySede = array_values(array_map(fn (array $group): array => [
+            'sede_nombre' => (string) $group['sede_nombre'],
+            'appointment_slots' => count($group['slot_keys']),
+            'conversations' => count($group['conversation_ids']),
+            'patients' => count($group['patient_hcs']),
+        ], $sedeGroups));
+        usort($bySede, fn (array $a, array $b): int => ($b['appointment_slots'] <=> $a['appointment_slots']) ?: strcmp($a['sede_nombre'], $b['sede_nombre']));
+
+        $trendCounts = [];
+        foreach ($trendSlotDates as $date) {
+            $trendCounts[$date] = ($trendCounts[$date] ?? 0) + 1;
+        }
+        ksort($trendCounts);
+
+        return [
+            'summary' => [
+                'human_attributed_appointments_strong' => count($strongSlots),
+                'human_attributed_forms_strong' => count($strongForms),
+                'human_attributed_appointment_conversations_strong' => count($strongConversations),
+                'human_attributed_appointment_patients_strong' => count($strongPatients),
+                'human_attributed_appointments_medium' => count($mediumSlots),
+                'human_attributed_forms_medium' => count($mediumForms),
+                'human_attributed_appointment_conversations_medium' => count($mediumConversations),
+                'human_attributed_appointment_patients_medium' => count($mediumPatients),
+                'human_attributed_appointments_weak' => count($weakSlots),
+            ],
+            'trend_rows' => array_map(
+                fn (string $date, int $total): array => ['period_date' => $date, 'total' => $total],
+                array_keys($trendCounts),
+                array_values($trendCounts)
+            ),
+            'by_agent' => array_slice($byAgent, 0, 20),
+            'by_sede' => array_slice($bySede, 0, 20),
+        ];
+    }
+
+    /**
+     * @return array{
+     *     summary:array<string,int>,
+     *     trend_rows:array<int,array{period_date:string,total:int}>,
+     *     by_agent:array<int,array<string,mixed>>,
+     *     by_sede:array<int,array<string,mixed>>
+     * }
+     */
+    private function emptyHumanAppointmentAttribution(): array
+    {
+        return [
+            'summary' => [
+                'human_attributed_appointments_strong' => 0,
+                'human_attributed_forms_strong' => 0,
+                'human_attributed_appointment_conversations_strong' => 0,
+                'human_attributed_appointment_patients_strong' => 0,
+                'human_attributed_appointments_medium' => 0,
+                'human_attributed_forms_medium' => 0,
+                'human_attributed_appointment_conversations_medium' => 0,
+                'human_attributed_appointment_patients_medium' => 0,
+                'human_attributed_appointments_weak' => 0,
+            ],
+            'trend_rows' => [],
+            'by_agent' => [],
+            'by_sede' => [],
+        ];
+    }
+
+    /**
+     * @return array<int, object>
+     */
+    private function humanAppointmentEventRows(string $fromSql, string $toSql, ?int $roleId, ?int $agentId): array
+    {
+        $allowedAgents = $this->allowedAgentIds($roleId, $agentId);
+        if (($roleId !== null && $roleId > 0 || $agentId !== null && $agentId > 0) && $allowedAgents === []) {
+            return [];
+        }
+
+        $patientHcSql = Schema::hasColumn('whatsapp_conversations', 'patient_hc_number') ? 'c.patient_hc_number' : 'NULL';
+        $assignedUserSql = Schema::hasColumn('whatsapp_conversations', 'assigned_user_id') ? 'c.assigned_user_id' : 'NULL';
+        $selectPrefix = 'c.id AS conversation_id, c.wa_number, ' . $patientHcSql . ' AS patient_hc_number, ' . $assignedUserSql . ' AS assigned_user_id';
+        $queries = [];
+        $params = [];
+
+        if (Schema::hasTable('whatsapp_messages')
+            && Schema::hasColumn('whatsapp_messages', 'sender_type')
+            && Schema::hasColumn('whatsapp_messages', 'sender_id')
+        ) {
+            $eventAt = 'COALESCE(m.message_timestamp, m.created_at)';
+            $queries[] = 'SELECT ' . $selectPrefix . ', ' . $eventAt . ' AS event_at, m.sender_id AS agent_id
+                          FROM whatsapp_messages m
+                          INNER JOIN whatsapp_conversations c ON c.id = m.conversation_id
+                          WHERE m.direction = "outbound"
+                            AND m.sender_type = "agent"
+                            AND m.sender_id IS NOT NULL
+                            AND ' . $eventAt . ' >= ?
+                            AND ' . $eventAt . ' < ?';
+            $params[] = $fromSql;
+            $params[] = $toSql;
+        }
+
+        if (Schema::hasTable('whatsapp_handoffs')
+            && Schema::hasColumn('whatsapp_handoffs', 'assigned_agent_id')
+        ) {
+            $eventAt = Schema::hasColumn('whatsapp_handoffs', 'assigned_at')
+                ? 'COALESCE(h.assigned_at, h.created_at)'
+                : 'h.created_at';
+            $queries[] = 'SELECT ' . $selectPrefix . ', ' . $eventAt . ' AS event_at, h.assigned_agent_id AS agent_id
+                          FROM whatsapp_handoffs h
+                          INNER JOIN whatsapp_conversations c ON c.id = h.conversation_id
+                          WHERE h.assigned_agent_id IS NOT NULL
+                            AND ' . $eventAt . ' >= ?
+                            AND ' . $eventAt . ' < ?';
+            $params[] = $fromSql;
+            $params[] = $toSql;
+        }
+
+        if (Schema::hasTable('whatsapp_handoff_events')
+            && Schema::hasTable('whatsapp_handoffs')
+            && Schema::hasColumn('whatsapp_handoff_events', 'actor_user_id')
+        ) {
+            $queries[] = 'SELECT ' . $selectPrefix . ', e.created_at AS event_at, e.actor_user_id AS agent_id
+                          FROM whatsapp_handoff_events e
+                          INNER JOIN whatsapp_handoffs h ON h.id = e.handoff_id
+                          INNER JOIN whatsapp_conversations c ON c.id = h.conversation_id
+                          WHERE e.actor_user_id IS NOT NULL
+                            AND e.created_at >= ?
+                            AND e.created_at < ?';
+            $params[] = $fromSql;
+            $params[] = $toSql;
+        }
+
+        if ($queries === []) {
+            return [];
+        }
+
+        $rows = DB::select(implode(' UNION ALL ', $queries), $params);
+        if ($allowedAgents === null) {
+            return $rows;
+        }
+
+        return array_values(array_filter($rows, function (object $row) use ($allowedAgents): bool {
+            $agentId = (int) ($row->agent_id ?? 0);
+            $assignedUserId = (int) ($row->assigned_user_id ?? 0);
+            return ($agentId > 0 && isset($allowedAgents[$agentId]))
+                || ($assignedUserId > 0 && isset($allowedAgents[$assignedUserId]));
+        }));
+    }
+
+    /**
+     * @return ?array<int,true>
+     */
+    private function allowedAgentIds(?int $roleId, ?int $agentId): ?array
+    {
+        if ($agentId !== null && $agentId > 0) {
+            return [$agentId => true];
+        }
+        if ($roleId === null || $roleId <= 0 || !Schema::hasTable('users') || !Schema::hasColumn('users', 'role_id')) {
+            return null;
+        }
+
+        $ids = [];
+        foreach (DB::table('users')->select('id')->where('role_id', $roleId)->get() as $row) {
+            $id = (int) ($row->id ?? 0);
+            if ($id > 0) {
+                $ids[$id] = true;
+            }
+        }
+        return $ids;
+    }
+
+    /**
+     * @param array<int,string> $phoneTails
+     * @return array<string,string>
+     */
+    private function patientHcByPhoneTail(array $phoneTails): array
+    {
+        if ($phoneTails === []
+            || !Schema::hasTable('patient_data')
+            || !Schema::hasColumn('patient_data', 'hc_number')
+            || !Schema::hasColumn('patient_data', 'celular')
+        ) {
+            return [];
+        }
+
+        $wanted = array_fill_keys($phoneTails, true);
+        $matches = [];
+        foreach (DB::table('patient_data')->select(['hc_number', 'celular'])->whereNotNull('celular')->get() as $row) {
+            $tail = $this->phoneTail((string) ($row->celular ?? ''));
+            $hcNumber = trim((string) ($row->hc_number ?? ''));
+            if ($tail !== '' && $hcNumber !== '' && isset($wanted[$tail])) {
+                $matches[$tail] = $hcNumber;
+            }
+        }
+        return $matches;
+    }
+
+    /**
+     * @return array{conversation_dates:array<string,true>,hc_slots:array<string,true>,hc_dates:array<string,true>}
+     */
+    private function botAppointmentExclusions(string $fromSql, string $toSql): array
+    {
+        $exclusions = [
+            'conversation_dates' => [],
+            'hc_slots' => [],
+            'hc_dates' => [],
+        ];
+
+        if (!Schema::hasTable('whatsapp_sigcenter_bookings')) {
+            return $exclusions;
+        }
+
+        $query = DB::table('whatsapp_sigcenter_bookings')
+            ->select(['conversation_id', 'wa_number', 'created_at', 'booked_at', 'status'])
+            ->whereIn('status', ['created', 'confirmed'])
+            ->where('created_at', '>=', $fromSql)
+            ->where('created_at', '<', $toSql);
+
+        if (Schema::hasColumn('whatsapp_sigcenter_bookings', 'patient_hc_number')) {
+            $query->addSelect('patient_hc_number');
+        }
+        if (Schema::hasColumn('whatsapp_sigcenter_bookings', 'fecha_inicio')) {
+            $query->addSelect('fecha_inicio');
+        }
+
+        foreach ($query->get() as $booking) {
+            $conversationId = (int) ($booking->conversation_id ?? 0);
+            $hcNumber = trim((string) ($booking->patient_hc_number ?? ''));
+            $appointmentDate = $this->dateOnly($booking->fecha_inicio ?? null);
+            if ($appointmentDate === '') {
+                $appointmentDate = $this->dateOnly($booking->booked_at ?? $booking->created_at ?? null);
+            }
+            $appointmentTime = $this->timeOnly($booking->fecha_inicio ?? null);
+
+            if ($conversationId > 0 && $appointmentDate !== '') {
+                $exclusions['conversation_dates'][$conversationId . '|' . $appointmentDate] = true;
+            }
+            if ($hcNumber !== '' && $appointmentDate !== '') {
+                $exclusions['hc_dates'][$hcNumber . '|' . $appointmentDate] = true;
+                $exclusions['hc_slots'][$hcNumber . '|' . $appointmentDate . '|' . $appointmentTime] = true;
+            }
+        }
+
+        return $exclusions;
+    }
+
+    /**
+     * @param array<int,int|string> $agentIds
+     * @return array<int,string>
+     */
+    private function agentNamesById(array $agentIds): array
+    {
+        $agentIds = array_values(array_unique(array_filter(array_map('intval', $agentIds))));
+        if ($agentIds === [] || !Schema::hasTable('users')) {
+            return [];
+        }
+
+        $placeholders = implode(', ', array_fill(0, count($agentIds), '?'));
+        $rows = DB::select(
+            'SELECT id, ' . $this->agentNameSql(null, 'id', 'Agente #') . ' AS agent_name
+             FROM users
+             WHERE id IN (' . $placeholders . ')',
+            $agentIds
+        );
+
+        $names = [];
+        foreach ($rows as $row) {
+            $id = (int) ($row->id ?? 0);
+            if ($id > 0) {
+                $names[$id] = (string) ($row->agent_name ?? ('Agente #' . $id));
+            }
+        }
+        return $names;
+    }
+
+    private function phoneTail(string $phone): string
+    {
+        $digits = preg_replace('/\D+/', '', $phone) ?? '';
+        return $digits !== '' ? substr($digits, -9) : '';
+    }
+
+    private function dateOnly(mixed $value): string
+    {
+        if ($value === null || $value === '') {
+            return '';
+        }
+        return Carbon::parse((string) $value)->toDateString();
+    }
+
+    private function timeOnly(mixed $value): string
+    {
+        if ($value === null || $value === '') {
+            return '';
+        }
+        return Carbon::parse((string) $value)->format('H:i:s');
     }
 
     private function peakOpenConversations(string $fromSql, string $toSql, ?int $roleId, ?int $agentId): array
