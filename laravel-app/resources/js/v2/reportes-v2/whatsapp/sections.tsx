@@ -5,6 +5,14 @@ import type { WhatsappReport } from './types';
 
 export function WhatsappContent({ r }: { r: WhatsappReport }) {
   const s = r.summary;
+  const botBookings = s.botBookings ?? s.bookings ?? 0;
+  const humanAppointments = s.humanAttributedAppointments ?? 0;
+  const humanAppointmentsMedium = s.humanAttributedAppointmentsMedium ?? humanAppointments;
+  const humanAppointmentConversations = s.humanAttributedAppointmentConversations ?? 0;
+  const humanAppointmentPatients = s.humanAttributedAppointmentPatients ?? 0;
+  const attributedAppointments = s.attributedAppointments ?? (botBookings + humanAppointments);
+  const attributedBookingRate = s.attributedBookingRate ?? s.bookingRate ?? 0;
+  const humanAppointmentAgents = r.humanAppointmentAgents ?? [];
 
   return (
     <>
@@ -23,7 +31,7 @@ export function WhatsappContent({ r }: { r: WhatsappReport }) {
         <div className="rep-grid rep-grid--2" style={{ marginBottom: 16 }}>
           <div className="rep-card">
             <div className="rep-card-head"><h3><i className="mdi mdi-chart-line"></i>Tendencia de conversaciones y citas</h3></div>
-            <TrendArea data={r.trend} keys={['conversaciones', 'citas']} names={['Conversaciones', 'Citas']} />
+            <TrendArea data={r.trend} keys={['conversaciones', 'citas', 'citasHumanas']} names={['Conversaciones', 'Citas bot/integración', 'Citas humanas atrib.']} />
           </div>
           <Read>
             Se atendió al <b>{Math.round(s.attentionRate)}%</b> de las conversaciones que requirieron una persona
@@ -59,10 +67,15 @@ export function WhatsappContent({ r }: { r: WhatsappReport }) {
         lede="Embudo de conversión y desempeño por segmento de ciclo de vida del paciente."
       >
         <div className="rep-grid rep-grid--4" style={{ marginBottom: 16 }}>
-          <Kpi icon="mdi-calendar-check-outline" label="Citas generadas" value={s.bookings.toLocaleString('es-EC')} />
-          <Kpi icon="mdi-percent-outline" label="Tasa de conversión a cita" value={`${Math.round(s.bookingRate)}%`} />
-          <Kpi icon="mdi-account-search-outline" label="Tasa de identificación" value={`${Math.round(s.identificationRate)}%`} />
+          <Kpi icon="mdi-account-tie-outline" label="Citas humanas atribuibles" value={humanAppointments.toLocaleString('es-EC')} sub={`${humanAppointmentConversations.toLocaleString('es-EC')} conv. · ${humanAppointmentPatients.toLocaleString('es-EC')} pacientes`} />
+          <Kpi icon="mdi-calendar-sync-outline" label="Citas bot/integración" value={botBookings.toLocaleString('es-EC')} />
+          <Kpi icon="mdi-calendar-clock-outline" label="Ventana humana 72h" value={humanAppointmentsMedium.toLocaleString('es-EC')} />
+          <Kpi icon="mdi-percent-outline" label="Tasa atribuida total" value={`${attributedBookingRate}%`} sub={`${attributedAppointments.toLocaleString('es-EC')} citas atribuidas`} />
         </div>
+        <Read>
+          Las <b>{botBookings.toLocaleString('es-EC')}</b> citas de bot/integración vienen del registro directo de WhatsApp.
+          Las citas humanas atribuibles cruzan conversaciones con intervención humana en MedForge contra citas creadas en Sigcenter por paciente y ventana temporal.
+        </Read>
         <div className="rep-grid rep-grid--2" style={{ marginBottom: 16 }}>
           <div className="rep-card">
             <div className="rep-card-head"><h3><i className="mdi mdi-filter-variant"></i>Embudo de conversión</h3></div>
@@ -100,17 +113,22 @@ export function WhatsappContent({ r }: { r: WhatsappReport }) {
       >
         <div className="rep-grid rep-grid--2" style={{ marginBottom: 16 }}>
           <div className="rep-card">
-            <div className="rep-card-head"><h3><i className="mdi mdi-account-tie-outline"></i>Agentes</h3></div>
+            <div className="rep-card-head"><h3><i className="mdi mdi-account-tie-outline"></i>Citas atribuibles por agente</h3></div>
             <table className="rep-table">
-              <thead><tr><th>Agente</th><th>Atendidas</th><th>Resp. prom.</th></tr></thead>
+              <thead><tr><th>Agente</th><th>Citas atrib.</th><th>Conv.</th><th>Pacientes</th></tr></thead>
               <tbody>
-                {r.agents.map((a, i) => (
+                {humanAppointmentAgents.length > 0 ? humanAppointmentAgents.map((a, i) => (
                   <tr key={i}>
                     <td>{a.name}</td>
-                    <td>{a.attended.toLocaleString('es-EC')}</td>
-                    <td>{a.avgRespMin !== null ? `${a.avgRespMin} min` : '—'}</td>
+                    <td>{a.appointments.toLocaleString('es-EC')}</td>
+                    <td>{a.conversations.toLocaleString('es-EC')}</td>
+                    <td>{a.patients.toLocaleString('es-EC')}</td>
                   </tr>
-                ))}
+                )) : (
+                  <tr>
+                    <td colSpan={4}>Sin citas atribuibles a atención humana en la ventana seleccionada.</td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>

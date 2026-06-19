@@ -17,11 +17,18 @@ function App() {
     document.title = `Reporte WhatsApp · ${r.period?.fromLabel ?? ''} → ${r.period?.toLabel ?? ''}`;
   }, []);
 
+  const humanAppointments = s.humanAttributedAppointments ?? 0;
+  const humanDelta = s.deltas.humanAppointments ?? 0;
+
   const synth = [
     { label: 'Conversaciones nuevas', value: s.conversationsNew.toLocaleString('es-EC'), delta: s.deltas.conversations },
     { label: 'Tasa de atención', value: `${Math.round(s.attentionRate)}%`, delta: s.deltas.attentionRate },
     { label: 'Mediana 1ra respuesta', value: s.medianFirstResp !== null ? `${Math.round(s.medianFirstResp)} min` : '—', delta: s.deltas.medianResp, invert: true },
-    { label: 'Citas generadas', value: s.bookings.toLocaleString('es-EC'), delta: s.deltas.bookings },
+    {
+      label: 'Citas humanas atrib.',
+      value: humanAppointments.toLocaleString('es-EC'),
+      delta: humanDelta,
+    },
   ];
 
   return (

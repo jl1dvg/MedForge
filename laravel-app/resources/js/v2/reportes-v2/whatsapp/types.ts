@@ -16,6 +16,7 @@ export interface WaTrendPoint {
   atendidas: number | null;
   bot: number | null;
   citas: number;
+  citasHumanas?: number;
 }
 
 export interface WaShareItem {
@@ -43,6 +44,14 @@ export interface WaAgentRow {
   name: string;
   attended: number;
   avgRespMin: number | null;
+}
+
+export interface WaHumanAppointmentAgentRow {
+  name: string;
+  appointments: number;
+  conversations: number;
+  patients: number;
+  forms: number;
 }
 
 export interface WaTeamRow {
@@ -74,9 +83,16 @@ export interface WaSummary {
   p75FirstResp: number | null;
   slaRate: number;
   bookings: number;
+  botBookings: number;
+  humanAttributedAppointments: number;
+  humanAttributedAppointmentConversations: number;
+  humanAttributedAppointmentPatients: number;
+  humanAttributedAppointmentsMedium: number;
+  attributedAppointments: number;
   bookingPatients: number;
   bookingFailures: number;
   bookingRate: number;
+  attributedBookingRate: number;
   handoffs: number;
   handoffRate: number;
   identificationRate: number;
@@ -99,6 +115,7 @@ export interface WhatsappReport {
   funnel: WaFunnelStep[];
   frictions: WaFrictionItem[];
   agents: WaAgentRow[];
+  humanAppointmentAgents: WaHumanAppointmentAgentRow[];
   teams: WaTeamRow[];
   insights: WaInsight[];
   recommendations: string[];

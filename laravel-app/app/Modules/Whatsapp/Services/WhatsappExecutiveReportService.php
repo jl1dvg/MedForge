@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Cache;
 class WhatsappExecutiveReportService
 {
     private const EXECUTIVE_REPORT_CACHE_TTL = 600;
+    private const EXECUTIVE_REPORT_PAYLOAD_VERSION = 2;
 
     private const PERIODS = [
         'hoy' => ['label' => 'Hoy', 'days' => 1],
@@ -73,6 +74,7 @@ class WhatsappExecutiveReportService
     private function executiveReportCacheHash(array $filters): string
     {
         return md5(json_encode([
+            'version' => self::EXECUTIVE_REPORT_PAYLOAD_VERSION,
             'period' => $filters['period']['key'],
             'agent_id' => $filters['agent_id'],
         ]));
@@ -162,8 +164,19 @@ class WhatsappExecutiveReportService
 
         $bookings = (int) ($aSummary['booked_conversations'] ?? 0);
         $prevBookings = (int) ($prev['analytics']['summary']['booked_conversations'] ?? 0);
+        $botBookings = (int) ($s['sigcenter_bookings_created'] ?? $bookings);
+        $prevBotBookings = (int) ($ps['sigcenter_bookings_created'] ?? $prevBookings);
+        $humanAppointments = (int) ($s['human_attributed_appointments_strong'] ?? 0);
+        $prevHumanAppointments = (int) ($ps['human_attributed_appointments_strong'] ?? 0);
+        $humanAppointmentsMedium = (int) ($s['human_attributed_appointments_medium'] ?? 0);
+        $humanAppointmentConversations = (int) ($s['human_attributed_appointment_conversations_strong'] ?? 0);
+        $humanAppointmentPatients = (int) ($s['human_attributed_appointment_patients_strong'] ?? 0);
+        $attributedAppointments = $botBookings + $humanAppointments;
+        $prevAttributedAppointments = $prevBotBookings + $prevHumanAppointments;
         $bookingRate = (float) ($aSummary['booking_rate'] ?? 0);
         $prevBookingRate = (float) ($prev['analytics']['summary']['booking_rate'] ?? 0);
+        $attributedBookingRate = $conversationsNew > 0 ? round(($attributedAppointments / $conversationsNew) * 100, 1) : 0.0;
+        $prevAttributedBookingRate = $prevConversations > 0 ? round(($prevAttributedAppointments / $prevConversations) * 100, 1) : 0.0;
         $bookingPatients = (int) ($s['sigcenter_booking_patients'] ?? 0);
         $bookingFailures = (int) ($s['sigcenter_booking_failures'] ?? 0);
 
@@ -182,7 +195,10 @@ class WhatsappExecutiveReportService
             'medianResp' => $medianFirstResp !== null && $prevMedianFirstResp !== null
                 ? round($medianFirstResp - $prevMedianFirstResp, 1) : 0.0,
             'bookings' => $pct((float) $bookings, (float) $prevBookings),
+            'botBookings' => $pct((float) $botBookings, (float) $prevBotBookings),
+            'humanAppointments' => $pct((float) $humanAppointments, (float) $prevHumanAppointments),
             'bookingRate' => round($bookingRate - $prevBookingRate, 1),
+            'attributedBookingRate' => round($attributedBookingRate - $prevAttributedBookingRate, 1),
             'containment' => round($containmentRate - $prevContainmentRate, 1),
         ];
 
@@ -195,6 +211,7 @@ class WhatsappExecutiveReportService
                 'atendidas' => null,
                 'bot' => null,
                 'citas' => (int) ($d['trends']['sigcenter_bookings'][$i] ?? 0),
+                'citasHumanas' => (int) ($d['trends']['human_attributed_appointments'][$i] ?? 0),
             ];
         }
 
@@ -240,6 +257,14 @@ class WhatsappExecutiveReportService
             'avgRespMin' => isset($row['avg_response_minutes']) ? round((float) $row['avg_response_minutes'], 1) : null,
         ], $d['breakdowns']['human_attention_by_agent'] ?? []);
 
+        $humanAppointmentAgents = array_map(static fn (array $row): array => [
+            'name' => $row['agent_name'] ?? 'Sin agente',
+            'appointments' => (int) ($row['appointments'] ?? 0),
+            'conversations' => (int) ($row['conversations'] ?? 0),
+            'patients' => (int) ($row['patients'] ?? 0),
+            'forms' => (int) ($row['forms'] ?? 0),
+        ], $d['breakdowns']['human_attributed_appointments_by_agent'] ?? []);
+
         $teams = array_map(static fn (array $row): array => [
             'name' => $row['role_name'] ?? 'Sin rol',
             'total' => (int) ($row['total'] ?? 0),
@@ -248,8 +273,19 @@ class WhatsappExecutiveReportService
             'resolved' => (int) ($row['resolved'] ?? 0),
         ], $d['breakdowns']['handoffs_by_role'] ?? []);
 
-        $insights = $this->buildInsights($conversationsNew, $deltas, $sources, $attentionRate, $medianFirstResp, $bookings, $bookingRate, $containmentRate);
-        $recommendations = $this->buildRecommendations($deltas, $bookingRate, $frictions, $s['people_lost'] ?? 0);
+        $insights = $this->buildInsights(
+            $conversationsNew,
+            $deltas,
+            $sources,
+            $attentionRate,
+            $medianFirstResp,
+            $botBookings,
+            $humanAppointments,
+            $humanAppointmentsMedium,
+            $attributedBookingRate,
+            $containmentRate
+        );
+        $recommendations = $this->buildRecommendations($deltas, $attributedBookingRate, $frictions, $s['people_lost'] ?? 0, $humanAppointments, $botBookings);
 
         $slaTarget = (int) ($s['sla_target_minutes'] ?? 15);
 
@@ -278,9 +314,16 @@ class WhatsappExecutiveReportService
                 'p75FirstResp' => $p75FirstResp,
                 'slaRate' => $slaRate,
                 'bookings' => $bookings,
+                'botBookings' => $botBookings,
+                'humanAttributedAppointments' => $humanAppointments,
+                'humanAttributedAppointmentConversations' => $humanAppointmentConversations,
+                'humanAttributedAppointmentPatients' => $humanAppointmentPatients,
+                'humanAttributedAppointmentsMedium' => $humanAppointmentsMedium,
+                'attributedAppointments' => $attributedAppointments,
                 'bookingPatients' => $bookingPatients,
                 'bookingFailures' => $bookingFailures,
                 'bookingRate' => $bookingRate,
+                'attributedBookingRate' => $attributedBookingRate,
                 'handoffs' => $handoffs,
                 'handoffRate' => $handoffRate,
                 'identificationRate' => $identificationRate,
@@ -296,6 +339,7 @@ class WhatsappExecutiveReportService
             'funnel' => $funnel,
             'frictions' => $frictions,
             'agents' => $agents,
+            'humanAppointmentAgents' => $humanAppointmentAgents,
             'teams' => $teams,
             'insights' => $insights,
             'recommendations' => $recommendations,
@@ -312,8 +356,10 @@ class WhatsappExecutiveReportService
         array $sources,
         float $attentionRate,
         ?float $medianFirstResp,
-        int $bookings,
-        float $bookingRate,
+        int $botBookings,
+        int $humanAppointments,
+        int $humanAppointmentsMedium,
+        float $attributedBookingRate,
         float $containmentRate
     ): array {
         $top = $sources[0] ?? null;
@@ -342,12 +388,14 @@ class WhatsappExecutiveReportService
         ];
 
         $insights[] = [
-            'tone' => $bookingRate >= 20 ? 'success' : 'warning',
+            'tone' => $attributedBookingRate >= 20 ? 'success' : 'warning',
             'title' => 'Conversión a cita',
             'body' => sprintf(
-                '%s citas se agendaron desde WhatsApp (%s%% de quienes escribieron).',
-                number_format($bookings, 0, ',', '.'),
-                $bookingRate
+                '%s citas atribuibles a humanos en Sigcenter (%s en ventana 72h). Bot/integración creó %s citas. Conversión atribuida total: %s%%.',
+                number_format($humanAppointments, 0, ',', '.'),
+                number_format($humanAppointmentsMedium, 0, ',', '.'),
+                number_format($botBookings, 0, ',', '.'),
+                $attributedBookingRate
             ),
         ];
 
@@ -369,9 +417,12 @@ class WhatsappExecutiveReportService
      * @param array<string,float> $deltas
      * @param array<int,array<string,mixed>> $frictions
      */
-    private function buildRecommendations(array $deltas, float $bookingRate, array $frictions, int $lost): array
+    private function buildRecommendations(array $deltas, float $bookingRate, array $frictions, int $lost, int $humanAppointments, int $botBookings): array
     {
         $recs = [];
+        if ($humanAppointments === 0 && $botBookings > 0) {
+            $recs[] = 'Validar con operación si las citas creadas en Sigcenter por humanos no están dejando rastro identificable en MedForge; hoy el reporte separa bot/integración de la atribución humana.';
+        }
         if ($lost > 0) {
             $recs[] = sprintf('Cerrar la brecha de %d conversaciones perdidas: reforzar la atención humana en las franjas de mayor demanda.', $lost);
         }
