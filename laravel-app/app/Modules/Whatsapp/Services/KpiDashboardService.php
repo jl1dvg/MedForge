@@ -35,7 +35,9 @@ class KpiDashboardService
         $toSql = $toExclusive->format('Y-m-d H:i:s');
         [$reminderFromSql, $reminderToSql] = $this->localReminderDateRangeSql($from, $endDate);
         $slaTargetMinutes = $this->resolveSlaTargetMinutes($slaTargetMinutes);
-        $hasMessagesTable = Schema::hasTable('whatsapp_messages');
+        $messagesTable = $this->whatsappMessageTable();
+        $hasMessagesTable = $messagesTable !== null;
+        $messageTimestamp = $hasMessagesTable ? $this->whatsappMessageTimestampColumn($messagesTable) : null;
 
         $summary = [
             'conversations_new' => $this->scalarInt(
@@ -43,12 +45,12 @@ class KpiDashboardService
                 [$fromSql, $toSql]
             ),
             'messages_inbound' => $hasMessagesTable ? $this->scalarInt(
-                'SELECT COUNT(*) FROM whatsapp_messages WHERE direction = ? AND message_timestamp >= ? AND message_timestamp < ?',
-                ['inbound', $fromSql, $toSql]
+                'SELECT COUNT(*) FROM ' . $messagesTable . ' WHERE direction IN ("inbound", "incoming") AND ' . $messageTimestamp . ' >= ? AND ' . $messageTimestamp . ' < ?',
+                [$fromSql, $toSql]
             ) : 0,
             'messages_outbound' => $hasMessagesTable ? $this->scalarInt(
-                'SELECT COUNT(*) FROM whatsapp_messages WHERE direction = ? AND message_timestamp >= ? AND message_timestamp < ?',
-                ['outbound', $fromSql, $toSql]
+                'SELECT COUNT(*) FROM ' . $messagesTable . ' WHERE direction IN ("outbound", "outgoing") AND ' . $messageTimestamp . ' >= ? AND ' . $messageTimestamp . ' < ?',
+                [$fromSql, $toSql]
             ) : 0,
         ];
 
@@ -97,24 +99,24 @@ class KpiDashboardService
                 ),
                 'messages_inbound' => $hasMessagesTable ? $this->mapTrend(
                     $this->trendRows(
-                        'SELECT DATE(message_timestamp) AS period_date, COUNT(*) AS total
-                         FROM whatsapp_messages
-                         WHERE direction = ? AND message_timestamp >= ? AND message_timestamp < ?
-                         GROUP BY DATE(message_timestamp)
+                        'SELECT DATE(' . $messageTimestamp . ') AS period_date, COUNT(*) AS total
+                         FROM ' . $messagesTable . '
+                         WHERE direction IN ("inbound", "incoming") AND ' . $messageTimestamp . ' >= ? AND ' . $messageTimestamp . ' < ?
+                         GROUP BY DATE(' . $messageTimestamp . ')
                          ORDER BY period_date ASC',
-                        ['inbound', $fromSql, $toSql]
+                        [$fromSql, $toSql]
                     ),
                     $from,
                     $toExclusive
                 ) : $this->emptyTrend($from, $toExclusive),
                 'messages_outbound' => $hasMessagesTable ? $this->mapTrend(
                     $this->trendRows(
-                        'SELECT DATE(message_timestamp) AS period_date, COUNT(*) AS total
-                         FROM whatsapp_messages
-                         WHERE direction = ? AND message_timestamp >= ? AND message_timestamp < ?
-                         GROUP BY DATE(message_timestamp)
+                        'SELECT DATE(' . $messageTimestamp . ') AS period_date, COUNT(*) AS total
+                         FROM ' . $messagesTable . '
+                         WHERE direction IN ("outbound", "outgoing") AND ' . $messageTimestamp . ' >= ? AND ' . $messageTimestamp . ' < ?
+                         GROUP BY DATE(' . $messageTimestamp . ')
                          ORDER BY period_date ASC',
-                        ['outbound', $fromSql, $toSql]
+                        [$fromSql, $toSql]
                     ),
                     $from,
                     $toExclusive
@@ -1035,11 +1037,16 @@ class KpiDashboardService
             $params = array_merge($params, array_values($filter['params']));
         }
 
-        $hasMessagesTable = Schema::hasTable('whatsapp_messages');
-        $referralType = $hasMessagesTable ? $this->jsonTextExtract('mi.raw_payload', '$.referral.source_type') : '""';
-        $referralSourceId = $hasMessagesTable ? $this->jsonTextExtract('mi.raw_payload', '$.referral.source_id') : '""';
-        $referralHeadline = $hasMessagesTable ? $this->jsonTextExtract('mi.raw_payload', '$.referral.headline') : '""';
-        $referralMediaType = $hasMessagesTable ? $this->jsonTextExtract('mi.raw_payload', '$.referral.media_type') : '""';
+        $messagesTable = $this->whatsappMessageTable();
+        $hasMessagesTable = $messagesTable !== null;
+        $messageTimestamp = $hasMessagesTable ? $this->whatsappMessageTimestampColumn($messagesTable) : null;
+        $messagePayload = $hasMessagesTable ? $this->whatsappMessagePayloadColumn($messagesTable) : null;
+        $messageBody = $hasMessagesTable ? $this->whatsappMessageBodyColumn($messagesTable) : null;
+        $referralPayloadColumn = $hasMessagesTable ? 'mi.' . $messagePayload : 'mi.raw_payload';
+        $referralType = $hasMessagesTable ? $this->jsonTextExtract($referralPayloadColumn, '$.referral.source_type') : '""';
+        $referralSourceId = $hasMessagesTable ? $this->jsonTextExtract($referralPayloadColumn, '$.referral.source_id') : '""';
+        $referralHeadline = $hasMessagesTable ? $this->jsonTextExtract($referralPayloadColumn, '$.referral.headline') : '""';
+        $referralMediaType = $hasMessagesTable ? $this->jsonTextExtract($referralPayloadColumn, '$.referral.media_type') : '""';
         $hasAttributionTable = Schema::hasTable('whatsapp_conversation_attributions');
         $sessionState = $this->jsonTextExtract('s.context', '$.state');
         $sessionConsent = $this->jsonBooleanIsTrue('s.context', '$.consent');
@@ -1048,7 +1055,9 @@ class KpiDashboardService
             : 'LEFT JOIN (SELECT NULL AS conversation_id, NULL AS source_category, NULL AS source_type, NULL AS source_id, NULL AS headline, NULL AS media_type, NULL AS initial_intent, NULL AS conversation_type, NULL AS patient_segment) a ON 1 = 0';
         $sessionJoin = Schema::hasTable('whatsapp_autoresponder_sessions')
             ? 'LEFT JOIN whatsapp_autoresponder_sessions s ON s.conversation_id = c.id'
-            : 'LEFT JOIN (SELECT NULL AS conversation_id, NULL AS context) s ON 1 = 0';
+            : 'LEFT JOIN (SELECT NULL AS conversation_id, NULL AS context, NULL AS scenario_id) s ON 1 = 0';
+        $sessionBookingStatus = $this->jsonTextExtract('s.context', '$.sigcenter_booking_status');
+        $createdBookingCondition = '(COALESCE(b.created_bookings, 0) > 0 OR LOWER(COALESCE(' . $sessionBookingStatus . ', "")) = "created")';
         $bookingJoin = Schema::hasTable('whatsapp_sigcenter_bookings')
             ? 'LEFT JOIN (
                     SELECT conversation_id, COUNT(*) AS created_bookings
@@ -1064,7 +1073,7 @@ class KpiDashboardService
                     GROUP BY conversation_id
                 ) h ON h.conversation_id = c.id'
             : 'LEFT JOIN (SELECT NULL AS conversation_id, 0 AS had_handoff) h ON h.conversation_id = c.id';
-        $messageJoin = $hasMessagesTable
+        $messageJoin = $hasMessagesTable && $messagesTable === 'whatsapp_messages'
             ? 'LEFT JOIN (
                     SELECT m.conversation_id, MIN(m.id) AS first_message_id
                     FROM whatsapp_messages m
@@ -1074,12 +1083,49 @@ class KpiDashboardService
                 LEFT JOIN (
                     SELECT m.conversation_id, MIN(m.id) AS first_inbound_id
                     FROM whatsapp_messages m
-                    WHERE m.direction = "inbound"
+                    WHERE m.direction IN ("inbound", "incoming")
                     GROUP BY m.conversation_id
                 ) first_inbound ON first_inbound.conversation_id = c.id
                 LEFT JOIN whatsapp_messages mi ON mi.id = first_inbound.first_inbound_id'
+            : ($hasMessagesTable
+                ? 'LEFT JOIN ' . $messagesTable . ' ma ON ma.id = (
+                        SELECT m.id
+                        FROM ' . $messagesTable . ' m
+                        WHERE m.wa_number = c.wa_number
+                          AND m.' . $messageTimestamp . ' >= c.created_at
+                        ORDER BY m.' . $messageTimestamp . ' ASC, m.id ASC
+                        LIMIT 1
+                    )
+                    LEFT JOIN ' . $messagesTable . ' mi ON mi.id = (
+                        SELECT m.id
+                        FROM ' . $messagesTable . ' m
+                        WHERE m.wa_number = c.wa_number
+                          AND m.direction IN ("inbound", "incoming")
+                          AND m.' . $messageTimestamp . ' >= c.created_at
+                        ORDER BY m.' . $messageTimestamp . ' ASC, m.id ASC
+                        LIMIT 1
+                    )'
             : 'LEFT JOIN (SELECT NULL AS conversation_id, NULL AS direction) ma ON 1 = 0
-                LEFT JOIN (SELECT NULL AS conversation_id, NULL AS message_timestamp, NULL AS raw_payload) mi ON 1 = 0';
+                LEFT JOIN (SELECT NULL AS conversation_id, NULL AS message_timestamp, NULL AS raw_payload) mi ON 1 = 0');
+        $firstInboundAt = $hasMessagesTable ? 'mi.' . $messageTimestamp : 'mi.message_timestamp';
+        $firstInboundBody = $hasMessagesTable ? 'LOWER(COALESCE(mi.' . $messageBody . ', ""))' : '""';
+        $fallbackIntent = 'CASE
+                        WHEN ' . $firstInboundBody . ' LIKE "%agendar%" OR ' . $firstInboundBody . ' LIKE "%cita%" OR ' . $firstInboundBody . ' LIKE "%valoración%" OR ' . $firstInboundBody . ' LIKE "%valoracion%" THEN "booking"
+                        WHEN ' . $firstInboundBody . ' LIKE "%precio%" OR ' . $firstInboundBody . ' LIKE "%costo%" OR ' . $firstInboundBody . ' LIKE "%cuánto%" OR ' . $firstInboundBody . ' LIKE "%cuanto%" THEN "pricing"
+                        WHEN ' . $firstInboundBody . ' LIKE "%horario%" OR ' . $firstInboundBody . ' LIKE "%ubicación%" OR ' . $firstInboundBody . ' LIKE "%ubicacion%" OR ' . $firstInboundBody . ' LIKE "%dirección%" OR ' . $firstInboundBody . ' LIKE "%direccion%" THEN "hours_location"
+                        WHEN ' . $firstInboundBody . ' LIKE "%resultado%" THEN "results"
+                        WHEN ' . $firstInboundBody . ' LIKE "%humano%" OR ' . $firstInboundBody . ' LIKE "%asesor%" OR ' . $firstInboundBody . ' LIKE "%operador%" THEN "human_help"
+                        WHEN s.scenario_id IN ("primer_contacto", "reenviar_consentimiento", "captura_cedula") THEN "general_info"
+                        WHEN s.scenario_id LIKE "faq%" OR s.scenario_id = "no_match_fallback" THEN "faq"
+                        ELSE "other"
+                    END';
+        $fallbackConversationType = 'CASE
+                        WHEN ' . $fallbackIntent . ' = "booking" THEN "booking"
+                        WHEN ' . $fallbackIntent . ' IN ("pricing", "hours_location", "faq", "general_info") THEN "faq"
+                        WHEN ' . $fallbackIntent . ' = "results" THEN "results"
+                        WHEN ' . $fallbackIntent . ' = "human_help" THEN "human_help"
+                        ELSE "other"
+                    END';
 
         $sql = 'SELECT
                     c.id AS conversation_id,
@@ -1090,13 +1136,13 @@ class KpiDashboardService
                     c.assigned_user_id,
                     c.handoff_requested_at,
                     ma.direction AS first_message_direction,
-                    mi.message_timestamp AS first_inbound_at,
+                    ' . $firstInboundAt . ' AS first_inbound_at,
                     COALESCE(NULLIF(a.source_type, ""), ' . $referralType . ') AS referral_source_type,
                     COALESCE(NULLIF(a.source_id, ""), ' . $referralSourceId . ') AS referral_source_id,
                     COALESCE(NULLIF(a.headline, ""), ' . $referralHeadline . ') AS referral_headline,
                     COALESCE(NULLIF(a.media_type, ""), ' . $referralMediaType . ') AS referral_media_type,
-                    COALESCE(NULLIF(a.initial_intent, ""), "unknown") AS initial_intent,
-                    COALESCE(NULLIF(a.conversation_type, ""), "unknown") AS conversation_type,
+                    COALESCE(NULLIF(a.initial_intent, ""), ' . $fallbackIntent . ') AS initial_intent,
+                    COALESCE(NULLIF(a.conversation_type, ""), ' . $fallbackConversationType . ') AS conversation_type,
                     COALESCE(NULLIF(a.patient_segment, ""), "unknown") AS patient_segment,
                     ' . $sessionState . ' AS session_state,
                     CASE WHEN ' . $sessionConsent . ' THEN 1 ELSE 0 END AS has_consent,
@@ -1106,13 +1152,13 @@ class KpiDashboardService
                         OR COALESCE(NULLIF(TRIM(' . $this->jsonTextExtract('s.context', '$.trabajador_id') . '), ""), "") <> ""
                         OR COALESCE(NULLIF(TRIM(' . $this->jsonTextExtract('s.context', '$.sede_id') . '), ""), "") <> ""
                         OR COALESCE(NULLIF(TRIM(' . $this->jsonTextExtract('s.context', '$.procedimiento_id') . '), ""), "") <> ""
-                        OR COALESCE(b.created_bookings, 0) > 0
+                        OR ' . $createdBookingCondition . '
                     ) THEN 1 ELSE 0 END AS entered_scheduling,
                     CASE WHEN (
                         LOWER(COALESCE(' . $sessionState . ', "")) = "agenda_confirmar_cita"
-                        OR COALESCE(b.created_bookings, 0) > 0
+                        OR ' . $createdBookingCondition . '
                     ) THEN 1 ELSE 0 END AS reached_confirmation,
-                    CASE WHEN COALESCE(b.created_bookings, 0) > 0 THEN 1 ELSE 0 END AS has_booking,
+                    CASE WHEN ' . $createdBookingCondition . ' THEN 1 ELSE 0 END AS has_booking,
                     CASE WHEN COALESCE(h.had_handoff, 0) > 0 OR c.handoff_requested_at IS NOT NULL THEN 1 ELSE 0 END AS has_handoff,
                     (
                         (CASE WHEN ' . $sessionConsent . ' THEN 10 ELSE 0 END) +
@@ -1122,13 +1168,13 @@ class KpiDashboardService
                             OR COALESCE(NULLIF(TRIM(' . $this->jsonTextExtract('s.context', '$.trabajador_id') . '), ""), "") <> ""
                             OR COALESCE(NULLIF(TRIM(' . $this->jsonTextExtract('s.context', '$.sede_id') . '), ""), "") <> ""
                             OR COALESCE(NULLIF(TRIM(' . $this->jsonTextExtract('s.context', '$.procedimiento_id') . '), ""), "") <> ""
-                            OR COALESCE(b.created_bookings, 0) > 0
+                            OR ' . $createdBookingCondition . '
                         ) THEN 20 ELSE 0 END) +
                         (CASE WHEN (
                             LOWER(COALESCE(' . $sessionState . ', "")) = "agenda_confirmar_cita"
-                            OR COALESCE(b.created_bookings, 0) > 0
+                            OR ' . $createdBookingCondition . '
                         ) THEN 20 ELSE 0 END) +
-                        (CASE WHEN COALESCE(b.created_bookings, 0) > 0 THEN 30 ELSE 0 END)
+                        (CASE WHEN ' . $createdBookingCondition . ' THEN 30 ELSE 0 END)
                     ) AS lead_score,
                     CASE
                         WHEN (
@@ -1139,13 +1185,13 @@ class KpiDashboardService
                                 OR COALESCE(NULLIF(TRIM(' . $this->jsonTextExtract('s.context', '$.trabajador_id') . '), ""), "") <> ""
                                 OR COALESCE(NULLIF(TRIM(' . $this->jsonTextExtract('s.context', '$.sede_id') . '), ""), "") <> ""
                                 OR COALESCE(NULLIF(TRIM(' . $this->jsonTextExtract('s.context', '$.procedimiento_id') . '), ""), "") <> ""
-                                OR COALESCE(b.created_bookings, 0) > 0
+                                OR ' . $createdBookingCondition . '
                             ) THEN 20 ELSE 0 END) +
                             (CASE WHEN (
                                 LOWER(COALESCE(' . $sessionState . ', "")) = "agenda_confirmar_cita"
-                                OR COALESCE(b.created_bookings, 0) > 0
+                                OR ' . $createdBookingCondition . '
                             ) THEN 20 ELSE 0 END) +
-                            (CASE WHEN COALESCE(b.created_bookings, 0) > 0 THEN 30 ELSE 0 END)
+                            (CASE WHEN ' . $createdBookingCondition . ' THEN 30 ELSE 0 END)
                         ) >= 70 THEN "high"
                         WHEN (
                             (CASE WHEN ' . $sessionConsent . ' THEN 10 ELSE 0 END) +
@@ -1155,13 +1201,13 @@ class KpiDashboardService
                                 OR COALESCE(NULLIF(TRIM(' . $this->jsonTextExtract('s.context', '$.trabajador_id') . '), ""), "") <> ""
                                 OR COALESCE(NULLIF(TRIM(' . $this->jsonTextExtract('s.context', '$.sede_id') . '), ""), "") <> ""
                                 OR COALESCE(NULLIF(TRIM(' . $this->jsonTextExtract('s.context', '$.procedimiento_id') . '), ""), "") <> ""
-                                OR COALESCE(b.created_bookings, 0) > 0
+                                OR ' . $createdBookingCondition . '
                             ) THEN 20 ELSE 0 END) +
                             (CASE WHEN (
                                 LOWER(COALESCE(' . $sessionState . ', "")) = "agenda_confirmar_cita"
-                                OR COALESCE(b.created_bookings, 0) > 0
+                                OR ' . $createdBookingCondition . '
                             ) THEN 20 ELSE 0 END) +
-                            (CASE WHEN COALESCE(b.created_bookings, 0) > 0 THEN 30 ELSE 0 END)
+                            (CASE WHEN ' . $createdBookingCondition . ' THEN 30 ELSE 0 END)
                         ) >= 35 THEN "medium"
                         ELSE "low"
                     END AS lead_score_bucket,
@@ -1169,11 +1215,11 @@ class KpiDashboardService
                         WHEN COALESCE(NULLIF(a.source_category, ""), "") <> "" THEN a.source_category
                         WHEN LOWER(COALESCE(' . $referralType . ', "")) = "ad" THEN "ad"
                         WHEN COALESCE(ma.direction, "") = "outbound" THEN "outbound_initiated"
-                        WHEN mi.message_timestamp IS NOT NULL THEN "organic_inbound"
+                        WHEN ' . $firstInboundAt . ' IS NOT NULL THEN "organic_direct"
                         ELSE "unknown"
                     END AS source_category,
                     CASE
-                        WHEN COALESCE(b.created_bookings, 0) > 0 THEN "none"
+                        WHEN ' . $createdBookingCondition . ' THEN "none"
                         WHEN COALESCE(h.had_handoff, 0) > 0 OR c.handoff_requested_at IS NOT NULL THEN "handoff_required"
                         WHEN LOWER(COALESCE(' . $sessionState . ', "")) = "consentimiento_pendiente" THEN "consent_pending"
                         WHEN LOWER(COALESCE(' . $sessionState . ', "")) = "esperando_cedula" THEN "waiting_identifier"
@@ -1195,7 +1241,7 @@ class KpiDashboardService
                         ELSE "captacion"
                     END AS lifecycle_category,
                     CASE
-                        WHEN COALESCE(b.created_bookings, 0) > 0 THEN "booking_created"
+                        WHEN ' . $createdBookingCondition . ' THEN "booking_created"
                         WHEN COALESCE(h.had_handoff, 0) > 0 OR c.handoff_requested_at IS NOT NULL THEN "handoff_human"
                         WHEN c.needs_human = 0 AND COALESCE(NULLIF(TRIM(c.patient_hc_number), ""), "") <> "" THEN "resolved_identified"
                         WHEN c.needs_human = 0 THEN "resolved_without_identification"
@@ -1220,6 +1266,34 @@ class KpiDashboardService
         }
 
         return 'COALESCE(JSON_UNQUOTE(JSON_EXTRACT(' . $column . ', ' . $this->stringLiteral($path) . ')), "")';
+    }
+
+    private function whatsappMessageTable(): ?string
+    {
+        if (Schema::hasTable('whatsapp_messages')) {
+            return 'whatsapp_messages';
+        }
+
+        if (Schema::hasTable('whatsapp_inbox_messages')) {
+            return 'whatsapp_inbox_messages';
+        }
+
+        return null;
+    }
+
+    private function whatsappMessageTimestampColumn(string $table): string
+    {
+        return Schema::hasColumn($table, 'message_timestamp') ? 'message_timestamp' : 'created_at';
+    }
+
+    private function whatsappMessagePayloadColumn(string $table): string
+    {
+        return Schema::hasColumn($table, 'raw_payload') ? 'raw_payload' : 'payload';
+    }
+
+    private function whatsappMessageBodyColumn(string $table): string
+    {
+        return Schema::hasColumn($table, 'body') ? 'body' : 'message_body';
     }
 
     private function jsonBooleanIsTrue(string $column, string $path): string
@@ -2308,10 +2382,30 @@ class KpiDashboardService
     private function sigcenterBookingSummary(string $fromSql, string $toSql): array
     {
         if (!Schema::hasTable('whatsapp_sigcenter_bookings')) {
+            if (!Schema::hasTable('whatsapp_autoresponder_sessions')) {
+                return [
+                    'sigcenter_bookings_created' => 0,
+                    'sigcenter_booking_patients' => 0,
+                    'sigcenter_booking_failures' => 0,
+                ];
+            }
+
+            $status = $this->jsonTextExtract('s.context', '$.sigcenter_booking_status');
+            $row = $this->selectOne(
+                'SELECT
+                    SUM(CASE WHEN LOWER(COALESCE(' . $status . ', "")) = "created" THEN 1 ELSE 0 END) AS created_total,
+                    COUNT(DISTINCT CASE WHEN LOWER(COALESCE(' . $status . ', "")) = "created" THEN c.wa_number ELSE NULL END) AS patient_total,
+                    SUM(CASE WHEN LOWER(COALESCE(' . $status . ', "")) = "failed" THEN 1 ELSE 0 END) AS failed_total
+                 FROM whatsapp_conversations c
+                 INNER JOIN whatsapp_autoresponder_sessions s ON s.conversation_id = c.id
+                 WHERE c.created_at >= ? AND c.created_at < ?',
+                [$fromSql, $toSql]
+            );
+
             return [
-                'sigcenter_bookings_created' => 0,
-                'sigcenter_booking_patients' => 0,
-                'sigcenter_booking_failures' => 0,
+                'sigcenter_bookings_created' => (int) ($row->created_total ?? 0),
+                'sigcenter_booking_patients' => (int) ($row->patient_total ?? 0),
+                'sigcenter_booking_failures' => (int) ($row->failed_total ?? 0),
             ];
         }
 
@@ -2763,7 +2857,28 @@ class KpiDashboardService
         $attributionJoin = Schema::hasTable('whatsapp_conversation_attributions')
             ? 'LEFT JOIN whatsapp_conversation_attributions attr ON attr.conversation_id = c.id'
             : 'LEFT JOIN (SELECT NULL AS conversation_id, NULL AS source_category) attr ON 1 = 0';
-        $selectPrefix = 'c.id AS conversation_id, c.wa_number, ' . $patientHcSql . ' AS patient_hc_number, ' . $assignedUserSql . ' AS assigned_user_id, COALESCE(NULLIF(attr.source_category, ""), "unknown") AS source_category';
+        $messagesTable = $this->whatsappMessageTable();
+        $sourceCategoryFallback = '"unknown"';
+        if ($messagesTable !== null) {
+            $messageTimestamp = $this->whatsappMessageTimestampColumn($messagesTable);
+            $messagePayload = $this->whatsappMessagePayloadColumn($messagesTable);
+            $messageConversationWhere = Schema::hasColumn($messagesTable, 'conversation_id')
+                ? 'm.conversation_id = c.id'
+                : 'm.wa_number = c.wa_number';
+            $sourceCategoryFallback = 'COALESCE((
+                SELECT CASE
+                    WHEN LOWER(COALESCE(' . $this->jsonTextExtract('m.' . $messagePayload, '$.referral.source_type') . ', "")) = "ad" THEN "ad"
+                    ELSE "organic_direct"
+                END
+                FROM ' . $messagesTable . ' m
+                WHERE ' . $messageConversationWhere . '
+                  AND m.direction IN ("inbound", "incoming")
+                  AND m.' . $messageTimestamp . ' >= c.created_at
+                ORDER BY m.' . $messageTimestamp . ' ASC, m.id ASC
+                LIMIT 1
+            ), "unknown")';
+        }
+        $selectPrefix = 'c.id AS conversation_id, c.wa_number, ' . $patientHcSql . ' AS patient_hc_number, ' . $assignedUserSql . ' AS assigned_user_id, COALESCE(NULLIF(attr.source_category, ""), ' . $sourceCategoryFallback . ') AS source_category';
         $queries = [];
         $params = [];
 
@@ -2814,6 +2929,41 @@ class KpiDashboardService
                           WHERE e.actor_user_id IS NOT NULL
                             AND e.created_at >= ?
                             AND e.created_at < ?';
+            $params[] = $fromSql;
+            $params[] = $toSql;
+        }
+
+        if (Schema::hasColumn('whatsapp_conversations', 'assigned_user_id')) {
+            $eventAt = Schema::hasColumn('whatsapp_conversations', 'assigned_at')
+                ? 'COALESCE(c.assigned_at, c.handoff_requested_at, c.updated_at, c.created_at)'
+                : 'COALESCE(c.handoff_requested_at, c.updated_at, c.created_at)';
+            $queries[] = 'SELECT ' . $selectPrefix . ', ' . $eventAt . ' AS event_at, c.assigned_user_id AS agent_id
+                          FROM whatsapp_conversations c
+                          ' . $attributionJoin . '
+                          WHERE c.assigned_user_id IS NOT NULL
+                            AND ' . $eventAt . ' >= ?
+                            AND ' . $eventAt . ' < ?';
+            $params[] = $fromSql;
+            $params[] = $toSql;
+
+            if (Schema::hasColumn('whatsapp_conversations', 'handoff_requested_at')) {
+                $queries[] = 'SELECT ' . $selectPrefix . ', c.handoff_requested_at AS event_at, c.assigned_user_id AS agent_id
+                              FROM whatsapp_conversations c
+                              ' . $attributionJoin . '
+                              WHERE c.assigned_user_id IS NOT NULL
+                                AND c.handoff_requested_at IS NOT NULL
+                                AND c.handoff_requested_at >= ?
+                                AND c.handoff_requested_at < ?';
+                $params[] = $fromSql;
+                $params[] = $toSql;
+            }
+
+            $queries[] = 'SELECT ' . $selectPrefix . ', COALESCE(c.updated_at, c.assigned_at, c.handoff_requested_at, c.created_at) AS event_at, c.assigned_user_id AS agent_id
+                          FROM whatsapp_conversations c
+                          ' . $attributionJoin . '
+                          WHERE c.assigned_user_id IS NOT NULL
+                            AND COALESCE(c.updated_at, c.assigned_at, c.handoff_requested_at, c.created_at) >= ?
+                            AND COALESCE(c.updated_at, c.assigned_at, c.handoff_requested_at, c.created_at) < ?';
             $params[] = $fromSql;
             $params[] = $toSql;
         }
