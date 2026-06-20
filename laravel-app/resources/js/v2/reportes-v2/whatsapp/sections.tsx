@@ -1,5 +1,5 @@
 import React from 'react';
-import { Section, Kpi, BarsList, DonutLegend, Read, Insight, Recs, RecsCard } from '../shared/lib';
+import { Section, Kpi, BarsList, Read, Insight, Recs, RecsCard } from '../shared/lib';
 import { TrendArea, DonutChart, GroupedColumnChart } from '../shared/charts';
 import type { WhatsappReport } from './types';
 
@@ -13,6 +13,7 @@ export function WhatsappContent({ r }: { r: WhatsappReport }) {
   const attributedAppointments = s.attributedAppointments ?? (botBookings + humanAppointments);
   const attributedBookingRate = s.attributedBookingRate ?? s.bookingRate ?? 0;
   const humanAppointmentAgents = r.humanAppointmentAgents ?? [];
+  const topSource = r.sources[0];
 
   return (
     <>
@@ -31,7 +32,7 @@ export function WhatsappContent({ r }: { r: WhatsappReport }) {
         <div className="rep-grid rep-grid--2" style={{ marginBottom: 16 }}>
           <div className="rep-card">
             <div className="rep-card-head"><h3><i className="mdi mdi-chart-line"></i>Tendencia de conversaciones y citas</h3></div>
-            <TrendArea data={r.trend} keys={['conversaciones', 'citas', 'citasHumanas']} names={['Conversaciones', 'Citas bot/integración', 'Citas humanas atrib.']} />
+            <TrendArea data={r.trend} keys={['conversaciones', 'citas', 'citasHumanas']} names={['Conversaciones', 'Citas por bot', 'Citas por humano']} />
           </div>
           <Read>
             Se atendió al <b>{Math.round(s.attentionRate)}%</b> de las conversaciones que requirieron una persona
@@ -45,13 +46,29 @@ export function WhatsappContent({ r }: { r: WhatsappReport }) {
         num="02"
         kicker="Origen e intención"
         title="De dónde llega la demanda y qué busca"
-        lede="Mezcla de fuentes de contacto e intención declarada, con su tasa de identificación y de conversión a cita."
+        lede="Muestra de dónde llegó cada conversación y cuántas terminaron en una cita."
       >
         <div className="rep-grid rep-grid--2" style={{ marginBottom: 16 }}>
           <div className="rep-card">
             <div className="rep-card-head"><h3><i className="mdi mdi-source-branch"></i>Origen de la conversación</h3></div>
             <DonutChart data={r.sources} centerLabel="conversaciones" />
-            <DonutLegend items={r.sources} />
+            <table className="rep-table" style={{ marginTop: 14 }}>
+              <thead><tr><th>Origen</th><th>Conversaciones</th><th>Citas</th><th>Conv.</th></tr></thead>
+              <tbody>
+                {r.sources.map((source, i) => {
+                  const sourceAppointments = source.attributedAppointments ?? source.bookings ?? 0;
+                  const sourceRate = source.attributedRate ?? source.bookingRate ?? 0;
+                  return (
+                    <tr key={i}>
+                      <td>{source.label}</td>
+                      <td>{source.total.toLocaleString('es-EC')}</td>
+                      <td>{sourceAppointments.toLocaleString('es-EC')}</td>
+                      <td>{sourceRate}%</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
           <div className="rep-card">
             <div className="rep-card-head"><h3><i className="mdi mdi-text-search"></i>Intención declarada</h3></div>
@@ -67,15 +84,22 @@ export function WhatsappContent({ r }: { r: WhatsappReport }) {
         lede="Embudo de conversión y desempeño por segmento de ciclo de vida del paciente."
       >
         <div className="rep-grid rep-grid--4" style={{ marginBottom: 16 }}>
-          <Kpi icon="mdi-account-tie-outline" label="Citas humanas atribuibles" value={humanAppointments.toLocaleString('es-EC')} sub={`${humanAppointmentConversations.toLocaleString('es-EC')} conv. · ${humanAppointmentPatients.toLocaleString('es-EC')} pacientes`} />
-          <Kpi icon="mdi-calendar-sync-outline" label="Citas bot/integración" value={botBookings.toLocaleString('es-EC')} />
-          <Kpi icon="mdi-calendar-clock-outline" label="Ventana humana 72h" value={humanAppointmentsMedium.toLocaleString('es-EC')} />
-          <Kpi icon="mdi-percent-outline" label="Tasa atribuida total" value={`${attributedBookingRate}%`} sub={`${attributedAppointments.toLocaleString('es-EC')} citas atribuidas`} />
+          <Kpi icon="mdi-account-tie-outline" label="Citas agendadas por humano" value={humanAppointments.toLocaleString('es-EC')} sub={`${humanAppointmentConversations.toLocaleString('es-EC')} conversaciones · ${humanAppointmentPatients.toLocaleString('es-EC')} pacientes`} />
+          <Kpi icon="mdi-calendar-sync-outline" label="Citas agendadas por bot" value={botBookings.toLocaleString('es-EC')} />
+          <Kpi icon="mdi-calendar-clock-outline" label="Estimado amplio 72h" value={humanAppointmentsMedium.toLocaleString('es-EC')} />
+          <Kpi icon="mdi-percent-outline" label="Conversión total a cita" value={`${attributedBookingRate}%`} sub={`${attributedAppointments.toLocaleString('es-EC')} citas de ${s.conversationsNew.toLocaleString('es-EC')} conversaciones`} />
         </div>
         <Read>
-          Las <b>{botBookings.toLocaleString('es-EC')}</b> citas de bot/integración vienen del registro directo de WhatsApp.
-          Las citas humanas atribuibles cruzan conversaciones con intervención humana en MedForge contra citas creadas en Sigcenter por paciente y ventana temporal.
+          Número principal: <b>{humanAppointments.toLocaleString('es-EC')}</b> citas donde hubo atención humana antes de la cita.
+          El estimado 72h es una mirada más amplia: cuenta citas creadas hasta 3 días después de la atención humana.
+          Conversión total suma humano + bot.
         </Read>
+        {topSource ? (
+          <Read>
+            El origen con más volumen fue <b>{topSource.label}</b>: {topSource.total.toLocaleString('es-EC')} conversaciones,
+            {(topSource.attributedAppointments ?? topSource.bookings ?? 0).toLocaleString('es-EC')} citas y {topSource.attributedRate ?? topSource.bookingRate ?? 0}% de conversión.
+          </Read>
+        ) : null}
         <div className="rep-grid rep-grid--2" style={{ marginBottom: 16 }}>
           <div className="rep-card">
             <div className="rep-card-head"><h3><i className="mdi mdi-filter-variant"></i>Embudo de conversión</h3></div>

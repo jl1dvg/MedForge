@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Cache;
 class WhatsappExecutiveReportService
 {
     private const EXECUTIVE_REPORT_CACHE_TTL = 600;
-    private const EXECUTIVE_REPORT_PAYLOAD_VERSION = 3;
+    private const EXECUTIVE_REPORT_PAYLOAD_VERSION = 4;
 
     private const PERIODS = [
         'hoy' => ['label' => 'Hoy', 'days' => 1],
@@ -215,15 +215,62 @@ class WhatsappExecutiveReportService
             ];
         }
 
-        $sources = array_map(static fn (array $row): array => [
-            'id' => $row['source_category'] ?? $row['key'] ?? '',
-            'label' => $row['label'] ?? $row['source_label'] ?? ($row['source_category'] ?? 'Sin clasificar'),
-            'total' => (int) ($row['total'] ?? 0),
-            'share' => (float) ($row['pct'] ?? $row['share'] ?? 0),
-            'identified' => (int) ($row['identified'] ?? 0),
-            'bookings' => (int) ($row['booked'] ?? $row['bookings'] ?? 0),
-            'bookingRate' => (float) ($row['booking_rate'] ?? 0),
-        ], $analytics['sources'] ?? []);
+        $humanAppointmentsBySource = [];
+        foreach ($d['breakdowns']['human_attributed_appointments_by_source'] ?? [] as $row) {
+            $sourceCategory = (string) ($row['source_category'] ?? 'unknown');
+            $humanAppointmentsBySource[$sourceCategory] = [
+                'appointments' => (int) ($row['appointment_slots'] ?? 0),
+                'conversations' => (int) ($row['conversations'] ?? 0),
+                'patients' => (int) ($row['patients'] ?? 0),
+            ];
+        }
+
+        $botBookingsBySource = [];
+        foreach ($d['breakdowns']['sigcenter_bookings_by_source'] ?? [] as $row) {
+            $sourceCategory = (string) ($row['source_category'] ?? 'unknown');
+            $botBookingsBySource[$sourceCategory] = (int) ($row['total'] ?? 0);
+        }
+
+        $sourceCategoriesInReport = [];
+        $sources = array_map(static function (array $row) use ($humanAppointmentsBySource, $botBookingsBySource, &$sourceCategoriesInReport): array {
+            $sourceCategory = (string) ($row['source_category'] ?? $row['key'] ?? 'unknown');
+            $sourceCategoriesInReport[$sourceCategory] = true;
+            $total = (int) ($row['total'] ?? 0);
+            $botBookingsForSource = (int) ($botBookingsBySource[$sourceCategory] ?? $row['booked'] ?? $row['bookings'] ?? 0);
+            $humanAppointmentsForSource = (int) ($humanAppointmentsBySource[$sourceCategory]['appointments'] ?? 0);
+            $attributedAppointmentsBySource = $botBookingsForSource + $humanAppointmentsForSource;
+
+            return [
+                'id' => $sourceCategory,
+                'label' => $row['label'] ?? $row['source_label'] ?? ($row['source_category'] ?? 'Sin clasificar'),
+                'total' => $total,
+                'share' => (float) ($row['pct'] ?? $row['share'] ?? 0),
+                'identified' => (int) ($row['identified'] ?? 0),
+                'bookings' => $botBookingsForSource,
+                'humanAppointments' => $humanAppointmentsForSource,
+                'attributedAppointments' => $attributedAppointmentsBySource,
+                'attributedRate' => $total > 0 ? round(($attributedAppointmentsBySource / $total) * 100, 1) : 0.0,
+                'bookingRate' => (float) ($row['booking_rate'] ?? 0),
+            ];
+        }, $analytics['sources'] ?? []);
+        foreach ($botBookingsBySource as $sourceCategory => $bookingCount) {
+            if (isset($sourceCategoriesInReport[$sourceCategory])) {
+                continue;
+            }
+            $humanAppointmentsForSource = (int) ($humanAppointmentsBySource[$sourceCategory]['appointments'] ?? 0);
+            $sources[] = [
+                'id' => $sourceCategory,
+                'label' => $this->sourceCategoryLabel($sourceCategory),
+                'total' => 0,
+                'share' => 0.0,
+                'identified' => 0,
+                'bookings' => $bookingCount,
+                'humanAppointments' => $humanAppointmentsForSource,
+                'attributedAppointments' => $bookingCount + $humanAppointmentsForSource,
+                'attributedRate' => 0.0,
+                'bookingRate' => 0.0,
+            ];
+        }
 
         $intents = $this->combineReportItemsByLabel(array_map(static fn (array $row): array => [
             'label' => $row['label'] ?? $row['intent_label'] ?? $row['intent'] ?? $row['initial_intent'] ?? 'Sin clasificar',
@@ -259,7 +306,7 @@ class WhatsappExecutiveReportService
 
         $humanAppointmentAgents = array_map(static fn (array $row): array => [
             'name' => $row['agent_name'] ?? 'Sin agente',
-            'appointments' => (int) ($row['appointments'] ?? 0),
+            'appointments' => (int) ($row['appointments'] ?? $row['appointment_slots'] ?? 0),
             'conversations' => (int) ($row['conversations'] ?? 0),
             'patients' => (int) ($row['patients'] ?? 0),
             'forms' => (int) ($row['forms'] ?? 0),
@@ -378,6 +425,20 @@ class WhatsappExecutiveReportService
         usort($rows, static fn (array $a, array $b): int => ((int) $b['total'] <=> (int) $a['total']) ?: strcmp((string) $a['label'], (string) $b['label']));
 
         return $rows;
+    }
+
+    private function sourceCategoryLabel(string $category): string
+    {
+        return match ($category) {
+            'ad' => 'Ads',
+            'organic_direct' => 'Orgánico directo',
+            'campaign_outbound' => 'Campaña saliente',
+            'patient_return' => 'Paciente de retorno',
+            'post_consultation' => 'Post consulta',
+            'post_surgery' => 'Post cirugía',
+            'support_operational' => 'Soporte operativo',
+            default => 'Sin origen identificado',
+        };
     }
 
     /**

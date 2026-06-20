@@ -6,7 +6,7 @@ import { WhatsappContent } from './sections';
 import type { WhatsappReport } from './types';
 
 const TITLE = 'Cómo rindió la atención por WhatsApp';
-const LEDE = 'Lectura ejecutiva de la operación de WhatsApp en el período: del primer contacto a la cita agendada. Empieza por el volumen y la atención humana, y baja al detalle de origen, intención, ciclo de vida y friction.';
+const LEDE = 'Lectura ejecutiva de la operación de WhatsApp en el período: del primer contacto a la cita agendada. Empieza por el volumen y baja al detalle de origen, intención, atención humana y puntos de fricción.';
 
 function App() {
   const r: WhatsappReport = window.MF_WA_REPORT;
@@ -25,7 +25,7 @@ function App() {
     { label: 'Tasa de atención', value: `${Math.round(s.attentionRate)}%`, delta: s.deltas.attentionRate },
     { label: 'Mediana 1ra respuesta', value: s.medianFirstResp !== null ? `${Math.round(s.medianFirstResp)} min` : '—', delta: s.deltas.medianResp, invert: true },
     {
-      label: 'Citas humanas atrib.',
+      label: 'Citas por humano',
       value: humanAppointments.toLocaleString('es-EC'),
       delta: humanDelta,
     },

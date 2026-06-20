@@ -26,6 +26,9 @@ export interface WaShareItem {
   share: number;
   identified?: number;
   bookings?: number;
+  humanAppointments?: number;
+  attributedAppointments?: number;
+  attributedRate?: number;
   bookingRate?: number;
 }
 

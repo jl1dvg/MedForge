@@ -141,8 +141,10 @@ class KpiDashboardService
                 'agent_live_status' => $this->agentLiveStatus($roleId, $agentId),
                 'human_response_by_queue' => $this->humanResponseByQueue($fromSql, $toSql, $roleId, $agentId),
                 'sigcenter_bookings_by_sede' => $this->sigcenterBookingsBySede($fromSql, $toSql),
+                'sigcenter_bookings_by_source' => $this->sigcenterBookingsBySource($fromSql, $toSql),
                 'human_attributed_appointments_by_agent' => $humanAppointmentAttribution['by_agent'],
                 'human_attributed_appointments_by_sede' => $humanAppointmentAttribution['by_sede'],
+                'human_attributed_appointments_by_source' => $humanAppointmentAttribution['by_source'],
             ],
             'analytics' => $analytics,
             'reminders' => $reminders,
@@ -2233,11 +2235,43 @@ class KpiDashboardService
     }
 
     /**
+     * @return array<int, array{source_category:string,source_label:string,total:int}>
+     */
+    private function sigcenterBookingsBySource(string $fromSql, string $toSql): array
+    {
+        if (!Schema::hasTable('whatsapp_sigcenter_bookings')) {
+            return [];
+        }
+
+        $attributionJoin = Schema::hasTable('whatsapp_conversation_attributions')
+            ? 'LEFT JOIN whatsapp_conversation_attributions attr ON attr.conversation_id = b.conversation_id'
+            : 'LEFT JOIN (SELECT NULL AS conversation_id, NULL AS source_category) attr ON 1 = 0';
+
+        return array_map(fn ($row) => [
+            'source_category' => (string) ($row->source_category ?? 'unknown'),
+            'source_label' => $this->sourceCategoryLabel((string) ($row->source_category ?? 'unknown')),
+            'total' => (int) ($row->total ?? 0),
+        ], DB::select(
+            'SELECT source_category, COUNT(*) AS total
+             FROM (
+                SELECT COALESCE(NULLIF(attr.source_category, ""), "unknown") AS source_category
+                FROM whatsapp_sigcenter_bookings b
+                ' . $attributionJoin . '
+                WHERE b.status = "created" AND b.created_at >= ? AND b.created_at < ?
+             ) booking_sources
+             GROUP BY source_category
+             ORDER BY total DESC, source_category ASC',
+            [$fromSql, $toSql]
+        ));
+    }
+
+    /**
      * @return array{
      *     summary:array<string,int>,
      *     trend_rows:array<int,array{period_date:string,total:int}>,
      *     by_agent:array<int,array<string,mixed>>,
-     *     by_sede:array<int,array<string,mixed>>
+     *     by_sede:array<int,array<string,mixed>>,
+     *     by_source:array<int,array<string,mixed>>
      * }
      */
     private function humanAppointmentAttribution(string $fromSql, string $toSql, ?int $roleId, ?int $agentId): array
@@ -2282,6 +2316,7 @@ class KpiDashboardService
                     'wa_number' => $waNumber,
                     'phone_tail' => $tail,
                     'patient_hc_number' => $patientHcNumber,
+                    'source_category' => (string) ($row->source_category ?? 'unknown'),
                     'first_human_at' => $eventAt,
                     'last_human_at' => $eventAt,
                     'last_agent_id' => $agentForEvent,
@@ -2368,6 +2403,7 @@ class KpiDashboardService
         $trendSlotDates = [];
         $agentGroups = [];
         $sedeGroups = [];
+        $sourceGroups = [];
 
         foreach ($appointments as $appointment) {
             $hcNumber = trim((string) ($appointment->hc_number ?? ''));
@@ -2410,6 +2446,8 @@ class KpiDashboardService
                 $weakWindowEnd = $firstHumanAt->copy()->addDays(30);
                 $formId = (string) ($appointment->form_id ?? $slotKey);
                 $agentIdForGroup = (int) ($conversation['last_agent_id'] ?? 0);
+                $sourceCategory = (string) ($conversation['source_category'] ?? 'unknown');
+                $sourceCategory = $sourceCategory !== '' ? $sourceCategory : 'unknown';
                 $sedeNombre = trim((string) ($appointment->sede_departamento ?? ''));
                 $sedeNombre = $sedeNombre !== '' ? $sedeNombre : 'Sin sede';
 
@@ -2451,6 +2489,19 @@ class KpiDashboardService
                     $sedeGroups[$sedeNombre]['slot_keys'][$slotKey] = true;
                     $sedeGroups[$sedeNombre]['conversation_ids'][$conversationId] = true;
                     $sedeGroups[$sedeNombre]['patient_hcs'][$hcNumber] = true;
+
+                    if (!isset($sourceGroups[$sourceCategory])) {
+                        $sourceGroups[$sourceCategory] = [
+                            'source_category' => $sourceCategory,
+                            'source_label' => $this->sourceCategoryLabel($sourceCategory),
+                            'slot_keys' => [],
+                            'conversation_ids' => [],
+                            'patient_hcs' => [],
+                        ];
+                    }
+                    $sourceGroups[$sourceCategory]['slot_keys'][$slotKey] = true;
+                    $sourceGroups[$sourceCategory]['conversation_ids'][$conversationId] = true;
+                    $sourceGroups[$sourceCategory]['patient_hcs'][$hcNumber] = true;
                     continue;
                 }
 
@@ -2489,6 +2540,15 @@ class KpiDashboardService
         ], $sedeGroups));
         usort($bySede, fn (array $a, array $b): int => ($b['appointment_slots'] <=> $a['appointment_slots']) ?: strcmp($a['sede_nombre'], $b['sede_nombre']));
 
+        $bySource = array_values(array_map(fn (array $group): array => [
+            'source_category' => (string) $group['source_category'],
+            'source_label' => (string) $group['source_label'],
+            'appointment_slots' => count($group['slot_keys']),
+            'conversations' => count($group['conversation_ids']),
+            'patients' => count($group['patient_hcs']),
+        ], $sourceGroups));
+        usort($bySource, fn (array $a, array $b): int => ($b['appointment_slots'] <=> $a['appointment_slots']) ?: strcmp($a['source_label'], $b['source_label']));
+
         $trendCounts = [];
         foreach ($trendSlotDates as $date) {
             $trendCounts[$date] = ($trendCounts[$date] ?? 0) + 1;
@@ -2514,6 +2574,7 @@ class KpiDashboardService
             ),
             'by_agent' => array_slice($byAgent, 0, 20),
             'by_sede' => array_slice($bySede, 0, 20),
+            'by_source' => array_slice($bySource, 0, 20),
         ];
     }
 
@@ -2522,7 +2583,8 @@ class KpiDashboardService
      *     summary:array<string,int>,
      *     trend_rows:array<int,array{period_date:string,total:int}>,
      *     by_agent:array<int,array<string,mixed>>,
-     *     by_sede:array<int,array<string,mixed>>
+     *     by_sede:array<int,array<string,mixed>>,
+     *     by_source:array<int,array<string,mixed>>
      * }
      */
     private function emptyHumanAppointmentAttribution(): array
@@ -2542,6 +2604,7 @@ class KpiDashboardService
             'trend_rows' => [],
             'by_agent' => [],
             'by_sede' => [],
+            'by_source' => [],
         ];
     }
 
@@ -2557,7 +2620,10 @@ class KpiDashboardService
 
         $patientHcSql = Schema::hasColumn('whatsapp_conversations', 'patient_hc_number') ? 'c.patient_hc_number' : 'NULL';
         $assignedUserSql = Schema::hasColumn('whatsapp_conversations', 'assigned_user_id') ? 'c.assigned_user_id' : 'NULL';
-        $selectPrefix = 'c.id AS conversation_id, c.wa_number, ' . $patientHcSql . ' AS patient_hc_number, ' . $assignedUserSql . ' AS assigned_user_id';
+        $attributionJoin = Schema::hasTable('whatsapp_conversation_attributions')
+            ? 'LEFT JOIN whatsapp_conversation_attributions attr ON attr.conversation_id = c.id'
+            : 'LEFT JOIN (SELECT NULL AS conversation_id, NULL AS source_category) attr ON 1 = 0';
+        $selectPrefix = 'c.id AS conversation_id, c.wa_number, ' . $patientHcSql . ' AS patient_hc_number, ' . $assignedUserSql . ' AS assigned_user_id, COALESCE(NULLIF(attr.source_category, ""), "unknown") AS source_category';
         $queries = [];
         $params = [];
 
@@ -2569,6 +2635,7 @@ class KpiDashboardService
             $queries[] = 'SELECT ' . $selectPrefix . ', ' . $eventAt . ' AS event_at, m.sender_id AS agent_id
                           FROM whatsapp_messages m
                           INNER JOIN whatsapp_conversations c ON c.id = m.conversation_id
+                          ' . $attributionJoin . '
                           WHERE m.direction = "outbound"
                             AND m.sender_type = "agent"
                             AND m.sender_id IS NOT NULL
@@ -2587,6 +2654,7 @@ class KpiDashboardService
             $queries[] = 'SELECT ' . $selectPrefix . ', ' . $eventAt . ' AS event_at, h.assigned_agent_id AS agent_id
                           FROM whatsapp_handoffs h
                           INNER JOIN whatsapp_conversations c ON c.id = h.conversation_id
+                          ' . $attributionJoin . '
                           WHERE h.assigned_agent_id IS NOT NULL
                             AND ' . $eventAt . ' >= ?
                             AND ' . $eventAt . ' < ?';
@@ -2602,6 +2670,7 @@ class KpiDashboardService
                           FROM whatsapp_handoff_events e
                           INNER JOIN whatsapp_handoffs h ON h.id = e.handoff_id
                           INNER JOIN whatsapp_conversations c ON c.id = h.conversation_id
+                          ' . $attributionJoin . '
                           WHERE e.actor_user_id IS NOT NULL
                             AND e.created_at >= ?
                             AND e.created_at < ?';
