@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Cache;
 class WhatsappExecutiveReportService
 {
     private const EXECUTIVE_REPORT_CACHE_TTL = 600;
-    private const EXECUTIVE_REPORT_PAYLOAD_VERSION = 4;
+    private const EXECUTIVE_REPORT_PAYLOAD_VERSION = 5;
 
     private const PERIODS = [
         'hoy' => ['label' => 'Hoy', 'days' => 1],
