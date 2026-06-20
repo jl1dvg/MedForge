@@ -288,9 +288,37 @@ class WhatsappExecutiveReportService
         ], $analytics['lifecycle'] ?? []);
 
         $funnel = array_map(static fn (array $row): array => [
+            'key' => $row['key'] ?? '',
             'label' => $row['label'] ?? $row['stage'] ?? '',
             'value' => (int) ($row['total'] ?? $row['value'] ?? 0),
         ], $analytics['funnel'] ?? []);
+
+        $funnelValue = static function (string $key, array $funnel): int {
+            foreach ($funnel as $step) {
+                if (($step['key'] ?? '') === $key) {
+                    return (int) ($step['value'] ?? 0);
+                }
+            }
+
+            return 0;
+        };
+
+        $appointmentIntentConversations = 0;
+        foreach ($analytics['intents'] ?? [] as $row) {
+            $intent = (string) ($row['initial_intent'] ?? $row['intent'] ?? '');
+            $label = (string) ($row['label'] ?? $row['intent_label'] ?? '');
+            if ($intent === 'booking' || $label === 'Agendar cita') {
+                $appointmentIntentConversations += (int) ($row['total'] ?? 0);
+            }
+        }
+
+        $identifiedConversations = (int) ($aSummary['identified_conversations'] ?? $funnelValue('identified', $funnel));
+        $enteredScheduling = $funnelValue('scheduled', $funnel);
+        $reachedConfirmation = $funnelValue('confirmed', $funnel);
+        $humanLostConversations = (int) ($s['conversations_lost_needs_human'] ?? 0);
+        $schedulingDropoffs = max(0, $enteredScheduling - $reachedConfirmation);
+        $identifiedWithoutAppointment = max(0, $identifiedConversations - $attributedAppointments);
+        $estimatedLostAppointments = (int) round($humanLostConversations * ($attributedBookingRate / 100));
 
         $frictions = $this->combineReportItemsByLabel(array_map(static fn (array $row): array => [
             'label' => $row['label'] ?? $row['friction_label'] ?? $row['friction'] ?? $row['friction_state'] ?? 'Sin clasificar',
@@ -388,6 +416,18 @@ class WhatsappExecutiveReportService
             'agents' => $agents,
             'humanAppointmentAgents' => $humanAppointmentAgents,
             'teams' => $teams,
+            'opportunityLoss' => [
+                'appointmentIntentConversations' => $appointmentIntentConversations,
+                'enteredScheduling' => $enteredScheduling,
+                'identifiedConversations' => $identifiedConversations,
+                'reachedConfirmation' => $reachedConfirmation,
+                'attributedAppointments' => $attributedAppointments,
+                'humanLostConversations' => $humanLostConversations,
+                'schedulingDropoffs' => $schedulingDropoffs,
+                'identifiedWithoutAppointment' => $identifiedWithoutAppointment,
+                'estimatedLostAppointments' => $estimatedLostAppointments,
+                'observedConversionRate' => $attributedBookingRate,
+            ],
             'insights' => $insights,
             'recommendations' => $recommendations,
         ];

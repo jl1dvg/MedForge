@@ -33,6 +33,7 @@ export interface WaShareItem {
 }
 
 export interface WaFunnelStep {
+  key?: string;
   label: string;
   value: number;
 }
@@ -69,6 +70,19 @@ export interface WaInsight {
   tone: 'success' | 'warning' | 'danger';
   title: string;
   body: string;
+}
+
+export interface WaOpportunityLoss {
+  appointmentIntentConversations: number;
+  enteredScheduling: number;
+  identifiedConversations: number;
+  reachedConfirmation: number;
+  attributedAppointments: number;
+  humanLostConversations: number;
+  schedulingDropoffs: number;
+  identifiedWithoutAppointment: number;
+  estimatedLostAppointments: number;
+  observedConversionRate: number;
 }
 
 export interface WaSummary {
@@ -120,6 +134,7 @@ export interface WhatsappReport {
   agents: WaAgentRow[];
   humanAppointmentAgents: WaHumanAppointmentAgentRow[];
   teams: WaTeamRow[];
+  opportunityLoss: WaOpportunityLoss;
   insights: WaInsight[];
   recommendations: string[];
 }

@@ -14,6 +14,20 @@ export function WhatsappContent({ r }: { r: WhatsappReport }) {
   const attributedBookingRate = s.attributedBookingRate ?? s.bookingRate ?? 0;
   const humanAppointmentAgents = r.humanAppointmentAgents ?? [];
   const topSource = r.sources[0];
+  const opportunityLoss = r.opportunityLoss ?? {
+    appointmentIntentConversations: 0,
+    enteredScheduling: 0,
+    identifiedConversations: 0,
+    reachedConfirmation: 0,
+    attributedAppointments,
+    humanLostConversations: s.lostNeedsHuman ?? 0,
+    schedulingDropoffs: 0,
+    identifiedWithoutAppointment: 0,
+    estimatedLostAppointments: 0,
+    observedConversionRate: attributedBookingRate,
+  };
+  const opportunitySignals = Math.max(opportunityLoss.appointmentIntentConversations, opportunityLoss.enteredScheduling, opportunityLoss.identifiedConversations);
+  const fmt = (value: number) => value.toLocaleString('es-EC');
 
   return (
     <>
@@ -178,6 +192,46 @@ export function WhatsappContent({ r }: { r: WhatsappReport }) {
         <RecsCard>
           <Recs items={r.recommendations} />
         </RecsCard>
+      </Section>
+
+      <Section
+        num="07"
+        kicker="Oportunidad perdida"
+        title="Cuántas citas pudo estar perdiendo la operación"
+        lede="Traduce WhatsApp a una lectura simple: demanda generada, citas logradas y señales de pérdida por falta de cierre humano."
+      >
+        <div className="rep-grid rep-grid--4" style={{ marginBottom: 16 }}>
+          <Kpi icon="mdi-bullseye-arrow" label="Oportunidades de cita" value={fmt(opportunitySignals)} sub="personas con señal de cita o paciente identificado" />
+          <Kpi icon="mdi-calendar-check-outline" label="Citas logradas" value={fmt(opportunityLoss.attributedAppointments)} sub={`${fmt(humanAppointments)} humano · ${fmt(botBookings)} bot`} />
+          <Kpi icon="mdi-account-alert-outline" label="Se perdieron por atención" value={fmt(opportunityLoss.humanLostConversations)} sub="necesitaban humano y no cerraron" />
+          <Kpi icon="mdi-calendar-remove-outline" label="Citas que se pudieron perder" value={fmt(opportunityLoss.estimatedLostAppointments)} sub={`estimado con ${opportunityLoss.observedConversionRate}% de conversión`} />
+        </div>
+        <Read>
+          Lectura directa: MedForge generó <b>{fmt(opportunitySignals)}</b> oportunidades claras desde WhatsApp y se lograron <b>{fmt(opportunityLoss.attributedAppointments)}</b> citas.
+          Pero <b>{fmt(opportunityLoss.humanLostConversations)}</b> conversaciones que necesitaban al equipo quedaron sin cierre.
+          Con la conversión actual, eso equivale aproximadamente a <b>{fmt(opportunityLoss.estimatedLostAppointments)}</b> citas que se pudieron perder.
+        </Read>
+        <div className="rep-grid rep-grid--2" style={{ marginBottom: 16 }}>
+          <div className="rep-card">
+            <div className="rep-card-head"><h3><i className="mdi mdi-alert-decagram-outline"></i>Dónde se está perdiendo</h3></div>
+            <BarsList items={[
+              { label: 'Necesitaban humano y quedaron perdidas', total: opportunityLoss.humanLostConversations, share: 0 },
+              { label: 'Entraron a agendamiento y no confirmaron', total: opportunityLoss.schedulingDropoffs, share: 0 },
+              { label: 'Paciente identificado sin cita atribuida', total: opportunityLoss.identifiedWithoutAppointment, share: 0 },
+            ]} />
+          </div>
+          <div className="rep-card">
+            <div className="rep-card-head"><h3><i className="mdi mdi-clipboard-text-outline"></i>Lectura para gerencia</h3></div>
+            <table className="rep-table">
+              <tbody>
+                <tr><td>Pidieron o mostraron intención de cita</td><td>{fmt(opportunityLoss.appointmentIntentConversations)}</td></tr>
+                <tr><td>Entraron al flujo de agendamiento</td><td>{fmt(opportunityLoss.enteredScheduling)}</td></tr>
+                <tr><td>Llegaron a confirmación</td><td>{fmt(opportunityLoss.reachedConfirmation)}</td></tr>
+                <tr><td>Citas logradas por WhatsApp</td><td>{fmt(opportunityLoss.attributedAppointments)}</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
       </Section>
     </>
   );
