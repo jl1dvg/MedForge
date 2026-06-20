@@ -707,12 +707,20 @@ class KpiDashboardService
     {
         $rows = DB::select(
             'SELECT
-                COALESCE(NULLIF(initial_intent, ""), "unknown") AS initial_intent,
+                CASE
+                    WHEN COALESCE(NULLIF(initial_intent, ""), "unknown") = "unknown"
+                        THEN COALESCE(NULLIF(conversation_type, ""), "unknown")
+                    ELSE COALESCE(NULLIF(initial_intent, ""), "unknown")
+                END AS initial_intent,
                 COUNT(*) AS total,
                 SUM(has_booking) AS bookings,
                 SUM(has_handoff) AS handoffs
              FROM (' . $base['sql'] . ') analytics_base
-             GROUP BY COALESCE(NULLIF(initial_intent, ""), "unknown")
+             GROUP BY CASE
+                    WHEN COALESCE(NULLIF(initial_intent, ""), "unknown") = "unknown"
+                        THEN COALESCE(NULLIF(conversation_type, ""), "unknown")
+                    ELSE COALESCE(NULLIF(initial_intent, ""), "unknown")
+                END
              ORDER BY total DESC, initial_intent ASC',
             $base['params']
         );
@@ -1247,7 +1255,11 @@ class KpiDashboardService
             'results' => 'Resultados',
             'human_help' => 'Ayuda humana',
             'general_info' => 'Información general',
+            'faq' => 'Información general',
             'outbound_followup' => 'Seguimiento saliente',
+            'campaign_response' => 'Seguimiento saliente',
+            'patient_return' => 'Paciente de retorno',
+            'post_op_followup' => 'Seguimiento postconsulta',
             'other' => 'Otra intención',
             default => 'Sin clasificar',
         };
@@ -1299,9 +1311,17 @@ class KpiDashboardService
             'agenda_esperando_subespecialidad' => 'Esperando especialidad',
             'agenda_esperando_medico' => 'Esperando médico',
             'agenda_esperando_sede' => 'Esperando sede',
+            'agenda_esperando_sede_inicio' => 'Esperando sede',
+            'agenda_esperando_sede_directa' => 'Esperando sede',
             'agenda_esperando_procedimiento' => 'Esperando procedimiento',
             'agenda_esperando_dia' => 'Esperando día',
+            'agenda_esperando_fecha_general' => 'Esperando fecha',
             'agenda_esperando_horario' => 'Esperando horario',
+            'agenda_esperando_horario_general_fecha' => 'Esperando horario',
+            'agenda_filtro_sector' => 'Filtro de sector',
+            'agenda_confirmar_cita_fecha_general' => 'Pendiente de confirmación',
+            'agenda_esperando_medico_general_por_fecha' => 'Esperando médico',
+            'agenda_esperando_doctor_directo' => 'Esperando médico',
             'open_unresolved' => 'Abierta sin resolver',
             default => 'Sin fricción clasificada',
         };

@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Cache;
 class WhatsappExecutiveReportService
 {
     private const EXECUTIVE_REPORT_CACHE_TTL = 600;
-    private const EXECUTIVE_REPORT_PAYLOAD_VERSION = 2;
+    private const EXECUTIVE_REPORT_PAYLOAD_VERSION = 3;
 
     private const PERIODS = [
         'hoy' => ['label' => 'Hoy', 'days' => 1],
@@ -217,7 +217,7 @@ class WhatsappExecutiveReportService
 
         $sources = array_map(static fn (array $row): array => [
             'id' => $row['source_category'] ?? $row['key'] ?? '',
-            'label' => $row['label'] ?? ($row['source_category'] ?? 'Sin clasificar'),
+            'label' => $row['label'] ?? $row['source_label'] ?? ($row['source_category'] ?? 'Sin clasificar'),
             'total' => (int) ($row['total'] ?? 0),
             'share' => (float) ($row['pct'] ?? $row['share'] ?? 0),
             'identified' => (int) ($row['identified'] ?? 0),
@@ -225,14 +225,14 @@ class WhatsappExecutiveReportService
             'bookingRate' => (float) ($row['booking_rate'] ?? 0),
         ], $analytics['sources'] ?? []);
 
-        $intents = array_map(static fn (array $row): array => [
-            'label' => $row['label'] ?? $row['intent'] ?? 'Sin clasificar',
+        $intents = $this->combineReportItemsByLabel(array_map(static fn (array $row): array => [
+            'label' => $row['label'] ?? $row['intent_label'] ?? $row['intent'] ?? $row['initial_intent'] ?? 'Sin clasificar',
             'total' => (int) ($row['total'] ?? 0),
             'share' => (float) ($row['pct'] ?? $row['share'] ?? 0),
-        ], $analytics['intents'] ?? []);
+        ], $analytics['intents'] ?? []));
 
         $lifecycle = array_map(static fn (array $row): array => [
-            'label' => $row['label'] ?? $row['lifecycle_category'] ?? 'Sin clasificar',
+            'label' => $row['label'] ?? $row['lifecycle_label'] ?? $row['lifecycle_category'] ?? 'Sin clasificar',
             'total' => (int) ($row['total'] ?? 0),
             'share' => (float) ($row['pct'] ?? $row['share'] ?? 0),
             'identified' => (int) ($row['identified'] ?? 0),
@@ -245,11 +245,11 @@ class WhatsappExecutiveReportService
             'value' => (int) ($row['total'] ?? $row['value'] ?? 0),
         ], $analytics['funnel'] ?? []);
 
-        $frictions = array_map(static fn (array $row): array => [
-            'label' => $row['label'] ?? $row['friction'] ?? 'Sin clasificar',
+        $frictions = $this->combineReportItemsByLabel(array_map(static fn (array $row): array => [
+            'label' => $row['label'] ?? $row['friction_label'] ?? $row['friction'] ?? $row['friction_state'] ?? 'Sin clasificar',
             'total' => (int) ($row['total'] ?? 0),
             'share' => (float) ($row['pct'] ?? $row['share'] ?? 0),
-        ], $analytics['frictions'] ?? []);
+        ], $analytics['frictions'] ?? []));
 
         $agents = array_map(static fn (array $row): array => [
             'name' => $row['agent_name'] ?? '',
@@ -344,6 +344,40 @@ class WhatsappExecutiveReportService
             'insights' => $insights,
             'recommendations' => $recommendations,
         ];
+    }
+
+    /**
+     * @param array<int,array{label:string,total:int,share:float}> $items
+     * @return array<int,array{label:string,total:int,share:float}>
+     */
+    private function combineReportItemsByLabel(array $items): array
+    {
+        $combined = [];
+        foreach ($items as $item) {
+            $label = trim((string) ($item['label'] ?? ''));
+            $label = $label !== '' ? $label : 'Sin clasificar';
+
+            if (!isset($combined[$label])) {
+                $combined[$label] = [
+                    'label' => $label,
+                    'total' => 0,
+                    'share' => 0.0,
+                ];
+            }
+
+            $combined[$label]['total'] += (int) ($item['total'] ?? 0);
+            $combined[$label]['share'] += (float) ($item['share'] ?? 0);
+        }
+
+        $rows = array_values(array_map(static fn (array $item): array => [
+            'label' => $item['label'],
+            'total' => $item['total'],
+            'share' => round($item['share'], 1),
+        ], $combined));
+
+        usort($rows, static fn (array $a, array $b): int => ((int) $b['total'] <=> (int) $a['total']) ?: strcmp((string) $a['label'], (string) $b['label']));
+
+        return $rows;
     }
 
     /**
