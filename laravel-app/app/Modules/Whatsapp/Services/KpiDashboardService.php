@@ -35,20 +35,21 @@ class KpiDashboardService
         $toSql = $toExclusive->format('Y-m-d H:i:s');
         [$reminderFromSql, $reminderToSql] = $this->localReminderDateRangeSql($from, $endDate);
         $slaTargetMinutes = $this->resolveSlaTargetMinutes($slaTargetMinutes);
+        $hasMessagesTable = Schema::hasTable('whatsapp_messages');
 
         $summary = [
             'conversations_new' => $this->scalarInt(
                 'SELECT COUNT(*) FROM whatsapp_conversations WHERE created_at >= ? AND created_at < ?',
                 [$fromSql, $toSql]
             ),
-            'messages_inbound' => $this->scalarInt(
+            'messages_inbound' => $hasMessagesTable ? $this->scalarInt(
                 'SELECT COUNT(*) FROM whatsapp_messages WHERE direction = ? AND message_timestamp >= ? AND message_timestamp < ?',
                 ['inbound', $fromSql, $toSql]
-            ),
-            'messages_outbound' => $this->scalarInt(
+            ) : 0,
+            'messages_outbound' => $hasMessagesTable ? $this->scalarInt(
                 'SELECT COUNT(*) FROM whatsapp_messages WHERE direction = ? AND message_timestamp >= ? AND message_timestamp < ?',
                 ['outbound', $fromSql, $toSql]
-            ),
+            ) : 0,
         ];
 
         $human = $this->humanAttentionSummary($fromSql, $toSql, $roleId, $agentId, $slaTargetMinutes);
@@ -94,7 +95,7 @@ class KpiDashboardService
                     $from,
                     $toExclusive
                 ),
-                'messages_inbound' => $this->mapTrend(
+                'messages_inbound' => $hasMessagesTable ? $this->mapTrend(
                     $this->trendRows(
                         'SELECT DATE(message_timestamp) AS period_date, COUNT(*) AS total
                          FROM whatsapp_messages
@@ -105,8 +106,8 @@ class KpiDashboardService
                     ),
                     $from,
                     $toExclusive
-                ),
-                'messages_outbound' => $this->mapTrend(
+                ) : $this->emptyTrend($from, $toExclusive),
+                'messages_outbound' => $hasMessagesTable ? $this->mapTrend(
                     $this->trendRows(
                         'SELECT DATE(message_timestamp) AS period_date, COUNT(*) AS total
                          FROM whatsapp_messages
@@ -117,7 +118,7 @@ class KpiDashboardService
                     ),
                     $from,
                     $toExclusive
-                ),
+                ) : $this->emptyTrend($from, $toExclusive),
                 'handoff_transfers' => $this->mapTrend(
                     $this->transferTrendRows($fromSql, $toSql, $roleId, $agentId),
                     $from,
@@ -306,7 +307,7 @@ class KpiDashboardService
      */
     private function conversationAnalytics(string $fromSql, string $toSql, ?int $roleId, ?int $agentId): array
     {
-        if (!Schema::hasTable('whatsapp_conversations') || !Schema::hasTable('whatsapp_messages')) {
+        if (!Schema::hasTable('whatsapp_conversations')) {
             return [
                 'summary' => [
                     'total_conversations' => 0,
@@ -566,6 +567,15 @@ class KpiDashboardService
      */
     private function lostLeadsBySource(string $fromSql, string $toSql, ?int $roleId, ?int $agentId): array
     {
+        if (!Schema::hasTable('whatsapp_handoffs')) {
+            return [
+                'ads_total' => 0,
+                'ads_lost_no_human' => 0,
+                'ads_lost_no_assignment' => 0,
+                'ads_abandoned_with_handoff' => 0,
+            ];
+        }
+
         $scope        = $this->inboundScopeSubquery($fromSql, $toSql, $roleId, $agentId, 'lost_leads');
         $reply        = $this->humanReplySubquery($roleId, $agentId, 'lost_leads');
         $handoffStart = $this->handoffStartSubquery($roleId, $agentId, 'lost_leads');
@@ -965,6 +975,10 @@ class KpiDashboardService
      */
     private function adsPerformanceBreakdown(array $base): array
     {
+        if (!Schema::hasTable('whatsapp_conversation_attributions')) {
+            return [];
+        }
+
         $rows = DB::select(
             'SELECT
                 NULLIF(referral_source_id, "") AS source_id,
@@ -1021,16 +1035,17 @@ class KpiDashboardService
             $params = array_merge($params, array_values($filter['params']));
         }
 
-        $referralType = $this->jsonTextExtract('mi.raw_payload', '$.referral.source_type');
-        $referralSourceId = $this->jsonTextExtract('mi.raw_payload', '$.referral.source_id');
-        $referralHeadline = $this->jsonTextExtract('mi.raw_payload', '$.referral.headline');
-        $referralMediaType = $this->jsonTextExtract('mi.raw_payload', '$.referral.media_type');
+        $hasMessagesTable = Schema::hasTable('whatsapp_messages');
+        $referralType = $hasMessagesTable ? $this->jsonTextExtract('mi.raw_payload', '$.referral.source_type') : '""';
+        $referralSourceId = $hasMessagesTable ? $this->jsonTextExtract('mi.raw_payload', '$.referral.source_id') : '""';
+        $referralHeadline = $hasMessagesTable ? $this->jsonTextExtract('mi.raw_payload', '$.referral.headline') : '""';
+        $referralMediaType = $hasMessagesTable ? $this->jsonTextExtract('mi.raw_payload', '$.referral.media_type') : '""';
         $hasAttributionTable = Schema::hasTable('whatsapp_conversation_attributions');
         $sessionState = $this->jsonTextExtract('s.context', '$.state');
         $sessionConsent = $this->jsonBooleanIsTrue('s.context', '$.consent');
         $attributionJoin = $hasAttributionTable
             ? 'LEFT JOIN whatsapp_conversation_attributions a ON a.conversation_id = c.id'
-            : 'LEFT JOIN (SELECT NULL AS conversation_id, NULL AS source_category, NULL AS source_type, NULL AS source_id, NULL AS headline, NULL AS media_type, NULL AS initial_intent, NULL AS patient_segment) a ON 1 = 0';
+            : 'LEFT JOIN (SELECT NULL AS conversation_id, NULL AS source_category, NULL AS source_type, NULL AS source_id, NULL AS headline, NULL AS media_type, NULL AS initial_intent, NULL AS conversation_type, NULL AS patient_segment) a ON 1 = 0';
         $sessionJoin = Schema::hasTable('whatsapp_autoresponder_sessions')
             ? 'LEFT JOIN whatsapp_autoresponder_sessions s ON s.conversation_id = c.id'
             : 'LEFT JOIN (SELECT NULL AS conversation_id, NULL AS context) s ON 1 = 0';
@@ -1049,6 +1064,22 @@ class KpiDashboardService
                     GROUP BY conversation_id
                 ) h ON h.conversation_id = c.id'
             : 'LEFT JOIN (SELECT NULL AS conversation_id, 0 AS had_handoff) h ON h.conversation_id = c.id';
+        $messageJoin = $hasMessagesTable
+            ? 'LEFT JOIN (
+                    SELECT m.conversation_id, MIN(m.id) AS first_message_id
+                    FROM whatsapp_messages m
+                    GROUP BY m.conversation_id
+                ) first_any ON first_any.conversation_id = c.id
+                LEFT JOIN whatsapp_messages ma ON ma.id = first_any.first_message_id
+                LEFT JOIN (
+                    SELECT m.conversation_id, MIN(m.id) AS first_inbound_id
+                    FROM whatsapp_messages m
+                    WHERE m.direction = "inbound"
+                    GROUP BY m.conversation_id
+                ) first_inbound ON first_inbound.conversation_id = c.id
+                LEFT JOIN whatsapp_messages mi ON mi.id = first_inbound.first_inbound_id'
+            : 'LEFT JOIN (SELECT NULL AS conversation_id, NULL AS direction) ma ON 1 = 0
+                LEFT JOIN (SELECT NULL AS conversation_id, NULL AS message_timestamp, NULL AS raw_payload) mi ON 1 = 0';
 
         $sql = 'SELECT
                     c.id AS conversation_id,
@@ -1172,19 +1203,7 @@ class KpiDashboardService
                     END AS outcome_category
                 FROM whatsapp_conversations c
                 LEFT JOIN users u_assigned ON u_assigned.id = c.assigned_user_id
-                LEFT JOIN (
-                    SELECT m.conversation_id, MIN(m.id) AS first_message_id
-                    FROM whatsapp_messages m
-                    GROUP BY m.conversation_id
-                ) first_any ON first_any.conversation_id = c.id
-                LEFT JOIN whatsapp_messages ma ON ma.id = first_any.first_message_id
-                LEFT JOIN (
-                    SELECT m.conversation_id, MIN(m.id) AS first_inbound_id
-                    FROM whatsapp_messages m
-                    WHERE m.direction = "inbound"
-                    GROUP BY m.conversation_id
-                ) first_inbound ON first_inbound.conversation_id = c.id
-                LEFT JOIN whatsapp_messages mi ON mi.id = first_inbound.first_inbound_id
+                ' . $messageJoin . '
                 ' . $attributionJoin . '
                 ' . $sessionJoin . '
                 ' . $bookingJoin . '
@@ -1334,6 +1353,10 @@ class KpiDashboardService
      */
     private function humanAttentionSummary(string $fromSql, string $toSql, ?int $roleId, ?int $agentId, int $slaTargetMinutes = 15): array
     {
+        if (!Schema::hasTable('whatsapp_messages')) {
+            return $this->humanAttentionSummaryFromConversations($fromSql, $toSql, $roleId, $agentId, $slaTargetMinutes);
+        }
+
         $scope = $this->inboundScopeSubquery($fromSql, $toSql, $roleId, $agentId, 'human_attention');
         $reply = $this->humanReplySubquery($roleId, $agentId, 'human_attention');
         $handoffStart = $this->handoffStartSubquery($roleId, $agentId, 'human_attention');
@@ -1488,6 +1511,71 @@ class KpiDashboardService
                 : (count($responseSeconds) > 0
                     ? round(count(array_filter($responseSeconds, fn ($s) => $s <= $slaTargetMinutes * 60)) / count($responseSeconds) * 100, 1)
                     : 0.0),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function humanAttentionSummaryFromConversations(string $fromSql, string $toSql, ?int $roleId, ?int $agentId, int $slaTargetMinutes): array
+    {
+        $filter = $this->conversationScopeFilterSql('c', 'u_assigned', $roleId, $agentId, 'human_attention_fallback');
+        $sql = 'SELECT
+                    COUNT(*) AS total,
+                    COUNT(DISTINCT c.wa_number) AS people_inbound,
+                    SUM(CASE WHEN c.assigned_user_id IS NOT NULL THEN 1 ELSE 0 END) AS attended,
+                    COUNT(DISTINCT CASE WHEN c.assigned_user_id IS NOT NULL THEN c.wa_number END) AS people_attended,
+                    SUM(CASE WHEN c.needs_human = 1 THEN 1 ELSE 0 END) AS needs_human,
+                    SUM(CASE WHEN c.needs_human = 1 AND c.assigned_user_id IS NULL THEN 1 ELSE 0 END) AS lost_needs_human,
+                    COUNT(DISTINCT CASE WHEN c.needs_human = 1 AND c.assigned_user_id IS NULL THEN c.wa_number END) AS people_lost,
+                    SUM(CASE WHEN c.needs_human = 0 THEN 1 ELSE 0 END) AS resolved_by_bot
+                FROM whatsapp_conversations c
+                LEFT JOIN users u_assigned ON u_assigned.id = c.assigned_user_id
+                WHERE c.created_at >= ? AND c.created_at < ?';
+        $params = [$fromSql, $toSql];
+        if ($filter['where'] !== '') {
+            $sql .= ' AND ' . $filter['where'];
+            $params = array_merge($params, array_values($filter['params']));
+        }
+
+        $row = DB::selectOne($sql, $params) ?? (object) [];
+        $peopleInbound = (int) ($row->people_inbound ?? 0);
+        $peopleAttended = (int) ($row->people_attended ?? 0);
+        $needsHuman = (int) ($row->needs_human ?? 0);
+        $peopleLost = (int) ($row->people_lost ?? 0);
+        $lostNeedsHuman = (int) ($row->lost_needs_human ?? 0);
+        $attended = (int) ($row->attended ?? 0);
+        $resolvedByBot = (int) ($row->resolved_by_bot ?? 0);
+
+        return [
+            'people_inbound' => $peopleInbound,
+            'people_handoff' => $needsHuman,
+            'inbound_conversations_human' => (int) ($row->total ?? 0),
+            'conversations_attended_human' => $attended,
+            'people_attended_human' => $peopleAttended,
+            'conversations_lost' => $lostNeedsHuman,
+            'people_lost' => $peopleLost,
+            'conversations_lost_with_handoff' => 0,
+            'attention_rate' => $needsHuman > 0 ? round(($attended / $needsHuman) * 100, 2) : 0.0,
+            'loss_rate' => $needsHuman > 0 ? round(($lostNeedsHuman / $needsHuman) * 100, 2) : 0.0,
+            'conversations_abandoned' => 0,
+            'conversations_abandoned_needs_human' => 0,
+            'conversations_abandoned_with_handoff' => 0,
+            'abandonment_rate' => 0.0,
+            'conversations_resolved' => $resolvedByBot,
+            'avg_first_human_response_seconds' => null,
+            'avg_first_human_response_minutes' => null,
+            'median_first_human_response_seconds' => null,
+            'median_first_human_response_minutes' => null,
+            'p75_first_human_response_minutes' => null,
+            'peak_open_conversations' => 0,
+            'peak_open_at' => null,
+            'conversations_lost_needs_human' => $lostNeedsHuman,
+            'conversations_resolved_by_bot' => $resolvedByBot,
+            'p75_business_first_human_response_minutes' => null,
+            'median_business_first_human_response_minutes' => null,
+            'sla_response_rate' => 0.0,
+            'sla_target_minutes' => $slaTargetMinutes,
         ];
     }
 
@@ -1693,6 +1781,17 @@ class KpiDashboardService
      */
     private function queueSummary(?int $roleId, ?int $agentId): array
     {
+        if (!Schema::hasTable('whatsapp_handoffs')) {
+            return [
+                'live_queue_queued' => 0,
+                'live_queue_assigned' => 0,
+                'live_queue_assigned_overdue' => 0,
+                'live_queue_total' => 0,
+                'live_queue_today' => 0,
+                'live_queue_backlog' => 0,
+            ];
+        }
+
         $filter = $this->handoffFilterSql('h', $roleId, $agentId, 'live_queue');
         $now = Carbon::now()->format('Y-m-d H:i:s');
         $sql = 'SELECT
@@ -1756,6 +1855,18 @@ class KpiDashboardService
      */
     private function conversationWindowSummary(?int $roleId, ?int $agentId): array
     {
+        if (!Schema::hasTable('whatsapp_messages')) {
+            return [
+                'queue_conversations_total' => 0,
+                'queue_window_open' => 0,
+                'queue_needs_template' => 0,
+                'queue_awaiting_template_reply' => 0,
+                'queue_window_open_rate' => 0.0,
+                'queue_needs_template_rate' => 0.0,
+                'queue_awaiting_template_reply_rate' => 0.0,
+            ];
+        }
+
         $filter = $this->conversationScopeFilterSql('c', 'u_assigned', $roleId, $agentId, 'conversation_window');
         $threshold24h = Carbon::now()->subHours(24)->format('Y-m-d H:i:s');
         $sql = 'SELECT
@@ -1808,6 +1919,15 @@ class KpiDashboardService
      */
     private function slaSummary(string $fromSql, string $toSql, ?int $roleId, ?int $agentId, int $targetMinutes): array
     {
+        if (!Schema::hasTable('whatsapp_handoffs')) {
+            return [
+                'sla_target_minutes' => $targetMinutes,
+                'sla_assignments_total' => 0,
+                'sla_assignments_in_target' => 0,
+                'sla_assignments_rate' => 0.0,
+            ];
+        }
+
         $filter = $this->handoffFilterSql('h', $roleId, $agentId, 'sla');
         $sql = 'SELECT h.queued_at, h.assigned_at
                 FROM whatsapp_handoffs h
@@ -1841,6 +1961,10 @@ class KpiDashboardService
 
     private function transferSummary(string $fromSql, string $toSql, ?int $roleId, ?int $agentId): int
     {
+        if (!Schema::hasTable('whatsapp_handoff_events') || !Schema::hasTable('whatsapp_handoffs')) {
+            return 0;
+        }
+
         $filter = $this->handoffFilterSql('h', $roleId, $agentId, 'transfer_summary');
         $sql = 'SELECT COUNT(*) AS total
                 FROM whatsapp_handoff_events e
@@ -1862,6 +1986,10 @@ class KpiDashboardService
      */
     private function handoffsByRole(string $fromSql, string $toSql, ?int $roleId, ?int $agentId): array
     {
+        if (!Schema::hasTable('whatsapp_handoffs')) {
+            return [];
+        }
+
         $filter = $this->handoffFilterSql('h', $roleId, $agentId, 'role');
         $sql = 'SELECT
                     h.handoff_role_id AS role_id,
@@ -1896,6 +2024,10 @@ class KpiDashboardService
      */
     private function handoffsByAgent(string $fromSql, string $toSql, ?int $roleId, ?int $agentId): array
     {
+        if (!Schema::hasTable('whatsapp_handoffs')) {
+            return [];
+        }
+
         // Muestra carga vigente e histórica reciente por agente para no perder handoffs ya cerrados.
         $filter = $this->handoffFilterSql('h', $roleId, $agentId, 'agent');
         $sql = 'SELECT
@@ -1929,6 +2061,10 @@ class KpiDashboardService
      */
     private function humanAttentionByAgent(string $fromSql, string $toSql, ?int $roleId, ?int $agentId): array
     {
+        if (!Schema::hasTable('whatsapp_messages') || !Schema::hasTable('whatsapp_handoffs')) {
+            return [];
+        }
+
         $scope = $this->inboundScopeSubquery($fromSql, $toSql, $roleId, $agentId, 'human_agent');
         $reply = $this->firstHumanReplyByAgentSubquery($scope, $roleId, $agentId, 'human_agent');
 
@@ -2142,6 +2278,10 @@ class KpiDashboardService
      */
     private function transferTrendRows(string $fromSql, string $toSql, ?int $roleId, ?int $agentId): array
     {
+        if (!Schema::hasTable('whatsapp_handoff_events') || !Schema::hasTable('whatsapp_handoffs')) {
+            return [];
+        }
+
         $filter = $this->handoffFilterSql('h', $roleId, $agentId, 'transfer_trend');
         $sql = 'SELECT DATE(e.created_at) AS period_date, COUNT(*) AS total
                 FROM whatsapp_handoff_events e
@@ -3234,6 +3374,14 @@ class KpiDashboardService
     }
 
     /**
+     * @return array<int, int>
+     */
+    private function emptyTrend(DateTimeImmutable $from, DateTimeImmutable $toExclusive): array
+    {
+        return array_fill(0, count($this->dateLabels($from, $toExclusive)), 0);
+    }
+
+    /**
      * @return array<int, string>
      */
     private function dateLabels(DateTimeImmutable $from, DateTimeImmutable $toExclusive): array
@@ -3369,13 +3517,18 @@ class KpiDashboardService
         if ($agentId !== null && $agentId > 0) {
             // Incluye la asignación actual Y conversaciones donde el agente
             // tuvo un handoff histórico (para no perder transferencias).
-            $conditions[] = '(' . $conversationAlias . '.assigned_user_id = ? OR EXISTS (
-            SELECT 1 FROM whatsapp_handoffs wh_scope
-            WHERE wh_scope.conversation_id = ' . $conversationAlias . '.id
-              AND wh_scope.assigned_agent_id = ?
-        ))';
-            $params[$scope . '_agent_current']    = $agentId;
-            $params[$scope . '_agent_historical'] = $agentId;
+            if (Schema::hasTable('whatsapp_handoffs')) {
+                $conditions[] = '(' . $conversationAlias . '.assigned_user_id = ? OR EXISTS (
+                SELECT 1 FROM whatsapp_handoffs wh_scope
+                WHERE wh_scope.conversation_id = ' . $conversationAlias . '.id
+                  AND wh_scope.assigned_agent_id = ?
+            ))';
+                $params[$scope . '_agent_current']    = $agentId;
+                $params[$scope . '_agent_historical'] = $agentId;
+            } else {
+                $conditions[] = $conversationAlias . '.assigned_user_id = ?';
+                $params[$scope . '_agent_current'] = $agentId;
+            }
         }
 
         return ['where' => implode(' AND ', $conditions), 'params' => $params];
@@ -3390,6 +3543,28 @@ class KpiDashboardService
         $handoffRequestedSelect = Schema::hasColumn('whatsapp_conversations', 'handoff_requested_at')
             ? 'c.handoff_requested_at'
             : 'NULL AS handoff_requested_at';
+        if (!Schema::hasTable('whatsapp_messages')) {
+            $sql = 'SELECT
+                        c.id AS conversation_id,
+                        c.wa_number,
+                        c.needs_human,
+                        c.assigned_user_id,
+                        ' . $handoffRequestedSelect . ',
+                        c.created_at AS first_inbound_at,
+                        COALESCE(c.last_message_at, c.updated_at, c.created_at) AS last_inbound_at
+                    FROM whatsapp_conversations c
+                    LEFT JOIN users u_assigned ON u_assigned.id = c.assigned_user_id
+                    WHERE c.created_at >= ?
+                      AND c.created_at < ?';
+            $params = [$fromSql, $toSql];
+            if ($filter['where'] !== '') {
+                $sql .= ' AND ' . $filter['where'];
+                $params = array_merge($params, array_values($filter['params']));
+            }
+
+            return ['sql' => $sql, 'params' => $params];
+        }
+
         $sql = 'SELECT
                     c.id AS conversation_id,
                     c.wa_number,
@@ -3422,6 +3597,13 @@ class KpiDashboardService
      */
     private function humanReplySubquery(?int $roleId, ?int $agentId, string $scope): array
     {
+        if (!Schema::hasTable('whatsapp_messages') || !Schema::hasTable('whatsapp_handoffs')) {
+            return [
+                'sql' => 'SELECT NULL AS conversation_id, NULL AS first_human_reply_at WHERE 1 = 0',
+                'params' => [],
+            ];
+        }
+
         $filter = $this->handoffFilterSql('h', $roleId, $agentId, $scope . '_reply');
         $sql = 'SELECT
                     h.conversation_id,
@@ -3470,6 +3652,13 @@ class KpiDashboardService
      */
     private function firstHumanReplyByAgentSubquery(array $inboundScope, ?int $roleId, ?int $agentId, string $scope): array
     {
+        if (!Schema::hasTable('whatsapp_messages') || !Schema::hasTable('whatsapp_handoffs')) {
+            return [
+                'sql' => 'SELECT NULL AS conversation_id, NULL AS assigned_agent_id, NULL AS assigned_at, NULL AS first_human_reply_at WHERE 1 = 0',
+                'params' => [],
+            ];
+        }
+
         $filter = $this->handoffFilterSql('h', $roleId, $agentId, $scope . '_first_reply');
         $sql = 'SELECT
                     inbound.conversation_id,
