@@ -294,6 +294,283 @@ class KpiDashboardService
         return $rows;
     }
 
+    /**
+     * @return array<string, mixed>
+     */
+    public function exportOperationalWorkbookData(
+        DateTimeImmutable $startDate,
+        DateTimeImmutable $endDate,
+        ?int $roleId = null,
+        ?int $agentId = null,
+        ?int $slaTargetMinutes = null
+    ): array {
+        $from = $startDate->setTime(0, 0, 0);
+        $toExclusive = $endDate->setTime(0, 0, 0)->modify('+1 day');
+        $fromSql = $from->format('Y-m-d H:i:s');
+        $toSql = $toExclusive->format('Y-m-d H:i:s');
+
+        $dashboard = $this->buildDashboard($startDate, $endDate, $roleId, $agentId, $slaTargetMinutes);
+        $conversationRows = $this->exportConversationDetailRows($fromSql, $toSql, $roleId, $agentId);
+        $humanAttribution = $this->humanAppointmentAttribution($fromSql, $toSql, $roleId, $agentId);
+        $botBookings = $this->botBookingDetailRows($fromSql, $toSql, $roleId, $agentId);
+        $humanBookings = is_array($humanAttribution['details'] ?? null) ? $humanAttribution['details'] : [];
+
+        $appointments = array_merge($botBookings, $humanBookings);
+        usort($appointments, static fn (array $a, array $b): int => strcmp((string) ($b['booking_created_at'] ?? ''), (string) ($a['booking_created_at'] ?? '')));
+
+        $opportunities = array_values(array_filter($conversationRows, static function (array $row): bool {
+            if ((int) ($row['has_booking'] ?? 0) === 1) {
+                return false;
+            }
+
+            return (int) ($row['is_identified'] ?? 0) === 1
+                || (int) ($row['entered_scheduling'] ?? 0) === 1
+                || (int) ($row['reached_confirmation'] ?? 0) === 1
+                || (int) ($row['has_handoff'] ?? 0) === 1
+                || (float) ($row['lead_score'] ?? 0) >= 35
+                || (string) ($row['initial_intent'] ?? '') === 'booking';
+        }));
+
+        $adsClosed = array_values(array_filter($conversationRows, static function (array $row): bool {
+            if ((string) ($row['source_category'] ?? '') !== 'ad') {
+                return false;
+            }
+
+            return (int) ($row['has_booking'] ?? 0) === 1
+                || in_array((string) ($row['outcome_category'] ?? ''), ['resolved_identified', 'resolved_without_identification'], true);
+        }));
+
+        $adsLost = array_values(array_filter($conversationRows, static function (array $row): bool {
+            if ((string) ($row['source_category'] ?? '') !== 'ad' || (int) ($row['has_booking'] ?? 0) === 1) {
+                return false;
+            }
+
+            return (string) ($row['friction_state'] ?? 'none') !== 'none'
+                || (int) ($row['has_handoff'] ?? 0) === 1
+                || (int) ($row['needs_human'] ?? 0) === 1
+                || (float) ($row['lead_score'] ?? 0) >= 35;
+        }));
+
+        $agentRows = array_values(array_filter($conversationRows, static fn (array $row): bool => (int) ($row['assigned_user_id'] ?? 0) > 0));
+        $frictionRows = array_values(array_filter($conversationRows, static fn (array $row): bool => (string) ($row['friction_state'] ?? 'none') !== 'none'));
+
+        return [
+            'period' => [
+                'date_from' => $from->format('Y-m-d'),
+                'date_to' => $endDate->format('Y-m-d'),
+                'generated_at' => Carbon::now()->format('Y-m-d H:i:s'),
+            ],
+            'dashboard' => $dashboard,
+            'sheets' => [
+                'opportunities' => array_slice($opportunities, 0, 10000),
+                'appointments' => array_slice($appointments, 0, 10000),
+                'ads_closed' => array_slice($adsClosed, 0, 10000),
+                'ads_lost' => array_slice($adsLost, 0, 10000),
+                'agents' => array_slice($agentRows, 0, 10000),
+                'frictions' => array_slice($frictionRows, 0, 10000),
+            ],
+        ];
+    }
+
+    /**
+     * @return array<int,array<string,mixed>>
+     */
+    private function exportConversationDetailRows(string $fromSql, string $toSql, ?int $roleId, ?int $agentId): array
+    {
+        if (!Schema::hasTable('whatsapp_conversations')) {
+            return [];
+        }
+
+        $base = $this->conversationAnalyticsBaseSubquery($fromSql, $toSql, $roleId, $agentId, 'operational_export');
+        $rows = DB::select(
+            'SELECT base.*,
+                    ' . $this->agentNameSql('u', 'base.assigned_user_id', 'Agente #') . ' AS assigned_agent_name
+             FROM (' . $base['sql'] . ') base
+             LEFT JOIN users u ON u.id = base.assigned_user_id
+             ORDER BY base.conversation_created_at DESC
+             LIMIT 10000',
+            $base['params']
+        );
+
+        return array_map(fn ($row): array => $this->normalizeConversationExportRow($row), $rows);
+    }
+
+    /**
+     * @return array<int,array<string,mixed>>
+     */
+    private function botBookingDetailRows(string $fromSql, string $toSql, ?int $roleId, ?int $agentId): array
+    {
+        if (!Schema::hasTable('whatsapp_sigcenter_bookings')) {
+            return [];
+        }
+
+        $bookingColumn = static fn (string $column): string => Schema::hasColumn('whatsapp_sigcenter_bookings', $column)
+            ? 'b.' . $column
+            : 'NULL';
+        $filter = $this->conversationScopeFilterSql('c', 'u_assigned', $roleId, $agentId, 'bot_booking_export');
+        $where = 'COALESCE(b.booked_at, b.created_at) >= ? AND COALESCE(b.booked_at, b.created_at) < ? AND b.status = "created"';
+        $params = [$fromSql, $toSql];
+        if ($filter['where'] !== '') {
+            $where .= ' AND ' . $filter['where'];
+            $params = array_merge($params, array_values($filter['params']));
+        }
+
+        $attributionJoin = Schema::hasTable('whatsapp_conversation_attributions')
+            ? 'LEFT JOIN whatsapp_conversation_attributions a ON a.conversation_id = b.conversation_id'
+            : 'LEFT JOIN (SELECT NULL AS conversation_id, NULL AS source_category, NULL AS source_type, NULL AS source_id, NULL AS headline, NULL AS initial_intent, NULL AS patient_segment) a ON 1 = 0';
+
+        $rows = DB::select(
+            'SELECT b.id,
+                    b.conversation_id,
+                    ' . $bookingColumn('wa_number') . ' AS wa_number,
+                    ' . $bookingColumn('patient_hc_number') . ' AS patient_hc_number,
+                    ' . $bookingColumn('patient_full_name') . ' AS patient_full_name,
+                    ' . $bookingColumn('sede_nombre') . ' AS sede_nombre,
+                    ' . $bookingColumn('medico_nombre') . ' AS medico_nombre,
+                    ' . $bookingColumn('procedimiento_nombre') . ' AS procedimiento_nombre,
+                    ' . $bookingColumn('fecha_inicio') . ' AS fecha_inicio,
+                    ' . $bookingColumn('booked_at') . ' AS booked_at,
+                    b.created_at,
+                    COALESCE(NULLIF(a.source_category, ""), "unknown") AS source_category,
+                    a.source_type,
+                    a.source_id,
+                    a.headline,
+                    a.initial_intent,
+                    a.patient_segment,
+                    c.assigned_user_id,
+                    ' . $this->agentNameSql('u_assigned', 'c.assigned_user_id', 'Agente #') . ' AS assigned_agent_name
+             FROM whatsapp_sigcenter_bookings b
+             LEFT JOIN whatsapp_conversations c ON c.id = b.conversation_id
+             LEFT JOIN users u_assigned ON u_assigned.id = c.assigned_user_id
+             ' . $attributionJoin . '
+             WHERE ' . $where . '
+             ORDER BY COALESCE(b.booked_at, b.created_at) DESC
+             LIMIT 10000',
+            $params
+        );
+
+        return array_map(function ($row): array {
+            $source = (string) ($row->source_category ?? 'unknown');
+
+            return [
+                'booking_type' => 'Bot / integración',
+                'conversation_id' => (int) ($row->conversation_id ?? 0),
+                'wa_number' => (string) ($row->wa_number ?? ''),
+                'patient_hc_number' => (string) ($row->patient_hc_number ?? ''),
+                'patient_name' => (string) ($row->patient_full_name ?? ''),
+                'source_category' => $source,
+                'source_label' => $this->sourceCategoryLabel($source),
+                'source_id' => (string) ($row->source_id ?? ''),
+                'campaign_headline' => (string) ($row->headline ?? ''),
+                'initial_intent' => (string) ($row->initial_intent ?? ''),
+                'initial_intent_label' => $this->initialIntentLabel((string) ($row->initial_intent ?? '')),
+                'patient_segment' => (string) ($row->patient_segment ?? ''),
+                'appointment_date' => $this->dateOnly($row->fecha_inicio ?? null),
+                'appointment_time' => $this->timeOnly($row->fecha_inicio ?? null),
+                'booking_created_at' => $row->booked_at !== null ? (string) $row->booked_at : (string) ($row->created_at ?? ''),
+                'sede_nombre' => (string) ($row->sede_nombre ?? ''),
+                'medico_nombre' => (string) ($row->medico_nombre ?? ''),
+                'procedimiento_nombre' => (string) ($row->procedimiento_nombre ?? ''),
+                'agent_name' => (string) ($row->assigned_agent_name ?? ''),
+            ];
+        }, $rows);
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private function normalizeConversationExportRow(object $row): array
+    {
+        $source = (string) ($row->source_category ?? 'unknown');
+        $intent = (string) ($row->initial_intent ?? 'other');
+        $friction = (string) ($row->friction_state ?? 'none');
+        $outcome = (string) ($row->outcome_category ?? 'open_or_abandoned');
+
+        $normalized = [
+            'conversation_id' => (int) ($row->conversation_id ?? 0),
+            'wa_number' => (string) ($row->wa_number ?? ''),
+            'patient_hc_number' => (string) ($row->patient_hc_number ?? ''),
+            'conversation_created_at' => (string) ($row->conversation_created_at ?? ''),
+            'first_inbound_at' => (string) ($row->first_inbound_at ?? ''),
+            'source_category' => $source,
+            'source_label' => $this->sourceCategoryLabel($source),
+            'source_type' => (string) ($row->referral_source_type ?? ''),
+            'source_id' => (string) ($row->referral_source_id ?? ''),
+            'campaign_headline' => (string) ($row->referral_headline ?? ''),
+            'initial_intent' => $intent,
+            'initial_intent_label' => $this->initialIntentLabel($intent),
+            'conversation_type' => (string) ($row->conversation_type ?? ''),
+            'patient_segment' => (string) ($row->patient_segment ?? ''),
+            'patient_segment_label' => $this->patientSegmentLabel((string) ($row->patient_segment ?? '')),
+            'stage_label' => $this->conversationStageLabel($row),
+            'friction_state' => $friction,
+            'friction_label' => $this->frictionStateLabel($friction),
+            'outcome_category' => $outcome,
+            'outcome_label' => $this->outcomeCategoryLabel($outcome),
+            'lead_score' => (int) ($row->lead_score ?? 0),
+            'lead_score_bucket' => (string) ($row->lead_score_bucket ?? ''),
+            'has_consent' => (int) ($row->has_consent ?? 0),
+            'is_identified' => (int) ($row->is_identified ?? 0),
+            'entered_scheduling' => (int) ($row->entered_scheduling ?? 0),
+            'reached_confirmation' => (int) ($row->reached_confirmation ?? 0),
+            'has_booking' => (int) ($row->has_booking ?? 0),
+            'has_handoff' => (int) ($row->has_handoff ?? 0),
+            'needs_human' => (int) ($row->needs_human ?? 0),
+            'assigned_user_id' => (int) ($row->assigned_user_id ?? 0),
+            'assigned_agent_name' => (string) ($row->assigned_agent_name ?? ''),
+            'handoff_requested_at' => (string) ($row->handoff_requested_at ?? ''),
+            'session_state' => (string) ($row->session_state ?? ''),
+        ];
+        $normalized['opportunity_reason'] = $this->opportunityReason($normalized);
+
+        return $normalized;
+    }
+
+    private function conversationStageLabel(object $row): string
+    {
+        if ((int) ($row->has_booking ?? 0) === 1) {
+            return 'Cita creada';
+        }
+        if ((int) ($row->reached_confirmation ?? 0) === 1) {
+            return 'Llegó a confirmación';
+        }
+        if ((int) ($row->entered_scheduling ?? 0) === 1) {
+            return 'Entró a agendamiento';
+        }
+        if ((int) ($row->is_identified ?? 0) === 1) {
+            return 'Paciente identificado';
+        }
+        if ((int) ($row->has_consent ?? 0) === 1) {
+            return 'Dio consentimiento';
+        }
+
+        return 'Inició conversación';
+    }
+
+    /**
+     * @param array<string,mixed> $row
+     */
+    private function opportunityReason(array $row): string
+    {
+        if ((int) ($row['reached_confirmation'] ?? 0) === 1) {
+            return 'Llegó a confirmación pero no cerró cita';
+        }
+        if ((int) ($row['entered_scheduling'] ?? 0) === 1) {
+            return 'Entró al flujo de agendamiento';
+        }
+        if ((int) ($row['is_identified'] ?? 0) === 1) {
+            return 'Paciente identificado sin cita';
+        }
+        if ((string) ($row['initial_intent'] ?? '') === 'booking') {
+            return 'Pidió o mostró intención de cita';
+        }
+        if ((int) ($row['has_handoff'] ?? 0) === 1) {
+            return 'Necesitó atención humana';
+        }
+
+        return 'Señal media de oportunidad';
+    }
+
     private function resolveSlaTargetMinutes(?int $provided): int
     {
         $value = $provided ?? self::DEFAULT_SLA_TARGET_MINUTES;
@@ -2610,6 +2887,11 @@ class KpiDashboardService
             if (Schema::hasColumn('procedimiento_proyectado', 'sede_departamento')) {
                 $query->addSelect('sede_departamento');
             }
+            foreach (['medico_nombre', 'trabajador_nombre', 'procedimiento_nombre'] as $optionalColumn) {
+                if (Schema::hasColumn('procedimiento_proyectado', $optionalColumn)) {
+                    $query->addSelect($optionalColumn);
+                }
+            }
             if (Schema::hasColumn('procedimiento_proyectado', 'sigcenter_present')) {
                 $query->where('sigcenter_present', 1);
             }
@@ -2638,6 +2920,7 @@ class KpiDashboardService
         $agentGroups = [];
         $sedeGroups = [];
         $sourceGroups = [];
+        $detailRows = [];
 
         foreach ($appointments as $appointment) {
             $hcNumber = trim((string) ($appointment->hc_number ?? ''));
@@ -2736,6 +3019,31 @@ class KpiDashboardService
                     $sourceGroups[$sourceCategory]['slot_keys'][$slotKey] = true;
                     $sourceGroups[$sourceCategory]['conversation_ids'][$conversationId] = true;
                     $sourceGroups[$sourceCategory]['patient_hcs'][$hcNumber] = true;
+                    $detailRows[$slotKey . '|' . $conversationId] = [
+                        'booking_type' => 'Humano atribuido',
+                        'conversation_id' => $conversationId,
+                        'wa_number' => (string) ($conversation['wa_number'] ?? ''),
+                        'patient_hc_number' => $hcNumber,
+                        'patient_name' => '',
+                        'source_category' => $sourceCategory,
+                        'source_label' => $this->sourceCategoryLabel($sourceCategory),
+                        'source_id' => '',
+                        'campaign_headline' => '',
+                        'initial_intent' => '',
+                        'initial_intent_label' => '',
+                        'patient_segment' => '',
+                        'appointment_date' => $appointmentDate,
+                        'appointment_time' => $appointmentTime,
+                        'booking_created_at' => $createdAt->format('Y-m-d H:i:s'),
+                        'sede_nombre' => $sedeNombre,
+                        'medico_nombre' => (string) ($appointment->medico_nombre ?? $appointment->trabajador_nombre ?? ''),
+                        'procedimiento_nombre' => (string) ($appointment->procedimiento_nombre ?? ''),
+                        'agent_id' => $agentIdForGroup,
+                        'agent_name' => '',
+                        'first_human_at' => $firstHumanAt->format('Y-m-d H:i:s'),
+                        'last_human_at' => $lastHumanAt->format('Y-m-d H:i:s'),
+                        'form_id' => $formId,
+                    ];
                     continue;
                 }
 
@@ -2754,6 +3062,14 @@ class KpiDashboardService
         }
 
         $agentNames = $this->agentNamesById(array_keys($agentIds));
+        $details = array_values(array_map(function (array $row) use ($agentNames): array {
+            $agentId = (int) ($row['agent_id'] ?? 0);
+            $row['agent_name'] = $agentId > 0 ? (string) ($agentNames[$agentId] ?? ('Agente #' . $agentId)) : '';
+            unset($row['agent_id']);
+            return $row;
+        }, $detailRows));
+        usort($details, static fn (array $a, array $b): int => strcmp((string) ($b['booking_created_at'] ?? ''), (string) ($a['booking_created_at'] ?? '')));
+
         $byAgent = array_values(array_map(function (array $group) use ($agentNames): array {
             $userId = (int) $group['user_id'];
             return [
@@ -2809,6 +3125,7 @@ class KpiDashboardService
             'by_agent' => array_slice($byAgent, 0, 20),
             'by_sede' => array_slice($bySede, 0, 20),
             'by_source' => array_slice($bySource, 0, 20),
+            'details' => array_slice($details, 0, 10000),
         ];
     }
 
@@ -2839,6 +3156,7 @@ class KpiDashboardService
             'by_agent' => [],
             'by_sede' => [],
             'by_source' => [],
+            'details' => [],
         ];
     }
 
@@ -2958,12 +3276,15 @@ class KpiDashboardService
                 $params[] = $toSql;
             }
 
-            $queries[] = 'SELECT ' . $selectPrefix . ', COALESCE(c.updated_at, c.assigned_at, c.handoff_requested_at, c.created_at) AS event_at, c.assigned_user_id AS agent_id
+            $updatedEventAt = Schema::hasColumn('whatsapp_conversations', 'assigned_at')
+                ? 'COALESCE(c.updated_at, c.assigned_at, c.handoff_requested_at, c.created_at)'
+                : 'COALESCE(c.updated_at, c.handoff_requested_at, c.created_at)';
+            $queries[] = 'SELECT ' . $selectPrefix . ', ' . $updatedEventAt . ' AS event_at, c.assigned_user_id AS agent_id
                           FROM whatsapp_conversations c
                           ' . $attributionJoin . '
                           WHERE c.assigned_user_id IS NOT NULL
-                            AND COALESCE(c.updated_at, c.assigned_at, c.handoff_requested_at, c.created_at) >= ?
-                            AND COALESCE(c.updated_at, c.assigned_at, c.handoff_requested_at, c.created_at) < ?';
+                            AND ' . $updatedEventAt . ' >= ?
+                            AND ' . $updatedEventAt . ' < ?';
             $params[] = $fromSql;
             $params[] = $toSql;
         }

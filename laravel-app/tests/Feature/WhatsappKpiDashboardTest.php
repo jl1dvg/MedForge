@@ -421,7 +421,7 @@ class WhatsappKpiDashboardTest extends TestCase
             ->assertJsonPath('data.rows.0.wa_number', '593999111222');
     }
 
-    public function test_it_exports_dashboard_csv(): void
+    public function test_it_exports_dashboard_xlsx(): void
     {
         $response = $this
             ->withoutMiddleware([
@@ -434,13 +434,12 @@ class WhatsappKpiDashboardTest extends TestCase
 
         $response
             ->assertOk()
-            ->assertHeader('content-type', 'text/csv; charset=UTF-8')
+            ->assertHeader('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
             ->assertDownload();
 
         $content = $response->streamedContent();
-        $this->assertStringContainsString("section,label,value,detail", $content);
-        $this->assertStringContainsString("summary,\"Mensajes inbound\",1", $content);
-        $this->assertStringContainsString("summary,\"Citas Sigcenter atribuibles a atención humana (24h)\",0", $content);
+        $this->assertStringStartsWith('PK', $content);
+        $this->assertStringContainsString('xl/workbook.xml', $content);
     }
 
     public function test_it_exports_dashboard_pdf(): void
@@ -483,7 +482,7 @@ class WhatsappKpiDashboardTest extends TestCase
             ->assertSee('Respondidos a tiempo')
             ->assertSee('Atención humana por agente')
             ->assertSee('Exportar')
-            ->assertSee('CSV');
+            ->assertSee('Excel');
     }
 
     /** @test */

@@ -8,6 +8,13 @@ use DateTimeImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use InvalidArgumentException;
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Style\Border;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
@@ -77,26 +84,20 @@ class KpiReadController
         $roleId = $this->nullableInt($request->query('role_id'));
         $agentId = $this->nullableInt($request->query('agent_id'));
         $slaTargetMinutes = $this->nullableInt($request->query('sla_target_minutes'));
-        $rows = $this->service->exportDashboardCsvRows($start, $end, $roleId, $agentId, $slaTargetMinutes);
+        $export = $this->service->exportOperationalWorkbookData($start, $end, $roleId, $agentId, $slaTargetMinutes);
+        $spreadsheet = $this->buildOperationalWorkbook($export);
         $filename = sprintf(
-            'whatsapp-kpi-%s-a-%s.csv',
+            'whatsapp-detalle-operativo-%s-a-%s.xlsx',
             $start->format('Y-m-d'),
             $end->format('Y-m-d')
         );
 
-        return response()->streamDownload(static function () use ($rows): void {
-            $handle = fopen('php://output', 'wb');
-            if ($handle === false) {
-                return;
-            }
-
-            foreach ($rows as $row) {
-                fputcsv($handle, $row);
-            }
-
-            fclose($handle);
+        return response()->streamDownload(static function () use ($spreadsheet): void {
+            $writer = new Xlsx($spreadsheet);
+            $writer->save('php://output');
         }, $filename, [
-            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Cache-Control' => 'max-age=0, no-cache, no-store, must-revalidate',
         ]);
     }
 
@@ -180,6 +181,208 @@ class KpiReadController
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * @param array<string,mixed> $export
+     */
+    private function buildOperationalWorkbook(array $export): Spreadsheet
+    {
+        $spreadsheet = new Spreadsheet();
+        $spreadsheet->getProperties()
+            ->setCreator('MedForge')
+            ->setTitle('Detalle operativo WhatsApp');
+
+        $period = is_array($export['period'] ?? null) ? $export['period'] : [];
+        $dashboard = is_array($export['dashboard'] ?? null) ? $export['dashboard'] : [];
+        $summary = is_array($dashboard['summary'] ?? null) ? $dashboard['summary'] : [];
+        $sheets = is_array($export['sheets'] ?? null) ? $export['sheets'] : [];
+
+        $summarySheet = $spreadsheet->getActiveSheet();
+        $summarySheet->setTitle('Resumen');
+        $this->writeSummarySheet($summarySheet, $period, $summary, $sheets);
+
+        $this->addTableSheet($spreadsheet, 'Para cerrar cita', [
+            'Teléfono', 'HC / cédula', 'Origen', 'Campaña / anuncio', 'Intención', 'Etapa', 'Fricción', 'Agente', 'Fecha conversación', 'Motivo',
+        ], array_map(static fn (array $row): array => [
+            $row['wa_number'] ?? '',
+            $row['patient_hc_number'] ?? '',
+            $row['source_label'] ?? '',
+            $row['campaign_headline'] ?: ($row['source_id'] ?? ''),
+            $row['initial_intent_label'] ?? '',
+            $row['stage_label'] ?? '',
+            $row['friction_label'] ?? '',
+            $row['assigned_agent_name'] ?? '',
+            $row['conversation_created_at'] ?? '',
+            $row['opportunity_reason'] ?? '',
+        ], is_array($sheets['opportunities'] ?? null) ? $sheets['opportunities'] : []));
+
+        $this->addTableSheet($spreadsheet, 'Citas logradas', [
+            'Tipo', 'Teléfono', 'HC / cédula', 'Paciente', 'Origen', 'Campaña / anuncio', 'Fecha cita', 'Hora', 'Sede', 'Médico', 'Procedimiento', 'Agente', 'Creada en',
+        ], array_map(static fn (array $row): array => [
+            $row['booking_type'] ?? '',
+            $row['wa_number'] ?? '',
+            $row['patient_hc_number'] ?? '',
+            $row['patient_name'] ?? '',
+            $row['source_label'] ?? '',
+            $row['campaign_headline'] ?: ($row['source_id'] ?? ''),
+            $row['appointment_date'] ?? '',
+            $row['appointment_time'] ?? '',
+            $row['sede_nombre'] ?? '',
+            $row['medico_nombre'] ?? '',
+            $row['procedimiento_nombre'] ?? '',
+            $row['agent_name'] ?? '',
+            $row['booking_created_at'] ?? '',
+        ], is_array($sheets['appointments'] ?? null) ? $sheets['appointments'] : []));
+
+        $this->addTableSheet($spreadsheet, 'Ads cerrados', [
+            'Teléfono', 'HC / cédula', 'Campaña / anuncio', 'Intención', 'Etapa', 'Resultado', 'Agente', 'Fecha conversación',
+        ], array_map(static fn (array $row): array => [
+            $row['wa_number'] ?? '',
+            $row['patient_hc_number'] ?? '',
+            $row['campaign_headline'] ?: ($row['source_id'] ?? ''),
+            $row['initial_intent_label'] ?? '',
+            $row['stage_label'] ?? '',
+            $row['outcome_label'] ?? '',
+            $row['assigned_agent_name'] ?? '',
+            $row['conversation_created_at'] ?? '',
+        ], is_array($sheets['ads_closed'] ?? null) ? $sheets['ads_closed'] : []));
+
+        $this->addTableSheet($spreadsheet, 'Ads perdidos', [
+            'Teléfono', 'HC / cédula', 'Campaña / anuncio', 'Intención', 'Etapa', 'Fricción', 'Agente', 'Fecha conversación', 'Motivo',
+        ], array_map(static fn (array $row): array => [
+            $row['wa_number'] ?? '',
+            $row['patient_hc_number'] ?? '',
+            $row['campaign_headline'] ?: ($row['source_id'] ?? ''),
+            $row['initial_intent_label'] ?? '',
+            $row['stage_label'] ?? '',
+            $row['friction_label'] ?? '',
+            $row['assigned_agent_name'] ?? '',
+            $row['conversation_created_at'] ?? '',
+            $row['opportunity_reason'] ?? '',
+        ], is_array($sheets['ads_lost'] ?? null) ? $sheets['ads_lost'] : []));
+
+        $this->addTableSheet($spreadsheet, 'Agentes', [
+            'Agente', 'Teléfono', 'HC / cédula', 'Origen', 'Intención', 'Etapa', 'Cita creada', 'Fricción', 'Fecha conversación',
+        ], array_map(static fn (array $row): array => [
+            $row['assigned_agent_name'] ?? '',
+            $row['wa_number'] ?? '',
+            $row['patient_hc_number'] ?? '',
+            $row['source_label'] ?? '',
+            $row['initial_intent_label'] ?? '',
+            $row['stage_label'] ?? '',
+            ((int) ($row['has_booking'] ?? 0) === 1) ? 'Sí' : 'No',
+            $row['friction_label'] ?? '',
+            $row['conversation_created_at'] ?? '',
+        ], is_array($sheets['agents'] ?? null) ? $sheets['agents'] : []));
+
+        $this->addTableSheet($spreadsheet, 'Fricciones', [
+            'Teléfono', 'HC / cédula', 'Origen', 'Intención', 'Etapa', 'Fricción', 'Agente', 'Fecha conversación',
+        ], array_map(static fn (array $row): array => [
+            $row['wa_number'] ?? '',
+            $row['patient_hc_number'] ?? '',
+            $row['source_label'] ?? '',
+            $row['initial_intent_label'] ?? '',
+            $row['stage_label'] ?? '',
+            $row['friction_label'] ?? '',
+            $row['assigned_agent_name'] ?? '',
+            $row['conversation_created_at'] ?? '',
+        ], is_array($sheets['frictions'] ?? null) ? $sheets['frictions'] : []));
+
+        $spreadsheet->setActiveSheetIndex(0);
+
+        return $spreadsheet;
+    }
+
+    /**
+     * @param array<string,mixed> $period
+     * @param array<string,mixed> $summary
+     * @param array<string,mixed> $sheets
+     */
+    private function writeSummarySheet(Worksheet $sheet, array $period, array $summary, array $sheets): void
+    {
+        $sheet->setCellValue('A1', 'Detalle operativo WhatsApp');
+        $sheet->mergeCells('A1:D1');
+        $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(16);
+        $sheet->setCellValue('A2', 'Desde');
+        $sheet->setCellValue('B2', (string) ($period['date_from'] ?? ''));
+        $sheet->setCellValue('C2', 'Hasta');
+        $sheet->setCellValue('D2', (string) ($period['date_to'] ?? ''));
+        $sheet->setCellValue('A3', 'Generado');
+        $sheet->setCellValue('B3', (string) ($period['generated_at'] ?? ''));
+
+        $rows = [
+            ['Conversaciones nuevas', $summary['conversations_new'] ?? 0],
+            ['Citas por humano', $summary['human_attributed_appointments_strong'] ?? 0],
+            ['Citas por bot / integración', $summary['sigcenter_bookings_created'] ?? 0],
+            ['Oportunidades para cerrar cita', count(is_array($sheets['opportunities'] ?? null) ? $sheets['opportunities'] : [])],
+            ['Ads cerrados o resueltos', count(is_array($sheets['ads_closed'] ?? null) ? $sheets['ads_closed'] : [])],
+            ['Ads perdidos', count(is_array($sheets['ads_lost'] ?? null) ? $sheets['ads_lost'] : [])],
+            ['Conversaciones con fricción', count(is_array($sheets['frictions'] ?? null) ? $sheets['frictions'] : [])],
+        ];
+
+        $sheet->setCellValue('A5', 'Indicador');
+        $sheet->setCellValue('B5', 'Valor');
+        $this->styleHeader($sheet, 'A5:B5');
+        $rowNumber = 6;
+        foreach ($rows as $row) {
+            $sheet->setCellValue("A{$rowNumber}", (string) $row[0]);
+            $sheet->setCellValue("B{$rowNumber}", (int) $row[1]);
+            $rowNumber++;
+        }
+        $sheet->getStyle('A5:B' . max(5, $rowNumber - 1))->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN)->getColor()->setARGB('FFE5E7EB');
+        $sheet->getColumnDimension('A')->setWidth(38);
+        $sheet->getColumnDimension('B')->setWidth(18);
+        $sheet->freezePane('A6');
+    }
+
+    /**
+     * @param array<int,string> $headers
+     * @param array<int,array<int,mixed>> $rows
+     */
+    private function addTableSheet(Spreadsheet $spreadsheet, string $title, array $headers, array $rows): void
+    {
+        $sheet = new Worksheet($spreadsheet, mb_substr($title, 0, 31));
+        $spreadsheet->addSheet($sheet);
+
+        foreach ($headers as $index => $header) {
+            $sheet->setCellValue($this->cell($index + 1, 1), $header);
+        }
+
+        $rowNumber = 2;
+        foreach ($rows as $row) {
+            foreach ($row as $index => $value) {
+                $column = $index + 1;
+                if (in_array($headers[$index] ?? '', ['Teléfono', 'HC / cédula'], true)) {
+                    $sheet->setCellValueExplicit($this->cell($column, $rowNumber), (string) $value, DataType::TYPE_STRING);
+                } else {
+                    $sheet->setCellValue($this->cell($column, $rowNumber), $value);
+                }
+            }
+            $rowNumber++;
+        }
+
+        $lastColumn = count($headers);
+        $lastRow = max(1, $rowNumber - 1);
+        $sheet->setAutoFilter($this->cell(1, 1) . ':' . $this->cell($lastColumn, $lastRow));
+        $sheet->freezePane('A2');
+        $this->styleHeader($sheet, $this->cell(1, 1) . ':' . $this->cell($lastColumn, 1));
+        $sheet->getStyle($this->cell(1, 1) . ':' . $this->cell($lastColumn, $lastRow))->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN)->getColor()->setARGB('FFE5E7EB');
+
+        for ($column = 1; $column <= $lastColumn; $column++) {
+            $sheet->getColumnDimensionByColumn($column)->setAutoSize(true);
+        }
+    }
+
+    private function styleHeader(Worksheet $sheet, string $range): void
+    {
+        $sheet->getStyle($range)->getFont()->setBold(true)->getColor()->setARGB('FFFFFFFF');
+        $sheet->getStyle($range)->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('FF1F2A44');
+    }
+
+    private function cell(int $column, int $row): string
+    {
+        return Coordinate::stringFromColumnIndex($column) . $row;
     }
 
     /**
