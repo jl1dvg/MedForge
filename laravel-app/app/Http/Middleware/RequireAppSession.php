@@ -29,6 +29,18 @@ class RequireAppSession
             $request->session()->put('url.intended', $request->fullUrl());
         }
 
-        return redirect('/auth/login?auth_required=1');
+        return redirect('/auth/login?' . (self::hadExistingSession($request) ? 'expired=1' : 'auth_required=1'));
+    }
+
+    /**
+     * Distinguishes "the session expired" from "never logged in" purely by
+     * cookie presence, without touching Auth::check() ordering — a previous
+     * attempt to detect expiry via Auth::check() transitions (see git history
+     * for RequireAppSession) caused false-positive logouts on active sessions.
+     */
+    private static function hadExistingSession(Request $request): bool
+    {
+        return $request->cookies->has(config('session.cookie'))
+            || $request->cookies->has('PHPSESSID');
     }
 }
