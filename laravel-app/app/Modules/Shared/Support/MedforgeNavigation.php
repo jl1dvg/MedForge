@@ -338,8 +338,13 @@ class MedforgeNavigation
                 : null,
             $canAccessWhatsAppDashboard
                 ? $link('Dashboard', '/v2/whatsapp/dashboard-v3', 'mdi mdi-chart-line', [
-                'prefix' => ['/v2/whatsapp/dashboard'],
+                'prefix' => ['/v2/whatsapp/dashboard-v3'],
             ])
+                : null,
+            $canAccessWhatsAppDashboard
+                ? $link('Reporte Ejecutivo WhatsApp', '/v2/whatsapp/dashboard', 'mdi mdi-file-chart-outline', [
+                'prefix' => ['/v2/whatsapp/dashboard'],
+            ], '_blank')
                 : null,
             $canAccessWhatsAppLeads
                 ? $link('Bajas', '/v2/whatsapp/leads', 'mdi mdi-account-remove-outline', [

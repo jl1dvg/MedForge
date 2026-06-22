@@ -46,6 +46,7 @@ export default defineConfig({
                 'resources/js/whatsapp/main.jsx',
                 'resources/js/v2/reportes-v2/cirugias/app.tsx',
                 'resources/js/v2/reportes-v2/imagenes/app.tsx',
+                'resources/js/v2/reportes-v2/whatsapp/app.tsx',
             ],
             refresh: true,
         }),
