@@ -68,14 +68,14 @@ export function Toolbar({ period }: ToolbarProps) {
           </div>
           <a
             className="rep-btn"
-            href={`/whatsapp/api/kpis/export?date_from=${dateFrom}&date_to=${today}`}
+            href={`/v2/whatsapp/api/kpis/export?date_from=${dateFrom}&date_to=${today}`}
             style={{ textDecoration: 'none' }}
           >
             <i className="mdi mdi-microsoft-excel"></i>Excel
           </a>
           <a
             className="rep-btn rep-btn--primary"
-            href={`/whatsapp/api/kpis/export/pdf?date_from=${dateFrom}&date_to=${today}`}
+            href={`/v2/whatsapp/api/kpis/export/pdf?date_from=${dateFrom}&date_to=${today}`}
             style={{ textDecoration: 'none' }}
           >
             <i className="mdi mdi-file-pdf-box"></i>PDF
