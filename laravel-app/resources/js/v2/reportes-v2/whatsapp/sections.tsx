@@ -179,23 +179,6 @@ export function WhatsappContent({ r }: { r: WhatsappReport }) {
 
       <Section
         num="06"
-        kicker="Hallazgos"
-        title="Lecturas y recomendaciones del período"
-      >
-        <div className="rep-grid rep-grid--2" style={{ marginBottom: 16 }}>
-          {r.insights.map((ins, i) => (
-            <Insight key={i} title={ins.title} accent={ins.tone === 'success' ? '#05825f' : ins.tone === 'danger' ? '#d34b5b' : '#d59623'}>
-              {ins.body}
-            </Insight>
-          ))}
-        </div>
-        <RecsCard>
-          <Recs items={r.recommendations} />
-        </RecsCard>
-      </Section>
-
-      <Section
-        num="07"
         kicker="Oportunidad perdida"
         title="Cuántas citas pudo estar perdiendo la operación"
         lede="Traduce WhatsApp a una lectura simple: demanda generada, citas logradas y señales de pérdida por falta de cierre humano."
@@ -232,6 +215,23 @@ export function WhatsappContent({ r }: { r: WhatsappReport }) {
             </table>
           </div>
         </div>
+      </Section>
+
+      <Section
+        num="07"
+        kicker="Hallazgos"
+        title="Lecturas y recomendaciones del período"
+      >
+        <div className="rep-grid rep-grid--2" style={{ marginBottom: 16 }}>
+          {r.insights.map((ins, i) => (
+            <Insight key={i} title={ins.title} accent={ins.tone === 'success' ? '#05825f' : ins.tone === 'danger' ? '#d34b5b' : '#d59623'}>
+              {ins.body}
+            </Insight>
+          ))}
+        </div>
+        <RecsCard>
+          <Recs items={r.recommendations} />
+        </RecsCard>
       </Section>
     </>
   );
