@@ -104,6 +104,12 @@ jobs:
             fi
             $PHP composer.phar install --no-interaction 2>&1
 
+            # Aplicar migraciones pendientes (staging y producción comparten DB; idempotente)
+            $PHP artisan migrate --force
+
+            # Verificar que las tablas que las migraciones dicen haber creado existan de verdad
+            $PHP artisan app:verify-schema
+
             # Recrear symlink storage → public (se borra en cada rsync porque está en .gitignore)
             $PHP artisan storage:link --force 2>/dev/null || true
 
@@ -276,6 +282,12 @@ jobs:
             # Composer (producción ya tiene composer.phar)
             $PHP composer.phar install --no-dev --optimize-autoloader --no-interaction 2>&1
 
+            # Aplicar migraciones pendientes (staging y producción comparten DB; idempotente)
+            $PHP artisan migrate --force
+
+            # Verificar que las tablas que las migraciones dicen haber creado existan de verdad
+            $PHP artisan app:verify-schema
+
             # Recrear symlink storage → public (se borra en cada rsync porque está en .gitignore)
             $PHP artisan storage:link --force 2>/dev/null || true
 
@@ -283,6 +295,13 @@ jobs:
             $PHP artisan config:cache
             $PHP artisan route:cache
             $PHP artisan view:cache
+
+            # Warm-up: la primera petición real tras regenerar config/route/view
+            # cache puede chocar con la ventana de escritura de esos archivos
+            # (file_put_contents sin lock) y devolver un 419/500 espurio. Absorbe
+            # esa primera petición aquí en vez de dejar que la sufra un usuario.
+            curl -sk -o /dev/null -w "Warm-up /auth/login (https): %{http_code}\n" https://localhost/auth/login || true
+            curl -s -o /dev/null -w "Warm-up /auth/login (http): %{http_code}\n" http://localhost/auth/login || true
 
             # Copiar assets Vite al public raíz (hasta migración completa a Laravel)
             mkdir -p "$PROJECT/public/build"

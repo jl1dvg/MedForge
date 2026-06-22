@@ -17,12 +17,12 @@ class NasImagenesService
 
     public function __construct()
     {
-        $this->mountPath = $this->readEnv('NAS_IMAGES_MOUNT');
-        $this->host = $this->readEnv('NAS_IMAGES_SSH_HOST');
-        $this->port = (int)($this->readEnv('NAS_IMAGES_SSH_PORT') ?: 22);
-        $this->username = $this->readEnv('NAS_IMAGES_SSH_USER');
-        $this->password = $this->readEnv('NAS_IMAGES_SSH_PASS');
-        $this->basePath = $this->readEnv('NAS_IMAGES_BASE_PATH') ?: '/volume1/Imagenes';
+        $this->mountPath = $this->nullableString(config('nas-imagenes.mount'));
+        $this->host = $this->nullableString(config('nas-imagenes.ssh_host'));
+        $this->port = (int) (config('nas-imagenes.ssh_port') ?: 22);
+        $this->username = $this->nullableString(config('nas-imagenes.ssh_user'));
+        $this->password = $this->nullableString(config('nas-imagenes.ssh_pass'));
+        $this->basePath = $this->nullableString(config('nas-imagenes.base_path')) ?: '/volume1/Imagenes';
     }
 
     public function getLastError(): ?string
@@ -241,12 +241,8 @@ class NasImagenesService
         return false;
     }
 
-    private function readEnv(string $key): ?string
+    private function nullableString(mixed $value): ?string
     {
-        $value = getenv($key);
-        if ($value === false || $value === null || $value === '') {
-            $value = $_ENV[$key] ?? $_SERVER[$key] ?? null;
-        }
         if ($value === null) {
             return null;
         }
