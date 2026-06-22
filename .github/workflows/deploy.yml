@@ -104,6 +104,12 @@ jobs:
             fi
             $PHP composer.phar install --no-interaction 2>&1
 
+            # Aplicar migraciones pendientes (staging y producción comparten DB; idempotente)
+            $PHP artisan migrate --force
+
+            # Verificar que las tablas que las migraciones dicen haber creado existan de verdad
+            $PHP artisan app:verify-schema
+
             # Recrear symlink storage → public (se borra en cada rsync porque está en .gitignore)
             $PHP artisan storage:link --force 2>/dev/null || true
 
@@ -275,6 +281,12 @@ jobs:
 
             # Composer (producción ya tiene composer.phar)
             $PHP composer.phar install --no-dev --optimize-autoloader --no-interaction 2>&1
+
+            # Aplicar migraciones pendientes (staging y producción comparten DB; idempotente)
+            $PHP artisan migrate --force
+
+            # Verificar que las tablas que las migraciones dicen haber creado existan de verdad
+            $PHP artisan app:verify-schema
 
             # Recrear symlink storage → public (se borra en cada rsync porque está en .gitignore)
             $PHP artisan storage:link --force 2>/dev/null || true
