@@ -101,7 +101,16 @@ class Paciente360Service
                 [':hc' => $hcNumber]
             ),
             'consultas' => $this->safeCount(
-                'SELECT COUNT(*) FROM consulta_data WHERE hc_number = :hc',
+                "SELECT COUNT(*)
+                 FROM consulta_data
+                 WHERE hc_number = :hc
+                   AND (
+                     TRIM(COALESCE(motivo_consulta, '')) <> ''
+                     OR TRIM(COALESCE(enfermedad_actual, '')) <> ''
+                     OR TRIM(COALESCE(examen_fisico, '')) <> ''
+                     OR TRIM(COALESCE(plan, '')) <> ''
+                     OR TRIM(COALESCE(diagnosticos, '')) <> ''
+                   )",
                 [':hc' => $hcNumber]
             ),
             'protocolos' => $this->safeCount(
@@ -280,6 +289,13 @@ class Paciente360Service
             SELECT *
             FROM consulta_data
             WHERE hc_number = :hc
+              AND (
+                TRIM(COALESCE(motivo_consulta, '')) <> ''
+                OR TRIM(COALESCE(enfermedad_actual, '')) <> ''
+                OR TRIM(COALESCE(examen_fisico, '')) <> ''
+                OR TRIM(COALESCE(plan, '')) <> ''
+                OR TRIM(COALESCE(diagnosticos, '')) <> ''
+              )
             ORDER BY fecha DESC, form_id DESC
             LIMIT :limit
         SQL;
@@ -287,13 +303,14 @@ class Paciente360Service
         $rows = $this->selectRows($sql, ['hc' => $hcNumber, 'limit' => $limit]);
 
         return array_map(
-            static fn(array $row): array => [
+            fn(array $row): array => [
                 'form_id' => (string)($row['form_id'] ?? ''),
                 'fecha' => (string)($row['fecha'] ?? ($row['created_at'] ?? '')),
                 'motivo_consulta' => (string)($row['motivo_consulta'] ?? ''),
                 'enfermedad_actual' => (string)($row['enfermedad_actual'] ?? ''),
+                'examen_fisico' => (string)($row['examen_fisico'] ?? ''),
                 'plan' => (string)($row['plan'] ?? ''),
-                'diagnosticos' => (string)($row['diagnosticos'] ?? ''),
+                'diagnosticos' => $this->formatDiagnosticos((string)($row['diagnosticos'] ?? '')),
             ],
             $rows
         );
@@ -851,6 +868,41 @@ class Paciente360Service
         }
 
         return $result;
+    }
+
+    /**
+     * @return array<int,string>
+     */
+    private function formatDiagnosticos(string $raw): array
+    {
+        $raw = trim($raw);
+        if ($raw === '') {
+            return [];
+        }
+
+        $decoded = json_decode($raw, true);
+        if (!is_array($decoded)) {
+            return [$raw];
+        }
+
+        $items = array_is_list($decoded) ? $decoded : [$decoded];
+
+        return array_values(array_filter(array_map(static function (mixed $item): string {
+            if (!is_array($item)) {
+                return trim((string) $item);
+            }
+
+            $diagnostico = trim((string) ($item['idDiagnostico']
+                ?? $item['diagnostico']
+                ?? $item['descripcion']
+                ?? $item['desc']
+                ?? $item['cie']
+                ?? $item['codigo']
+                ?? ''));
+            $ojo = trim((string) ($item['ojo'] ?? $item['lateralidad'] ?? ''));
+
+            return trim($diagnostico . ($ojo !== '' ? ' · ' . $ojo : ''));
+        }, $items)));
     }
 
     /**

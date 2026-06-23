@@ -278,26 +278,32 @@ function SecConsultas({ rows, onAddNote, patientId }: { rows: any[]; onAddNote: 
             {rows.map((row, i) => {
               const key = row.form_id || String(i);
               const isOpen = expanded === key;
+              const title = row.motivo_consulta || row.enfermedad_actual || row.examen_fisico || row.plan || 'Consulta clínica';
+              const diagnosticos = Array.isArray(row.diagnosticos)
+                ? row.diagnosticos.filter(Boolean)
+                : (row.diagnosticos ? [String(row.diagnosticos)] : []);
               return (
                 <div className="consulta-card" key={key}>
                   <div className="consulta-head" onClick={() => setExpanded(isOpen ? null : key)}>
                     <span className="consulta-ic"><i className="mdi mdi-stethoscope" /></span>
                     <div className="consulta-head-txt">
-                      <div className="consulta-motivo">{row.motivo_consulta || 'Sin motivo registrado'}</div>
+                      <div className="consulta-motivo">{title}</div>
                       <div className="consulta-fecha-doc">{row.doctor || ''}{row.doctor ? ' · ' : ''}{fmtDateShort(row.fecha)}</div>
                     </div>
                     <i className={`mdi ${isOpen ? 'mdi-chevron-up' : 'mdi-chevron-down'} consulta-chev`} />
                   </div>
                   {isOpen && (
                     <div className="consulta-body">
+                      {row.motivo_consulta && <div className="consulta-field"><div className="cf-label">Motivo de consulta</div><div className="cf-val">{row.motivo_consulta}</div></div>}
                       {row.enfermedad_actual && <div className="consulta-field"><div className="cf-label">Enfermedad actual</div><div className="cf-val">{row.enfermedad_actual}</div></div>}
+                      {row.examen_fisico && <div className="consulta-field"><div className="cf-label">Examen físico</div><div className="cf-val">{row.examen_fisico}</div></div>}
                       {row.plan && <div className="consulta-field"><div className="cf-label">Plan de tratamiento</div><div className="cf-val">{row.plan}</div></div>}
-                      {row.diagnosticos && (
+                      {diagnosticos.length > 0 && (
                         <div className="consulta-field">
                           <div className="cf-label">Diagnósticos</div>
-                          <div className="cf-val" style={{ fontFamily: 'monospace', fontSize: 12 }}>
-                            {typeof row.diagnosticos === 'string' ? row.diagnosticos : JSON.stringify(row.diagnosticos, null, 2)}
-                          </div>
+                          <ul className="cf-val consulta-dx-list">
+                            {diagnosticos.map((dx: string, dxIndex: number) => <li key={dxIndex}>{dx}</li>)}
+                          </ul>
                         </div>
                       )}
                     </div>

@@ -70,6 +70,48 @@ class Paciente360ServiceTest extends TestCase
         $this->assertSame('confirmado', $payload['rows'][0]['historial_estados'][0]['estado']);
     }
 
+    public function test_loads_only_meaningful_clinical_history_with_complete_fields(): void
+    {
+        $this->createConsultaDataTable();
+        $this->createSummaryTables(['consulta_data']);
+
+        \DB::table('consulta_data')->insert([
+            [
+                'hc_number' => '100',
+                'form_id' => 'C001',
+                'fecha' => '2026-06-23',
+                'motivo_consulta' => 'Dolor ocular',
+                'enfermedad_actual' => 'Dolor en ojo izquierdo desde hace 2 semanas.',
+                'examen_fisico' => 'Biomicroscopía sin secreción.',
+                'plan' => 'Control en 2 semanas.',
+                'diagnosticos' => '[{"idDiagnostico":"H40 - GLAUCOMA","ojo":"IZQUIERDO","evidencia":"1"},{"idDiagnostico":"Z961 - PRESENCIA DE LENTES INTRAOCULARES","ojo":"AMBOS OJOS"}]',
+            ],
+            [
+                'hc_number' => '100',
+                'form_id' => 'C002',
+                'fecha' => '2026-06-22',
+                'motivo_consulta' => '',
+                'enfermedad_actual' => '',
+                'examen_fisico' => '',
+                'plan' => '',
+                'diagnosticos' => '',
+            ],
+        ]);
+
+        $payload = (new Paciente360Service())->getSection('100', 'consultas', 10);
+
+        $this->assertSame('consultas', $payload['section']);
+        $this->assertSame(1, $payload['summary']['consultas']);
+        $this->assertSame(1, $payload['total_rows']);
+        $this->assertSame('C001', $payload['rows'][0]['form_id']);
+        $this->assertSame('Dolor en ojo izquierdo desde hace 2 semanas.', $payload['rows'][0]['enfermedad_actual']);
+        $this->assertSame('Biomicroscopía sin secreción.', $payload['rows'][0]['examen_fisico']);
+        $this->assertSame([
+            'H40 - GLAUCOMA · IZQUIERDO',
+            'Z961 - PRESENCIA DE LENTES INTRAOCULARES · AMBOS OJOS',
+        ], $payload['rows'][0]['diagnosticos']);
+    }
+
     private function createSolicitudProcedimientoTable(): void
     {
         Schema::create('solicitud_procedimiento', function (Blueprint $table): void {
@@ -119,6 +161,21 @@ class Paciente360ServiceTest extends TestCase
             $table->string('form_id')->nullable();
             $table->string('estado')->nullable();
             $table->dateTime('fecha_hora_cambio')->nullable();
+        });
+    }
+
+    private function createConsultaDataTable(): void
+    {
+        Schema::create('consulta_data', function (Blueprint $table): void {
+            $table->id();
+            $table->string('hc_number')->nullable();
+            $table->string('form_id')->nullable();
+            $table->date('fecha')->nullable();
+            $table->text('motivo_consulta')->nullable();
+            $table->text('enfermedad_actual')->nullable();
+            $table->text('examen_fisico')->nullable();
+            $table->text('plan')->nullable();
+            $table->text('diagnosticos')->nullable();
         });
     }
 
