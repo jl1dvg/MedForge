@@ -104,6 +104,12 @@ jobs:
             fi
             $PHP composer.phar install --no-interaction 2>&1
 
+            # Aplicar migraciones pendientes (staging y producción comparten DB; idempotente)
+            $PHP artisan migrate --force
+
+            # Verificar que las tablas que las migraciones dicen haber creado existan de verdad
+            $PHP artisan app:verify-schema
+
             # Recrear symlink storage → public (se borra en cada rsync porque está en .gitignore)
             $PHP artisan storage:link --force 2>/dev/null || true
 
@@ -119,6 +125,10 @@ jobs:
             # Copiar assets Vite al public raíz (hasta migración completa a Laravel)
             mkdir -p "$PROJECT/public/build"
             rsync -a --delete "$PROJECT/laravel-app/public/build/" "$PROJECT/public/build/"
+
+            # Copiar CSS estático al public raíz
+            mkdir -p "$PROJECT/public/css"
+            rsync -a "$PROJECT/laravel-app/public/css/" "$PROJECT/public/css/"
 
             # Dependencias Python para scrapers
             cd "$PROJECT"
@@ -277,6 +287,12 @@ jobs:
             # Composer (producción ya tiene composer.phar)
             $PHP composer.phar install --no-dev --optimize-autoloader --no-interaction 2>&1
 
+            # Aplicar migraciones pendientes (staging y producción comparten DB; idempotente)
+            $PHP artisan migrate --force
+
+            # Verificar que las tablas que las migraciones dicen haber creado existan de verdad
+            $PHP artisan app:verify-schema
+
             # Recrear symlink storage → public (se borra en cada rsync porque está en .gitignore)
             $PHP artisan storage:link --force 2>/dev/null || true
 
@@ -285,9 +301,21 @@ jobs:
             $PHP artisan route:cache
             $PHP artisan view:cache
 
+            # Warm-up: la primera petición real tras regenerar config/route/view
+            # cache puede chocar con la ventana de escritura de esos archivos
+            # (file_put_contents sin lock) y devolver un 419/500 espurio. Absorbe
+            # esa primera petición aquí en vez de dejar que la sufra un usuario.
+            # Debe golpear el dominio público real: "localhost" no resuelve al
+            # vhost de la app en este hosting compartido (devolvía 404/000).
+            curl -s --max-time 10 -o /dev/null -w "Warm-up /auth/login: %{http_code}\n" https://cive.consulmed.me/auth/login || true
+
             # Copiar assets Vite al public raíz (hasta migración completa a Laravel)
             mkdir -p "$PROJECT/public/build"
             rsync -a --delete "$PROJECT/laravel-app/public/build/" "$PROJECT/public/build/"
+
+            # Copiar CSS estático al public raíz
+            mkdir -p "$PROJECT/public/css"
+            rsync -a "$PROJECT/laravel-app/public/css/" "$PROJECT/public/css/"
 
             echo "Producción actualizada: $(date '+%Y-%m-%d %H:%M:%S')"
 

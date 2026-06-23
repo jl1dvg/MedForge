@@ -406,6 +406,12 @@ class CloudApiTransportService
         $resolvedFilename = $filename ?: basename($path);
         $resolvedMimeType = $mimeType ?: $this->guessMimeType($resolvedFilename, $type);
 
+        // Chrome MediaRecorder audio is detected by PHP finfo as video/webm (webm container).
+        // WhatsApp rejects video/webm for audio messages; normalize to audio/webm.
+        if ($type === 'audio' && $resolvedMimeType === 'video/webm') {
+            $resolvedMimeType = 'audio/webm';
+        }
+
         $response = Http::timeout($timeout)
             ->withToken($accessToken)
             ->attach('file', $content, $resolvedFilename, ['Content-Type' => $resolvedMimeType])
@@ -437,6 +443,7 @@ class CloudApiTransportService
             'webp' => 'image/webp',
             'mp4' => 'video/mp4',
             '3gp' => 'video/3gpp',
+            'webm' => 'audio/webm',
             'mp3' => 'audio/mpeg',
             'ogg', 'oga' => 'audio/ogg',
             'aac' => 'audio/aac',

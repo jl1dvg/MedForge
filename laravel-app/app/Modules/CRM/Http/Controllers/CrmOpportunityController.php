@@ -5,12 +5,24 @@ namespace App\Modules\CRM\Http\Controllers;
 use App\Models\CrmOpportunity;
 use App\Modules\CRM\Services\CrmActivityService;
 use App\Modules\CRM\Services\CrmOpportunityService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class CrmOpportunityController
 {
+    private const SOURCE_TYPE_TO_SOURCE = [
+        'solicitud_procedimiento' => 'solicitud',
+        'consulta_examenes'       => 'examen',
+        'whatsapp_lead'           => 'whatsapp',
+    ];
+
+    private const LEGACY_SOURCE_TYPE = 'legacy_crm_lead';
+
     public function __construct(
         private readonly CrmOpportunityService $opportunityService,
         private readonly CrmActivityService $activityService,
@@ -30,33 +42,16 @@ class CrmOpportunityController
         $search         = trim((string) $request->query('search', ''));
         $afiliacion     = trim((string) $request->query('afiliacion', ''));  // particular|privado|fundacional|publico
         $urgent         = filter_var($request->query('urgent', false), FILTER_VALIDATE_BOOLEAN);
-        $includePublico = filter_var($request->query('include_publico', false), FILTER_VALIDATE_BOOLEAN);
 
         $query = CrmOpportunity::query()->with('contact');
 
-        // Affiliation filter — uses the indexed afiliacion_tipo column (populated by CrmOpportunityListener)
-        if ($afiliacion !== '') {
-            $query->where('afiliacion_tipo', $afiliacion);
-        } elseif (!$includePublico) {
-            $query->where(fn ($q) => $q
-                ->where('afiliacion_tipo', '!=', 'publico')
-                ->orWhereNull('afiliacion_tipo')
-            );
-        }
+        $this->applyPatientAffiliationFilter($query, $afiliacion);
 
         if ($stage !== '') {
             $query->where('stage', $stage);
         }
         if ($source !== '') {
-            // WhatsApp filter: direct source OR any whatsapp activity (e.g. patient came via WA but has a clinical opp)
-            if ($source === 'whatsapp') {
-                $query->where(fn ($q) => $q
-                    ->where('source', 'whatsapp')
-                    ->orWhereHas('activities', fn ($a) => $a->where('type', 'whatsapp'))
-                );
-            } else {
-                $query->where('source', $source);
-            }
+            $this->applyEffectiveSourceFilter($query, $source);
         }
         if ($phase !== '') {
             $query->where('phase', $phase);
@@ -75,6 +70,7 @@ class CrmOpportunityController
         $total = $query->count();
         $rows  = $query->orderByRaw('COALESCE(last_activity_at, created_at) ASC')
             ->limit($limit)->offset($offset)->get();
+        $this->appendEffectiveSource($rows, $source);
 
         return response()->json([
             'data' => $rows,
@@ -146,5 +142,256 @@ class CrmOpportunityController
         }
 
         return response()->json(['data' => $opp->fresh(['contact', 'activities'])]);
+    }
+
+    private function applyEffectiveSourceFilter(Builder $query, string $source): void
+    {
+        $sourceTypes = array_keys(array_filter(
+            self::SOURCE_TYPE_TO_SOURCE,
+            static fn (string $mappedSource): bool => $mappedSource === $source,
+        ));
+
+        $query->where(function (Builder $q) use ($source, $sourceTypes): void {
+            $q->where(function (Builder $direct) use ($source): void {
+                $direct->where('source', $source);
+
+                if ($source === 'whatsapp') {
+                    $direct->where(function (Builder $legacy) {
+                        $legacy->whereNull('source_type')
+                            ->orWhere('source_type', '<>', self::LEGACY_SOURCE_TYPE);
+                    });
+                }
+            });
+
+            if ($sourceTypes !== []) {
+                $q->orWhereIn('source_type', $sourceTypes);
+            }
+
+            $this->orWhereOperationalSource($q, $source);
+
+            $q->orWhereHas('activities', function (Builder $activity) use ($source, $sourceTypes): void {
+                $activity->where('type', $source);
+
+                if ($sourceTypes !== []) {
+                    $activity->orWhereIn('source_type', $sourceTypes);
+                }
+            });
+        });
+    }
+
+    private function orWhereOperationalSource(Builder $query, string $source): void
+    {
+        foreach ($this->operationalSourceTables($source) as [$tableName, $columnName]) {
+            if (!Schema::hasTable($tableName) || !Schema::hasColumn($tableName, $columnName)) {
+                continue;
+            }
+
+            $query->orWhereExists(function ($sub) use ($tableName, $columnName): void {
+                $sub->selectRaw('1')
+                    ->from($tableName)
+                    ->whereColumn("{$tableName}.{$columnName}", 'crm_opportunities.id');
+            });
+        }
+    }
+
+    /**
+     * Existing manual opportunities can later receive Solicitud/Examen/WhatsApp
+     * activities. The central CRM list needs that operational signal for filters
+     * and labels without overwriting the original stored source.
+     */
+    private function appendEffectiveSource(Collection $rows, string $selectedSource): void
+    {
+        $ids = $rows->pluck('id')->all();
+        if ($ids === []) {
+            return;
+        }
+
+        $operationalSources = $this->operationalSourcesFor($ids, $selectedSource);
+
+        $activitySources = DB::table('crm_activities')
+            ->select('opportunity_id', 'type', 'source_type', 'created_at')
+            ->whereIn('opportunity_id', $ids)
+            ->where(function ($q): void {
+                $q->whereIn('type', ['whatsapp', 'solicitud', 'examen'])
+                    ->orWhereIn('source_type', array_keys(self::SOURCE_TYPE_TO_SOURCE));
+            })
+            ->orderByDesc('created_at')
+            ->get()
+            ->groupBy('opportunity_id');
+
+        $rows->each(function (CrmOpportunity $opportunity) use ($activitySources, $operationalSources, $selectedSource): void {
+            $effectiveSources = $this->effectiveSourcesFor(
+                $opportunity,
+                $activitySources->get($opportunity->id, collect()),
+                collect($operationalSources->get($opportunity->id, [])),
+            );
+
+            $opportunity->setAttribute(
+                'effective_source',
+                $this->preferredEffectiveSource($effectiveSources, $selectedSource),
+            );
+            $opportunity->setAttribute('effective_sources', $effectiveSources);
+        });
+    }
+
+    private function operationalSourcesFor(array $opportunityIds, string $selectedSource): Collection
+    {
+        $sources = collect();
+        $sourceOrder = in_array($selectedSource, ['solicitud', 'examen'], true)
+            ? [$selectedSource, ...array_values(array_diff(['solicitud', 'examen'], [$selectedSource]))]
+            : ['solicitud', 'examen'];
+
+        foreach ($sourceOrder as $source) {
+            foreach ($this->operationalSourceTables($source) as [$tableName, $columnName]) {
+                if (!Schema::hasTable($tableName) || !Schema::hasColumn($tableName, $columnName)) {
+                    continue;
+                }
+
+                DB::table($tableName)
+                    ->whereIn($columnName, $opportunityIds)
+                    ->pluck($columnName)
+                    ->each(static function ($opportunityId) use ($sources, $source): void {
+                        $key = (int) $opportunityId;
+                        $current = $sources->get($key, []);
+
+                        if (!in_array($source, $current, true)) {
+                            $current[] = $source;
+                            $sources->put($key, $current);
+                        }
+                    });
+            }
+        }
+
+        return $sources;
+    }
+
+    private function operationalSourceTables(string $source): array
+    {
+        return match ($source) {
+            'solicitud' => [
+                ['solicitud_procedimiento', 'crm_opportunity_id'],
+                ['solicitud_crm_detalles', 'crm_opportunity_id'],
+            ],
+            'examen' => [
+                ['consulta_examenes', 'crm_opportunity_id'],
+                ['examen_crm_detalles', 'crm_opportunity_id'],
+            ],
+            default => [],
+        };
+    }
+
+    private function effectiveSourcesFor(
+        CrmOpportunity $opportunity,
+        Collection $activitySources,
+        Collection $operationalSources,
+    ): array
+    {
+        $sources = [];
+
+        foreach ($operationalSources as $operationalSource) {
+            if (in_array($operationalSource, ['solicitud', 'examen'], true)) {
+                $sources[] = $operationalSource;
+            }
+        }
+
+        foreach ($activitySources as $activity) {
+            $activitySource = self::SOURCE_TYPE_TO_SOURCE[$activity->source_type] ?? $activity->type;
+            if (in_array($activitySource, ['solicitud', 'examen'], true)) {
+                $sources[] = $activitySource;
+            }
+        }
+
+        if (isset(self::SOURCE_TYPE_TO_SOURCE[$opportunity->source_type])
+            && in_array(self::SOURCE_TYPE_TO_SOURCE[$opportunity->source_type], ['solicitud', 'examen'], true)
+        ) {
+            $sources[] = self::SOURCE_TYPE_TO_SOURCE[$opportunity->source_type];
+        }
+
+        if (in_array($opportunity->source, ['solicitud', 'examen'], true)) {
+            $sources[] = $opportunity->source;
+        }
+
+        $sources = array_values(array_unique($sources));
+
+        if ($sources !== []) {
+            return $sources;
+        }
+
+        if ($opportunity->source_type === self::LEGACY_SOURCE_TYPE) {
+            return ['legacy'];
+        }
+
+        if (isset(self::SOURCE_TYPE_TO_SOURCE[$opportunity->source_type])) {
+            return [self::SOURCE_TYPE_TO_SOURCE[$opportunity->source_type]];
+        }
+
+        foreach ($activitySources as $activity) {
+            if (isset(self::SOURCE_TYPE_TO_SOURCE[$activity->source_type])) {
+                return [self::SOURCE_TYPE_TO_SOURCE[$activity->source_type]];
+            }
+
+            if (in_array($activity->type, ['whatsapp', 'solicitud', 'examen'], true)) {
+                return [$activity->type];
+            }
+        }
+
+        return [$opportunity->source ?: 'manual'];
+    }
+
+    private function preferredEffectiveSource(array $effectiveSources, string $selectedSource): string
+    {
+        if (in_array($selectedSource, $effectiveSources, true)) {
+            return $selectedSource;
+        }
+
+        return $effectiveSources[0] ?? 'manual';
+    }
+
+    private function applyPatientAffiliationFilter(Builder $query, string $afiliacion): void
+    {
+        if ($afiliacion === 'publico') {
+            $query->whereRaw('1 = 0');
+            return;
+        }
+
+        $query->whereNotExists(fn ($sub) => $this->patientAffiliationSubquery($sub, 'publico'));
+
+        if ($afiliacion !== '') {
+            $query->whereExists(fn ($sub) => $this->patientAffiliationSubquery($sub, $afiliacion));
+        }
+    }
+
+    private function patientAffiliationSubquery($sub, string $tipo): void
+    {
+        $sub->selectRaw('1')
+            ->from('crm_contacts as cc_afil')
+            ->leftJoin('patient_data as pd_afil', 'pd_afil.hc_number', '=', 'cc_afil.cedula')
+            ->whereColumn('cc_afil.id', 'crm_opportunities.contact_id')
+            ->whereRaw($this->patientAffiliationCaseSql() . ' = ?', [$tipo]);
+    }
+
+    private function patientAffiliationCaseSql(): string
+    {
+        return "CASE
+            WHEN LOWER(COALESCE(pd_afil.afiliacion, '')) LIKE '%iess%'
+                OR LOWER(COALESCE(pd_afil.afiliacion, '')) LIKE '%issfa%'
+                OR LOWER(COALESCE(pd_afil.afiliacion, '')) LIKE '%isspol%'
+                OR LOWER(COALESCE(pd_afil.afiliacion, '')) LIKE '%msp%'
+                OR LOWER(COALESCE(pd_afil.afiliacion, '')) LIKE '%ministerio%'
+                OR LOWER(COALESCE(pd_afil.afiliacion, '')) LIKE '%salud%publica%'
+                OR LOWER(COALESCE(pd_afil.afiliacion, '')) LIKE '%red%publica%'
+                OR LOWER(COALESCE(pd_afil.afiliacion, '')) LIKE '%campesino%'
+                OR LOWER(COALESCE(pd_afil.afiliacion, '')) LIKE '%jubilado%'
+                OR LOWER(COALESCE(pd_afil.afiliacion, '')) LIKE '%seguro%general%'
+                OR LOWER(COALESCE(pd_afil.afiliacion, '')) LIKE '%seguro%voluntario%'
+                THEN 'publico'
+            WHEN LOWER(COALESCE(pd_afil.afiliacion, '')) LIKE '%particular%'
+                THEN 'particular'
+            WHEN LOWER(COALESCE(pd_afil.afiliacion, '')) LIKE '%fundaci%'
+                THEN 'fundacional'
+            WHEN pd_afil.afiliacion IS NULL OR TRIM(pd_afil.afiliacion) = ''
+                THEN 'sin_dato'
+            ELSE 'privado'
+        END";
     }
 }

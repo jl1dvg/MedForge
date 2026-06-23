@@ -18,11 +18,12 @@ class TemplateReadController
     {
         try {
             $catalog = $this->templateCatalogService->getTemplateCatalog([
-                'search' => trim((string) $request->query('search', '')),
-                'status' => trim((string) $request->query('status', '')),
+                'search'   => trim((string) $request->query('search', '')),
+                'status'   => trim((string) $request->query('status', '')),
                 'category' => trim((string) $request->query('category', '')),
                 'language' => trim((string) $request->query('language', '')),
-                'limit' => (int) $request->query('limit', 100),
+                'source'   => trim((string) $request->query('source', '')),
+                'limit'    => (int) $request->query('limit', 100),
             ]);
 
             return response()->json([

@@ -57,6 +57,7 @@ class AutomatedConversationDispatchService
                 'conversation_id' => $conversation->id,
                 'wa_message_id' => $transportResult['wa_message_id'],
                 'direction' => 'outbound',
+                'sender_type' => 'system',
                 'message_type' => 'text',
                 'body' => $message,
                 'raw_payload' => $transportResult['raw'],
@@ -101,7 +102,7 @@ class AutomatedConversationDispatchService
     }
 
     /**
-     * @param array<int, string> $templateVariables
+     * @param array<int|string, string> $templateVariables
      * @return array{conversation: array<string,mixed>, message: array<string,mixed>}
      */
     public function sendTemplate(

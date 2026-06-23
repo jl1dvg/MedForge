@@ -1,22 +1,26 @@
 <?php
 require_once __DIR__ . '/../../bootstrap.php';
-header("Access-Control-Allow-Origin: *");
-header("Access-Control-Allow-Methods: POST, GET, OPTIONS");
-header("Access-Control-Allow-Headers: Content-Type, Authorization");
-header('Content-Type: application/json; charset=UTF-8');
+
+use Controllers\GuardarProyeccionController;
+use Helpers\CorsHelper;
 
 ini_set('display_errors', 0);
 error_reporting(0);
 
-use Controllers\GuardarProyeccionController;
+header('Content-Type: application/json; charset=UTF-8');
 
-$controller = new GuardarProyeccionController($pdo);
-
-// ✅ 1) Responder preflight CORS
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(204);
+if (!CorsHelper::prepare('PROYECCIONES_ALLOWED_ORIGINS', [
+    'https://cive.consulmed.me',
+    'https://asistentecive.consulmed.me',
+    'https://cive.ddns.net:8085',
+    'http://192.168.1.13:8085',
+])) {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'message' => 'Origen no permitido para este recurso.']);
     exit;
 }
+
+$controller = new GuardarProyeccionController($pdo);
 
 // ✅ 2) GET: consultar información de trazabilidad
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action'])) {

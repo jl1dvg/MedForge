@@ -1,25 +1,100 @@
 @extends('layouts.medforge')
 
 @push('scripts')
-    @if (\App\Modules\Shared\Support\MedforgeAssets::hasViteBuild())
-        @vite('resources/js/v2/imagenes-realizadas.js')
-    @else
-        <script src="/assets/vendor_components/datatable/datatables.min.js"></script>
-        <script src="/js/pages/shared/datatables-language-es.js"></script>
-    @endif
+    @vite(['resources/js/examenes-realizados/main.jsx'])
 @endpush
 
 @section('content')
     <?php
     /** @var array<int, array<string,mixed>> $imagenesRealizadas */
+    $appRows = array_values(array_map(function (array $row): array {
+        return [
+            'id'                 => $row['id'] ?? $row['form_id'] ?? null,
+            'form_id'            => $row['form_id'] ?? null,
+            'hc_number'          => $row['hc_number'] ?? '',
+            'full_name'          => $row['full_name'] ?? '',
+            'cedula'             => $row['cedula'] ?? '',
+            'fecha_examen'       => isset($row['fecha_examen'])
+                ? substr((string)$row['fecha_examen'], 0, 10) : '',
+            'estado_agenda'      => $row['estado_agenda'] ?? '',
+            'afiliacion'         => $row['afiliacion'] ?? '',
+            'afiliacion_cat'     => $row['afiliacion_categoria'] ?? 'otros',
+            'sede'               => $row['sede'] ?? '',
+            'tipo_examen'        => $row['tipo_examen'] ?? '',
+            'ojo'                => '',
+            'informado'          => !empty($row['informado']),
+            'informe_id'         => $row['informe_id'] ?? null,
+            'informe_firmado_por'=> $row['informe_firmado_por'] ?? null,
+            'informe_actualizado'=> isset($row['informe_actualizado'])
+                ? substr((string)$row['informe_actualizado'], 0, 10) : null,
+            'nas_has_files'      => !empty($row['nas_has_files']) ? 1 : 0,
+            'nas_files_count'    => (int)($row['nas_files_count'] ?? 0),
+            'wpp_status'         => $row['wpp_status'] ?? null,
+            'bandeja_prioridad'  => $row['bandeja_prioridad'] ?? null,
+            'bandeja_fecha_limite'=> $row['bandeja_fecha_limite'] ?? null,
+            'bandeja_responsable'=> $row['bandeja_responsable'] ?? null,
+            'bandeja_motivo'     => $row['bandeja_motivo'] ?? null,
+        ];
+    }, $imagenesRealizadas ?? []));
+
+    $doctores = collect($imagenesRealizadas ?? [])
+        ->pluck('informe_firmado_por')
+        ->filter()
+        ->unique()
+        ->values()
+        ->toArray();
+
+    // All unique afiliacion values actually present in the data (for the filter selector)
+    $afiliacionesData = collect($appRows)
+        ->pluck('afiliacion')
+        ->filter()
+        ->unique()
+        ->sort()
+        ->values()
+        ->toArray();
+
+    $user1 = \App\Models\User::find(1);
+
+    $appConfig = [
+        'rows'        => $appRows,
+        'today'       => now()->toDateString(),
+        'currentUser' => [
+            'name' => auth()->user()?->name ?? 'Usuario',
+            'role' => auth()->user()?->role_name ?? '',
+        ],
+        'defaultResponsable' => $user1?->name ?? '',
+        'doctores'          => $doctores,
+        'afiliacionesData'  => $afiliacionesData,
+        // Active server-side filters — React initializes its state from here
+        // and reloads the page when the user changes dates/afiliacion/sede/tipo
+        'serverFilters' => [
+            'from'       => $filters['fecha_inicio'] ?? '',
+            'to'         => $filters['fecha_fin'] ?? '',
+            'afiliacion' => $filters['afiliacion'] ?? '',
+            'sede'       => $filters['sede'] ?? '',
+            'tipo'       => $filters['tipo_examen'] ?? '',
+        ],
+        'baseUrl' => url('/v2/imagenes/examenes-realizados'),
+    ];
+    ?>
+    <div
+        id="examenes-realizados-root"
+        data-config="{{ json_encode($appConfig, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE) }}"
+    ></div>
+    {{-- Legacy view kept below for reference / rollback --}}
+    @if(false)
+    <?php
+    /** @var array<int, array<string,mixed>> $imagenesRealizadas */
     /** @var array<string, string> $filters */
     /** @var array<int, array{value:string,label:string}> $afiliacionOptions */
+    /** @var array<int, array{value:string,label:string}> $afiliacionCategoriaOptions */
     /** @var array<int, array{value:string,label:string}> $seguroOptions */
 
     if (!isset($filters) || !is_array($filters)) {
         $filters = [
             'fecha_inicio' => '',
             'fecha_fin' => '',
+            'afiliacion_categoria' => '',
             'afiliacion' => '',
             'seguro' => '',
             'sede' => '',
@@ -32,6 +107,16 @@
     }
 
     $afiliacionOptions = isset($afiliacionOptions) && is_array($afiliacionOptions) ? $afiliacionOptions : [['value' => '', 'label' => 'Todas las empresas']];
+    $afiliacionCategoriaOptions = isset($afiliacionCategoriaOptions) && is_array($afiliacionCategoriaOptions)
+        ? $afiliacionCategoriaOptions
+        : [
+            ['value' => '', 'label' => 'Todos los tipos'],
+            ['value' => 'publico', 'label' => 'Pública'],
+            ['value' => 'privado', 'label' => 'Privada'],
+            ['value' => 'particular', 'label' => 'Particular'],
+            ['value' => 'fundacional', 'label' => 'Fundacional'],
+            ['value' => 'otros', 'label' => 'Otros'],
+        ];
     $seguroOptions = isset($seguroOptions) && is_array($seguroOptions) ? $seguroOptions : [['value' => '', 'label' => 'Todos los seguros']];
 
     $sedeOptions = [
@@ -189,6 +274,17 @@
                                value="<?= htmlspecialchars($filters['fecha_fin'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
                     </div>
                     <div class="col-sm-6 col-md-2">
+                        <label class="form-label">Tipo de afiliación</label>
+                        <select class="form-select" name="afiliacion_categoria" id="filtroTipoAfiliacion">
+                            <?php foreach ($afiliacionCategoriaOptions as $option): ?>
+                                <?php $optionValue = trim((string)($option['value'] ?? '')); ?>
+                                <option value="<?= htmlspecialchars($optionValue, ENT_QUOTES, 'UTF-8') ?>" <?= ($optionValue === (string)($filters['afiliacion_categoria'] ?? '')) ? 'selected' : '' ?>>
+                                    <?= htmlspecialchars((string)($option['label'] ?? $optionValue), ENT_QUOTES, 'UTF-8') ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="col-sm-6 col-md-2">
                         <label class="form-label">Empresa de seguro</label>
                         <select class="form-select" name="afiliacion" id="filtroAfiliacion">
                             <?php foreach ($afiliacionOptions as $option): ?>
@@ -223,18 +319,6 @@
                         </select>
                     </div>
                     <div class="col-sm-6 col-md-2">
-                        <label class="form-label">Tipo examen</label>
-                        <select class="form-select" name="tipo_examen" id="filtroTipoExamen"
-                                data-current="<?= htmlspecialchars($filters['tipo_examen'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
-                            <option value="">Todos</option>
-                        </select>
-                    </div>
-                    <div class="col-sm-6 col-md-2">
-                        <label class="form-label">Paciente/Cédula</label>
-                        <input type="text" class="form-control" name="paciente" placeholder="Nombre o ID"
-                               value="<?= htmlspecialchars($filters['paciente'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
-                    </div>
-                    <div class="col-sm-6 col-md-2">
                         <label class="form-label">Estado</label>
                         <select class="form-select" name="estado_agenda">
                             <option value="">Todos</option>
@@ -245,6 +329,18 @@
                             </option>
                             <?php endforeach; ?>
                         </select>
+                    </div>
+                    <div class="col-sm-6 col-md-2">
+                        <label class="form-label">Tipo examen</label>
+                        <select class="form-select" name="tipo_examen" id="filtroTipoExamen"
+                                data-current="<?= htmlspecialchars($filters['tipo_examen'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
+                            <option value="">Todos</option>
+                        </select>
+                    </div>
+                    <div class="col-sm-6 col-md-2">
+                        <label class="form-label">Paciente/Cédula</label>
+                        <input type="text" class="form-control" name="paciente" placeholder="Nombre o ID"
+                               value="<?= htmlspecialchars($filters['paciente'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
                     </div>
                     <div class="col-12 d-flex gap-2">
                         <button type="submit" class="btn btn-primary btn-sm">
@@ -1021,7 +1117,11 @@
                     const isPdfFile = isPdf(file);
                     file._preloadPromise = fetch(file.url, {credentials: 'same-origin'})
                         .then(function (r) {
-                            if (!r.ok) throw new Error('status');
+                            if (!r.ok) {
+                                return r.text().then(function (text) {
+                                    throw new Error(String(text || '').trim() || 'No se pudo abrir el archivo.');
+                                });
+                            }
                             return r.blob();
                         })
                         .then(function (blob) {
@@ -1062,7 +1162,11 @@
                             file._cachedUrl = objectUrl;
                         })
                         .catch(function () {
+                            const error = arguments.length ? arguments[0] : null;
                             file._preloadFailed = true;
+                            file._preloadError = error && error.message
+                                ? String(error.message)
+                                : 'No se pudo abrir el archivo.';
                         })
                         .finally(function () {
                             file._preloadPromise = null;
@@ -1108,7 +1212,19 @@
                         : '<span class="badge bg-info text-dark">Imagen</span>';
                     wrapper.appendChild(typeBadge);
 
-                    if (isImage(current)) {
+                    if (current._preloadFailed) {
+                        const fallback = document.createElement('div');
+                        fallback.className = 'w-100 h-100 d-flex flex-column align-items-center justify-content-center text-center text-muted p-4';
+                        const detail = current._preloadError ? String(current._preloadError) : 'No se pudo abrir el archivo.';
+                        fallback.innerHTML = '<i class="mdi mdi-alert-circle-outline fs-1 mb-2 text-warning"></i>'
+                            + '<div class="fw-semibold text-dark mb-1">Imagen no disponible</div>'
+                            + '<div class="small"></div>';
+                        const detailNode = fallback.querySelector('.small');
+                        if (detailNode) {
+                            detailNode.textContent = detail;
+                        }
+                        wrapper.appendChild(fallback);
+                    } else if (isImage(current)) {
                         const img = document.createElement('img');
                         img.src = url;
                         img.alt = name;
@@ -1210,7 +1326,7 @@
                     }
 
                     const current = nasFiles[nasCurrentIndex];
-                    if (isPdf(current) && !current._cachedUrl && !current._preloadPromise && !current._preloadFailed) {
+                    if ((isPdf(current) || isImage(current)) && !current._cachedUrl && !current._preloadPromise && !current._preloadFailed) {
                         const renderToken = nasLoadToken;
                         preloadNasFile(current, renderToken).finally(function () {
                             if (renderToken !== nasLoadToken) {
@@ -2739,5 +2855,6 @@
             }
         })();
     </script>
+    @endif {{-- end legacy view --}}
 
 @endsection

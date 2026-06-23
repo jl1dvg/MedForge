@@ -17,6 +17,7 @@ Route::get('/solicitudes/crm/options', [SolicitudesReadController::class, 'crmOp
 Route::get('/solicitudes/crm/catalog/codes', [SolicitudesReadController::class, 'crmBuscarCodigos']);
 Route::get('/solicitudes/crm/catalog/packages', [SolicitudesReadController::class, 'crmBuscarPaquetes']);
 Route::get('/solicitudes/{id}/crm', [SolicitudesReadController::class, 'crmResumen'])->whereNumber('id');
+Route::get('/solicitudes/{id}/detalle', [SolicitudesReadController::class, 'detalleCompleto'])->whereNumber('id');
 Route::get('/solicitudes/conciliacion-cirugias', [SolicitudesReadController::class, 'conciliacionCirugias']);
 Route::get('/solicitudes/prefactura', [SolicitudesPrefacturaController::class, 'prefactura']);
 Route::get('/solicitudes/derivacion', [SolicitudesPrefacturaController::class, 'derivacion']);
@@ -24,6 +25,7 @@ Route::post('/solicitudes/reportes/pdf', [SolicitudesReadController::class, 'rep
 Route::post('/solicitudes/reportes/excel', [SolicitudesReadController::class, 'reporteExcel']);
 Route::post('/solicitudes/derivacion-preseleccion', [SolicitudesPrefacturaController::class, 'derivacionPreseleccion']);
 Route::post('/solicitudes/re-scrape-derivacion', [SolicitudesPrefacturaController::class, 'rescrapeDerivacion']);
+Route::get('/solicitudes/cobertura-mail/sender', [SolicitudesPrefacturaController::class, 'coberturaMailSender']);
 Route::post('/solicitudes/cobertura-mail', [SolicitudesPrefacturaController::class, 'coberturaMail']);
 
 // Canonical Solicitudes v2 paths (writes)
@@ -53,10 +55,7 @@ Route::match(['GET', 'POST'], '/api/solicitudes/kanban_data.php', [SolicitudesRe
 Route::post('/api/solicitudes/dashboard_data.php', [SolicitudesReadController::class, 'dashboardData']);
 Route::post('/api/solicitudes/actualizar_estado.php', [SolicitudesWriteController::class, 'actualizarEstado']);
 Route::post('/api/solicitudes/turnero_llamar.php', [SolicitudesWriteController::class, 'turneroLlamar']);
-Route::get('/api/solicitudes/estado.php', [SolicitudesWriteController::class, 'apiEstadoGet']);
-Route::post('/api/solicitudes/estado.php', [SolicitudesWriteController::class, 'apiEstadoPost']);
 Route::get('/api/solicitudes/doctores.php', [SolicitudesReadController::class, 'doctores']);
-Route::post('/api/solicitudes/guardar.php', [SolicitudesWriteController::class, 'guardarSolicitud']);
 });
 
 // Clean aliases
@@ -68,10 +67,9 @@ Route::get('/api/solicitudes/crm/options', [SolicitudesReadController::class, 'c
 Route::get('/api/solicitudes/crm/catalog/codes', [SolicitudesReadController::class, 'crmBuscarCodigos']);
 Route::get('/api/solicitudes/crm/catalog/packages', [SolicitudesReadController::class, 'crmBuscarPaquetes']);
 Route::get('/api/solicitudes/{id}/crm', [SolicitudesReadController::class, 'crmResumen'])->whereNumber('id');
+Route::get('/api/solicitudes/{id}/detalle', [SolicitudesReadController::class, 'detalleCompleto'])->whereNumber('id');
 Route::get('/api/solicitudes/conciliacion-cirugias', [SolicitudesReadController::class, 'conciliacionCirugias']);
 Route::get('/api/solicitudes/doctores', [SolicitudesReadController::class, 'doctores']);
-Route::get('/api/solicitudes/estado', [SolicitudesWriteController::class, 'apiEstadoGet']);
-Route::post('/api/solicitudes/estado', [SolicitudesWriteController::class, 'apiEstadoPost']);
 Route::post('/api/solicitudes/estado/actualizar', [SolicitudesWriteController::class, 'actualizarEstado']);
 Route::post('/api/solicitudes/turnero/llamar', [SolicitudesWriteController::class, 'turneroLlamar']);
 Route::post('/api/solicitudes/derivacion/guardar', [SolicitudesWriteController::class, 'guardarDerivacionPreseleccion']);
@@ -89,7 +87,19 @@ Route::post('/api/solicitudes/{id}/crm/tareas/estado', [SolicitudesWriteControll
 Route::post('/api/solicitudes/{id}/crm/bloqueo', [SolicitudesWriteController::class, 'crmRegistrarBloqueo'])->whereNumber('id');
 Route::post('/api/solicitudes/{id}/crm/adjuntos', [SolicitudesWriteController::class, 'crmSubirAdjunto'])->whereNumber('id');
 Route::post('/api/solicitudes/{id}/conciliacion-cirugia/confirmar', [SolicitudesWriteController::class, 'confirmarConciliacionCirugia'])->whereNumber('id');
-Route::post('/api/solicitudes/guardar', [SolicitudesWriteController::class, 'guardarSolicitud']);
-Route::post('/solicitudes/guardar', [SolicitudesWriteController::class, 'guardarSolicitud']);
 });
+});
+
+// Extension endpoints — autenticación por extensión Chrome, no por sesión administrativa
+Route::middleware(['consultas.cors', 'cive.extension.auth'])->group(function (): void {
+    foreach ([
+        '/api/solicitudes/guardar.php',
+        '/api/solicitudes/guardar',
+        '/solicitudes/guardar.php',
+        '/solicitudes/guardar',
+    ] as $path) {
+        Route::options($path, static fn () => response('', 204));
+        Route::post($path, [SolicitudesWriteController::class, 'guardarSolicitud']);
+    }
+
 });

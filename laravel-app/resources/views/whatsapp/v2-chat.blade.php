@@ -2104,30 +2104,43 @@
                         <summary class="text-muted" style="cursor:pointer;font-size:12px;font-weight:700;padding:0 4px;">
                             Filtros avanzados
                         </summary>
-                        <div class="wa-v2-tabs mt-8" aria-label="Filtros avanzados de conversaciones">
-                            @foreach($advancedTabs as $key => $label)
-                                @php
-                                    $tabIcons = [
-                                        'critical_backlog' => 'mdi mdi-alert-octagon-outline',
-                                        'captacion' => 'mdi mdi-bullseye-arrow',
-                                        'operacion' => 'mdi mdi-calendar-sync-outline',
-                                        'informacion' => 'mdi mdi-information-outline',
-                                        'window_open' => 'mdi mdi-timer-sand',
-                                        'unread' => 'mdi mdi-bell-outline',
-                                        'needs_template' => 'mdi mdi-file-document-edit-outline',
-                                        'resolved' => 'mdi mdi-check-circle-outline',
-                                        'all' => 'mdi mdi-message-text-outline',
-                                    ];
-                                    $icon = $tabIcons[$key] ?? 'mdi mdi-circle-small';
-                                @endphp
-                                <a
-                                    href="{{ '/v2/whatsapp/chat?' . http_build_query(array_filter(['filter' => $key, 'search' => $search, 'date_from' => $dateFrom, 'date_to' => $dateTo, 'agent_id' => $selectedAgentId, 'role_id' => $selectedRoleId], static fn ($value) => $value !== null && $value !== '')) }}"
-                                    class="wa-v2-tab {{ $selectedFilter === $key ? 'is-active' : '' }}"
-                                    title="{{ $tabDescriptions[$key] ?? $label }}">
-                                    <span class="wa-v2-icon-label"><i class="{{ $icon }}"></i></span>
-                                    <span class="wa-v2-counter">{{ (int) ($tabCounts[$key] ?? 0) }}</span>
-                                </a>
-                            @endforeach
+                        <div class="wa-v2-tabs-shell mt-8">
+                            <button type="button" class="wa-v2-tabs-nav" data-wa-tabs-nav="left"
+                                aria-label="Ver filtros anteriores">
+                                <i class="mdi mdi-chevron-left"></i>
+                            </button>
+                            <div class="wa-v2-tabs-viewport">
+                                <div class="wa-v2-tabs" id="wa-v2-advanced-filter-tabs" tabindex="0"
+                                     aria-label="Filtros avanzados de conversaciones">
+                                    @foreach($advancedTabs as $key => $label)
+                                        @php
+                                            $tabIcons = [
+                                                'critical_backlog' => 'mdi mdi-alert-octagon-outline',
+                                                'captacion' => 'mdi mdi-bullseye-arrow',
+                                                'operacion' => 'mdi mdi-calendar-sync-outline',
+                                                'informacion' => 'mdi mdi-information-outline',
+                                                'window_open' => 'mdi mdi-timer-sand',
+                                                'unread' => 'mdi mdi-bell-outline',
+                                                'needs_template' => 'mdi mdi-file-document-edit-outline',
+                                                'resolved' => 'mdi mdi-check-circle-outline',
+                                                'all' => 'mdi mdi-message-text-outline',
+                                            ];
+                                            $icon = $tabIcons[$key] ?? 'mdi mdi-circle-small';
+                                        @endphp
+                                        <a
+                                            href="{{ '/v2/whatsapp/chat?' . http_build_query(array_filter(['filter' => $key, 'search' => $search, 'date_from' => $dateFrom, 'date_to' => $dateTo, 'agent_id' => $selectedAgentId, 'role_id' => $selectedRoleId], static fn ($value) => $value !== null && $value !== '')) }}"
+                                            class="wa-v2-tab {{ $selectedFilter === $key ? 'is-active' : '' }}"
+                                            title="{{ $tabDescriptions[$key] ?? $label }}">
+                                            <span class="wa-v2-icon-label"><i class="{{ $icon }}"></i></span>
+                                            <span class="wa-v2-counter">{{ (int) ($tabCounts[$key] ?? 0) }}</span>
+                                        </a>
+                                    @endforeach
+                                </div>
+                            </div>
+                            <button type="button" class="wa-v2-tabs-nav" data-wa-tabs-nav="right"
+                                aria-label="Ver más filtros">
+                                <i class="mdi mdi-chevron-right"></i>
+                            </button>
                         </div>
                     </details>
                 </div>
@@ -2936,12 +2949,12 @@
             let startChatSearchTimer = null;
             const startChatTemplates = @json($templateOptions);
 
-            const initTabsScroller = function () {
-                if (!tabsScroller) {
+            const initTabsScroller = function (el) {
+                if (!el) {
                     return;
                 }
 
-                const shell = tabsScroller.closest('.wa-v2-tabs-shell');
+                const shell = el.closest('.wa-v2-tabs-shell');
                 if (!shell) {
                     return;
                 }
@@ -2953,14 +2966,14 @@
                 }
 
                 const updateButtons = function () {
-                    const maxScrollLeft = Math.max(0, tabsScroller.scrollWidth - tabsScroller.clientWidth);
-                    leftButton.disabled = tabsScroller.scrollLeft <= 4;
-                    rightButton.disabled = tabsScroller.scrollLeft >= (maxScrollLeft - 4);
+                    const maxScrollLeft = Math.max(0, el.scrollWidth - el.clientWidth);
+                    leftButton.disabled = el.scrollLeft <= 4;
+                    rightButton.disabled = el.scrollLeft >= (maxScrollLeft - 4);
                 };
 
                 const scrollTabs = function (direction) {
-                    const step = Math.max(220, Math.round(tabsScroller.clientWidth * 0.7));
-                    tabsScroller.scrollBy({left: direction * step, behavior: 'smooth'});
+                    const step = Math.max(220, Math.round(el.clientWidth * 0.7));
+                    el.scrollBy({left: direction * step, behavior: 'smooth'});
                 };
 
                 leftButton.addEventListener('click', function () {
@@ -2971,10 +2984,10 @@
                     scrollTabs(1);
                 });
 
-                tabsScroller.addEventListener('scroll', updateButtons, {passive: true});
+                el.addEventListener('scroll', updateButtons, {passive: true});
                 window.addEventListener('resize', updateButtons);
 
-                tabsScroller.addEventListener('keydown', function (event) {
+                el.addEventListener('keydown', function (event) {
                     if (event.key === 'ArrowLeft') {
                         event.preventDefault();
                         scrollTabs(-1);
@@ -2989,7 +3002,8 @@
                 updateButtons();
             };
 
-            initTabsScroller();
+            initTabsScroller(tabsScroller);
+            initTabsScroller(document.getElementById('wa-v2-advanced-filter-tabs'));
 
             const setFeedback = function (message, tone) {
                 if (!feedback) {
@@ -3075,8 +3089,9 @@
                 const template = selectedStartTemplateMeta();
                 const variables = Array.isArray(template?.variables) ? template.variables : [];
                 const examples = Array.isArray(template?.variable_examples) ? template.variable_examples : [];
+                const isLocationHeader = (template?.header_type || '') === 'location';
 
-                if (variables.length === 0) {
+                if (variables.length === 0 && !isLocationHeader) {
                     startChatTemplateVariables.classList.add('d-none');
                     startChatTemplateVariablesFields.innerHTML = '';
                     renderStartTemplatePreview();
@@ -3084,7 +3099,20 @@
                 }
 
                 startChatTemplateVariables.classList.remove('d-none');
-                startChatTemplateVariablesFields.innerHTML = variables.map(function (variable, index) {
+                const sedeSelectHtml = isLocationHeader ? `
+                    <div class="col-12">
+                        <label class="form-label">Sede de la cita <span class="text-danger">*</span></label>
+                        <select class="form-control" id="wa-v2-start-location-sede">
+                            <option value="">— Selecciona la sede —</option>
+                            <option value="villa_club">Villa Club</option>
+                            <option value="ceibos">Ceibos</option>
+                            <option value="matriz">Matriz</option>
+                        </select>
+                        <small class="text-muted">Requerido para el header de ubicación GPS.</small>
+                    </div>
+                ` : '';
+
+                startChatTemplateVariablesFields.innerHTML = sedeSelectHtml + variables.map(function (variable, index) {
                     const example = (examples[index] || '').trim();
                     const placeholder = example || `Valor para ${variable}`;
                     return `
@@ -3278,6 +3306,7 @@
                                     return (input.value || '').trim();
                                 })
                                 : [],
+                            location_sede: (document.getElementById('wa-v2-start-location-sede')?.value || '').trim(),
                         })
                     });
                     const data = await response.json();

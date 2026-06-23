@@ -7,7 +7,7 @@ const STAGE_LABEL: Record<Stage, string> = {
 };
 
 const SOURCE_LABEL: Record<Source, string> = {
-  whatsapp: 'WhatsApp', solicitud: 'Solicitud', examen: 'Examen', manual: 'Manual',
+  whatsapp: 'WhatsApp', solicitud: 'Solicitud', examen: 'Examen', manual: 'Manual', legacy: 'Migrado',
 };
 
 const PHASE_LABEL: Record<Phase, string> = {
@@ -46,6 +46,8 @@ export function OpportunityRow({ opp, onClick }: Props) {
   const { label: timeLabel, urgentDays } = timeAgo(opp.last_activity_at);
   const daysLeft = daysUntilEscalation(opp.escalation_at);
   const isEscalating = daysLeft !== null && daysLeft <= 2 && opp.phase === 'operational';
+  const displaySource = opp.effective_source ?? opp.source;
+  const displaySources = opp.effective_sources?.length ? opp.effective_sources : [displaySource];
 
   return (
     <tr className={isEscalating ? 'escalating' : ''} onClick={() => onClick(opp)}>
@@ -71,7 +73,9 @@ export function OpportunityRow({ opp, onClick }: Props) {
           </div>
         )}
       </td>
-      <td style={{ color: 'var(--fg-mute)', fontSize: '.75rem' }}>{SOURCE_LABEL[opp.source]}</td>
+      <td style={{ color: 'var(--fg-mute)', fontSize: '.75rem' }}>
+        {displaySources.map(source => SOURCE_LABEL[source]).join(' / ')}
+      </td>
       <td style={{
         fontSize: '.75rem',
         color: urgentDays >= STALE_DANGER_DAYS

@@ -192,14 +192,18 @@ class ConversationOpsService
             $totals['expiring_soon_count'] = array_sum($expiringStats);
         }
 
+        $responseStats = $this->computeAvgResponseSeconds();
+
         $agents = collect($agents)
-            ->map(function (array $agent) use ($conversationStats, $expiringStats): array {
+            ->map(function (array $agent) use ($conversationStats, $expiringStats, $responseStats): array {
                 $agentId = (int) ($agent['id'] ?? 0);
                 $conversation = $conversationStats[(string) $agentId] ?? ['total_open' => 0, 'unread_open' => 0];
 
                 $agent['assigned_open_count'] = (int) ($conversation['total_open'] ?? 0);
                 $agent['unread_open_count'] = (int) ($conversation['unread_open'] ?? 0);
                 $agent['expiring_soon_count'] = (int) ($expiringStats[$agentId] ?? 0);
+                $avgSec = $responseStats[$agentId] ?? null;
+                $agent['avg_response_time'] = $avgSec !== null ? $this->formatAvgResponse((float) $avgSec) : null;
 
                 return $agent;
             })
@@ -211,6 +215,63 @@ class ConversationOpsService
             'agents' => $agents,
             'totals' => $totals,
         ];
+    }
+
+    /** @return array<int,float> userId => avg seconds */
+    private function computeAvgResponseSeconds(): array
+    {
+        if (!Schema::hasTable('whatsapp_messages') || !Schema::hasTable('whatsapp_conversations')) {
+            return [];
+        }
+
+        try {
+            $rows = DB::select("
+                SELECT
+                    c.assigned_user_id,
+                    AVG(TIMESTAMPDIFF(SECOND,
+                        COALESCE(m_in.message_timestamp, m_in.created_at),
+                        COALESCE(m_out.message_timestamp, m_out.created_at)
+                    )) AS avg_seconds
+                FROM whatsapp_messages m_in
+                JOIN whatsapp_conversations c ON c.id = m_in.conversation_id
+                JOIN whatsapp_messages m_out ON
+                    m_out.conversation_id = m_in.conversation_id
+                    AND m_out.direction = 'outbound'
+                    AND m_out.id = (
+                        SELECT MIN(sub.id) FROM whatsapp_messages sub
+                        WHERE sub.conversation_id = m_in.conversation_id
+                          AND sub.direction = 'outbound'
+                          AND sub.id > m_in.id
+                    )
+                WHERE m_in.direction = 'inbound'
+                  AND c.assigned_user_id IS NOT NULL
+                  AND COALESCE(m_in.message_timestamp, m_in.created_at) >= NOW() - INTERVAL 7 DAY
+                GROUP BY c.assigned_user_id
+            ");
+
+            $result = [];
+            foreach ($rows as $row) {
+                if ($row->avg_seconds !== null) {
+                    $result[(int) $row->assigned_user_id] = (float) $row->avg_seconds;
+                }
+            }
+            return $result;
+        } catch (\Throwable) {
+            return [];
+        }
+    }
+
+    private function formatAvgResponse(float $seconds): string
+    {
+        if ($seconds < 60) {
+            return '< 1 min';
+        }
+        if ($seconds < 3600) {
+            return round($seconds / 60) . ' min';
+        }
+        $h = (int) floor($seconds / 3600);
+        $m = (int) round(fmod($seconds, 3600) / 60);
+        return $m > 0 ? "{$h}h {$m}m" : "{$h}h";
     }
 
     /**

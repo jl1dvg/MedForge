@@ -17,7 +17,7 @@ class SolicitudesUiController
      */
     private const KANBAN_COLUMNS = [
         ['slug' => 'recibida', 'label' => 'Recibida'],
-        ['slug' => 'llamado', 'label' => 'Llamado'],
+        ['slug' => 'llamado', 'label' => 'Turno llamado'],
         ['slug' => 'revision-codigos', 'label' => 'Revisión códigos'],
         ['slug' => 'espera-documentos', 'label' => 'Documentación'],
         ['slug' => 'apto-oftalmologo', 'label' => 'Apto oftalmólogo'],
@@ -72,6 +72,50 @@ class SolicitudesUiController
             'estadoEndpoint' => '/v2/solicitudes/api/estado',
             'realtimeConfig' => $realtimeConfig,
             'notificationStorageKey' => 'medf:notification-panel:u' . (int) ($currentUser['id'] ?? 0),
+        ]);
+    }
+
+    public function indexV3(Request $request): View|RedirectResponse
+    {
+        $currentUser = LegacyCurrentUser::resolve($request);
+        $realtimeConfig = $this->buildRealtimeConfig();
+
+        $appConfig = [
+            'kanbanColumns'             => self::KANBAN_COLUMNS,
+            'kanbanEndpoint'            => '/v2/solicitudes/kanban-data',
+            'actualizarEstadoEndpoint'  => '/v2/solicitudes/actualizar-estado',
+            'estadoEndpoint'            => '/v2/solicitudes/api/estado',
+            'realtimeConfig'            => $realtimeConfig,
+            'initialFilters'            => [
+                'search'              => trim((string) $request->query('search', '')),
+                'afiliacion'          => trim((string) $request->query('afiliacion', '')),
+                'doctor'              => trim((string) $request->query('doctor', '')),
+                'prioridad'           => trim((string) $request->query('prioridad', '')),
+                'sede'                => trim((string) $request->query('sede', '')),
+                'date_from'           => trim((string) $request->query('date_from', '')),
+                'date_to'             => trim((string) $request->query('date_to', '')),
+            ],
+        ];
+
+        return view('solicitudes.v3-index', [
+            'pageTitle' => 'Solicitudes V3',
+            'currentUser' => $currentUser,
+            'appConfig'   => $appConfig,
+            'whatsappNotificationPanelEnabled' => true,
+            'whatsappNotificationCurrentUser' => [
+                'id' => (int) ($currentUser['id'] ?? 0),
+                'name' => (string) ($currentUser['display_name'] ?? $currentUser['nombre'] ?? $currentUser['username'] ?? 'Usuario'),
+            ],
+            'whatsappRealtimeRuntime' => [
+                'currentConversationId' => 0,
+                'canSupervise' => false,
+                'scope' => 'solicitudes',
+            ],
+            'whatsappAssetVersion' => (string) max(
+                @filemtime(public_path('js/pages/whatsapp/v2-notifications.js')) ?: 0,
+                @filemtime(resource_path('views/layouts/partials/notification_panel.blade.php')) ?: 0,
+                @filemtime(resource_path('views/layouts/medforge.blade.php')) ?: 0,
+            ),
         ]);
     }
 

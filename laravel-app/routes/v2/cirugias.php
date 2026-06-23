@@ -20,6 +20,7 @@ Route::middleware([
     Route::post('/cirugias/protocolo/status', [CirugiasWriteController::class, 'updateStatus']);
 
     Route::get('/cirugias/dashboard', [CirugiasUiController::class, 'dashboard']);
+    Route::get('/cirugias/dashboard/report', [CirugiasUiController::class, 'dashboardReport']);
     Route::get('/cirugias/dashboard/export/pdf', [CirugiasUiController::class, 'exportPdf']);
     Route::get('/cirugias/dashboard/export/excel', [CirugiasUiController::class, 'exportExcel']);
 });

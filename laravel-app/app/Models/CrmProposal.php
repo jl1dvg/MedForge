@@ -19,6 +19,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property int $proposal_year
  * @property int $sequence
  * @property int|null $lead_id
+ * @property int|null $crm_opportunity_id
  * @property int|null $customer_id
  * @property string $title
  * @property string $status
@@ -43,6 +44,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property User|null $user
  * @property CrmCustomer|null $crm_customer
  * @property CrmLead|null $crm_lead
+ * @property CrmOpportunity|null $crm_opportunity
  * @property Collection|CrmProposalItem[] $crm_proposal_items
  *
  * @package App\Models
@@ -55,6 +57,7 @@ class CrmProposal extends Model
 		'proposal_year' => 'int',
 		'sequence' => 'int',
 		'lead_id' => 'int',
+		'crm_opportunity_id' => 'int',
 		'customer_id' => 'int',
 		'subtotal' => 'float',
 		'discount_total' => 'float',
@@ -76,6 +79,7 @@ class CrmProposal extends Model
 		'proposal_year',
 		'sequence',
 		'lead_id',
+		'crm_opportunity_id',
 		'customer_id',
 		'title',
 		'status',
@@ -109,6 +113,11 @@ class CrmProposal extends Model
 	public function crm_lead()
 	{
 		return $this->belongsTo(CrmLead::class, 'lead_id');
+	}
+
+	public function crm_opportunity()
+	{
+		return $this->belongsTo(CrmOpportunity::class, 'crm_opportunity_id');
 	}
 
 	public function crm_proposal_items()

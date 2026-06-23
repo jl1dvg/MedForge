@@ -1912,6 +1912,162 @@ class CirugiasDashboardService
         return array_intersect($solicitudLados, $protocoloLados) !== [];
     }
 
+    public function buildReportPayload(
+        string $start,
+        string $end,
+        string $sedeFilter = ''
+    ): array {
+        $realizadas = $this->getTotalCirugias($start, $end, '', '', $sedeFilter);
+        $trazabilidad = $this->getCirugiasFacturacionTrazabilidad($start, $end, '', '', $sedeFilter);
+        $facturadas = (int) ($trazabilidad['facturados'] ?? 0);
+        $pendienteFacturar = (int) ($trazabilidad['pendiente_facturar'] ?? 0);
+        $pendientePago = (int) ($trazabilidad['pendiente_pago'] ?? 0);
+        $produccionFacturada = (float) ($trazabilidad['produccion_facturada'] ?? 0);
+
+        $programacion = $this->getProgramacionKpis($start, $end, '', '', $sedeFilter);
+        $programadas = (int) ($programacion['programadas'] ?? 0);
+
+        $porMes = $this->getCirugiasPorMes($start, $end, '', '', $sedeFilter);
+        $labels = $porMes['labels'] ?? [];
+        $totalsArr = $porMes['totals'] ?? [];
+        $produccionMensual = [];
+        foreach ($labels as $i => $lbl) {
+            $produccionMensual[] = [
+                'label'      => $lbl,
+                'realizadas' => $totalsArr[$i] ?? 0,
+                'facturadas' => 0,
+            ];
+        }
+
+        $topProc = $this->getTopProcedimientos($start, $end, 10, '', '', $sedeFilter);
+        $topProcLabels = $topProc['labels'] ?? [];
+        $topProcTotals = $topProc['totals'] ?? [];
+        $topProcItems = [];
+        foreach ($topProcLabels as $i => $lbl) {
+            $topProcItems[] = ['label' => $lbl, 'total' => $topProcTotals[$i] ?? 0];
+        }
+
+        $topCir = $this->getTopCirujanos($start, $end, 10, '', '', $sedeFilter);
+        $topCirLabels = $topCir['labels'] ?? [];
+        $topCirTotals = $topCir['totals'] ?? [];
+        $topCirItems = [];
+        foreach ($topCirLabels as $i => $lbl) {
+            $topCirItems[] = ['name' => $lbl, 'realizadas' => $topCirTotals[$i] ?? 0];
+        }
+
+        $topSol = $this->getTopDoctoresSolicitudesRealizadas($start, $end, 10, '', '', $sedeFilter);
+        $topSolLabels = $topSol['labels'] ?? [];
+        $topSolTotals = $topSol['totals'] ?? [];
+        $topSolItems = [];
+        foreach ($topSolLabels as $i => $lbl) {
+            $topSolItems[] = ['name' => $lbl, 'total' => $topSolTotals[$i] ?? 0];
+        }
+
+        $convenio = $this->getCirugiasPorConvenio($start, $end, '', '', $sedeFilter);
+        $convLabels = $convenio['labels'] ?? [];
+        $convTotals = $convenio['totals'] ?? [];
+        $convenioItems = [];
+        foreach ($convLabels as $i => $lbl) {
+            $convenioItems[] = ['label' => $lbl, 'total' => $convTotals[$i] ?? 0];
+        }
+
+        $tatData   = $this->getTatRevisionProtocolos($start, $end, '', '', $sedeFilter);
+        $duracion  = $this->getDuracionPromedioMinutos($start, $end, '', '', $sedeFilter);
+        $reingreso = $this->getReingresoMismoDiagnostico($start, $end);
+
+        $trazabilidadDonut = [
+            ['label' => 'Facturadas',         'total' => $facturadas,       'color' => '#05825f'],
+            ['label' => 'Pendiente facturar',  'total' => $pendienteFacturar, 'color' => '#ffa800'],
+            ['label' => 'Pendiente pago',      'total' => $pendientePago,    'color' => '#3596f7'],
+        ];
+
+        $cumplimiento = $programadas > 0 ? (int) round($realizadas / $programadas * 100) : 0;
+        $avgByCase = $realizadas > 0 ? $produccionFacturada / $realizadas : 0;
+        $oportunidadEstimada = $pendienteFacturar * $avgByCase;
+        $moneyFmt = fn (float $v): string => '$' . number_format($v, 0, '.', ',');
+
+        $tatProm = (float) ($tatData['tat_promedio_horas'] ?? 0);
+        $tatMed  = (float) ($tatData['tat_mediana_horas'] ?? 0);
+        $tatP90  = (float) ($tatData['tat_p90_horas'] ?? 0);
+        $tatMuestra = (int) ($tatData['muestra'] ?? 0);
+
+        return [
+            'unit'        => 'cirugias',
+            'unitLabel'   => 'Cirugías',
+            'unitIcon'    => 'mdi-hospital-box-outline',
+            'generatedAt' => now()->format('d/m/Y H:i'),
+            'period'      => [
+                'label'     => $start . ' → ' . $end,
+                'fromLabel' => (new \DateTimeImmutable($start))->format('d/m/Y'),
+                'toLabel'   => (new \DateTimeImmutable($end))->format('d/m/Y'),
+            ],
+            'sede'        => ['label' => $sedeFilter ?: 'Todas las sedes'],
+            'synth'       => [
+                ['label' => 'Cirugías realizadas', 'value' => $realizadas,    'unit' => '',    'delta' => 0],
+                ['label' => 'Facturadas',           'value' => $facturadas,    'unit' => '',    'delta' => 0],
+                ['label' => 'Cumplimiento',         'value' => $cumplimiento,  'unit' => '%',   'delta' => 0],
+                ['label' => 'Producción facturada', 'value' => $moneyFmt($produccionFacturada), 'delta' => 0],
+            ],
+            'exec'        => [
+                'kpis'    => [
+                    ['cls' => 'ok',   'source' => 'Programación', 'label' => 'Programadas',        'value' => number_format($programadas),       'hint' => 'Cirugías agendadas en el período'],
+                    ['cls' => 'ok',   'source' => 'Quirófano',    'label' => 'Realizadas',          'value' => number_format($realizadas),        'hint' => 'Cumplimiento ' . $cumplimiento . '%'],
+                    ['cls' => 'warn', 'source' => 'Billing',      'label' => 'Pendiente facturar',  'value' => number_format($pendienteFacturar), 'hint' => 'Backlog de billing'],
+                    ['cls' => 'info', 'source' => 'Cartera',      'label' => 'Pendiente de cobro',  'value' => number_format($pendientePago),     'hint' => 'Facturadas no cobradas'],
+                ],
+                'flow'    => [
+                    ['key' => 'prog', 'cls' => 'ok',   'label' => 'Programadas', 'value' => $programadas,     'context' => 'En agenda quirúrgica',    'leak' => ['label' => 'No realizadas', 'count' => max(0, $programadas - $realizadas), 'amount' => 0]],
+                    ['key' => 'real', 'cls' => 'ok',   'label' => 'Realizadas',  'value' => $realizadas,      'context' => 'Completadas en quirófano', 'leak' => ['label' => 'Sin billing',   'count' => $pendienteFacturar, 'amount' => 0]],
+                    ['key' => 'fact', 'cls' => 'warn', 'label' => 'Facturadas',  'value' => $facturadas,      'context' => 'Con emisión de factura',   'leak' => ['label' => 'Pend. pago',    'count' => $pendientePago, 'amount' => 0]],
+                    ['key' => 'cobr', 'cls' => 'ok',   'label' => 'Cobradas',    'value' => max(0, $facturadas - $pendientePago), 'context' => 'Pagadas al corte', 'leak' => null],
+                ],
+                'links'   => [
+                    ['pct' => $programadas > 0 ? (int) round($realizadas / $programadas * 100)  : 0],
+                    ['pct' => $realizadas > 0  ? (int) round($facturadas / $realizadas * 100)   : 0],
+                    ['pct' => $facturadas > 0  ? (int) round(max(0, $facturadas - $pendientePago) / $facturadas * 100) : 0],
+                ],
+                'summary' => [
+                    'oportunidad' => $moneyFmt($oportunidadEstimada),
+                    'arrastre'    => number_format($pendienteFacturar) . ' cirugías sin facturar al corte',
+                    'sla'         => round($tatProm) . 'h promedio TAT protocolo',
+                ],
+                'actions' => [
+                    ['severity' => 'high',   'title' => 'Cerrar protocolos pendientes', 'metric' => number_format($pendienteFacturar) . ' pendientes', 'owner' => 'Coordinación quirúrgica', 'action' => 'Completar documentación para destrabar billing'],
+                    ['severity' => 'medium', 'title' => 'Emitir billing del backlog',   'metric' => $moneyFmt($oportunidadEstimada),                   'owner' => 'Facturación',            'action' => 'Priorizar cirugías realizadas sin factura'],
+                ],
+                'ledger'  => [
+                    ['label' => 'Producción facturada',  'value' => $moneyFmt($produccionFacturada), 'tone' => 'ok'],
+                    ['label' => 'Pendiente de cobro',    'value' => number_format($pendientePago) . ' registros', 'tone' => 'warn'],
+                    ['label' => 'Oportunidad estimada',  'value' => $moneyFmt($oportunidadEstimada), 'tone' => 'warn'],
+                ],
+            ],
+            'metrics'           => [
+                'solicitudes'       => $programadas,
+                'programadas'       => $programadas,
+                'realizadas'        => $realizadas,
+                'informadas'        => $facturadas,
+                'facturadas'        => $facturadas,
+                'pendienteFacturar' => $pendienteFacturar,
+                'pendientePagoN'    => $pendientePago,
+                'cumplimiento'      => $cumplimiento,
+                'duracionProm'      => (int) round((float) $duracion),
+                'tatProm'           => $tatProm,
+                'tatMed'            => $tatMed,
+                'tatP90'            => $tatP90,
+                'tatMuestra'        => $tatMuestra,
+                'reingreso'         => (int) ($reingreso['count'] ?? 0),
+            ],
+            'produccionMensual' => $produccionMensual,
+            'trazabilidad'      => $trazabilidadDonut,
+            'topProcedimientos' => $topProcItems,
+            'topProcIngreso'    => [],
+            'topCirujanos'      => $topCirItems,
+            'topSolicitantes'   => $topSolItems,
+            'porConvenio'       => $convenioItems,
+            'mixCategoria'      => [],
+        ];
+    }
+
     private function emptyProgramacionKpis(): array
     {
         return [

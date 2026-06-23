@@ -7,14 +7,11 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Backfills crm_opportunities.afiliacion_tipo from solicitud_procedimiento.
+ * Backfills crm_opportunities.afiliacion_tipo from patient_data.afiliacion.
  *
  * Resolution order per opportunity:
- *   1. Direct activity link (source_type=solicitud_procedimiento)
- *   2. Direct source on the opportunity
- *   3. Contact cedula → solicitud_procedimiento.hc_number  ← covers manual/whatsapp opps
- *   4. Examen source → consulta_examenes.hc_number → solicitud_procedimiento  ← covers examen opps
- *   5. hc_number (examen or cedula) → patient_data.afiliacion  ← direct fallback for all opps
+ *   1. Contact cedula → patient_data.hc_number
+ *   2. Examen source → consulta_examenes.hc_number → patient_data.hc_number
  *
  * Usage:
  *   php artisan crm:backfill-afiliacion            # process all
@@ -27,7 +24,7 @@ class CrmBackfillAfiliacionTipo extends Command
                             {--dry-run : Preview without writing}
                             {--chunk=200 : Records per batch}';
 
-    protected $description = 'Backfill crm_opportunities.afiliacion_tipo from the linked solicitud afiliacion';
+    protected $description = 'Backfill crm_opportunities.afiliacion_tipo from patient_data.afiliacion';
 
     public function handle(): int
     {
@@ -75,7 +72,7 @@ class CrmBackfillAfiliacionTipo extends Command
             });
 
         $this->info(sprintf(
-            '%s | Total: %d | Updated: %d | Skipped (no solicitud/no change): %d',
+            '%s | Total: %d | Updated: %d | Skipped (no patient_data/no change): %d',
             $dryRun ? '[DRY RUN]' : '[APPLIED]',
             $total,
             $updated,
@@ -87,58 +84,8 @@ class CrmBackfillAfiliacionTipo extends Command
 
     private function resolveAfiliacion(object $opp, array $contactCedulas): ?string
     {
-        // 1. Direct activity link to a solicitud
-        $solicitudId = DB::table('crm_activities')
-            ->where('opportunity_id', $opp->id)
-            ->where('source_type', 'solicitud_procedimiento')
-            ->whereNotNull('source_id')
-            ->orderByDesc('id')
-            ->value('source_id');
+        $hcForPatient = $contactCedulas[(int) ($opp->contact_id ?? 0)] ?? null;
 
-        // 2. Opportunity's own source
-        if ($solicitudId === null && $opp->source_type === 'solicitud_procedimiento' && $opp->source_id !== null) {
-            $solicitudId = $opp->source_id;
-        }
-
-        // 3. Contact cedula → most recent solicitud by hc_number
-        if ($solicitudId === null && isset($opp->contact_id)) {
-            $cedula = $contactCedulas[(int) $opp->contact_id] ?? null;
-            if ($cedula !== null) {
-                $solicitudId = DB::table('solicitud_procedimiento')
-                    ->where('hc_number', $cedula)
-                    ->orderByDesc('id')
-                    ->value('id');
-            }
-        }
-
-        // 4. Examen source → consulta_examenes.hc_number → solicitud_procedimiento
-        $examenHc = null;
-        if ($opp->source_type === 'consulta_examenes' && $opp->source_id !== null) {
-            $examenHc = DB::table('consulta_examenes')
-                ->where('id', (int) $opp->source_id)
-                ->value('hc_number');
-
-            if ($solicitudId === null && $examenHc !== null) {
-                $solicitudId = DB::table('solicitud_procedimiento')
-                    ->where('hc_number', $examenHc)
-                    ->orderByDesc('id')
-                    ->value('id');
-            }
-        }
-
-        // Try solicitud path first
-        if ($solicitudId !== null) {
-            $afiliacion = DB::table('solicitud_procedimiento')
-                ->where('id', (int) $solicitudId)
-                ->value('afiliacion');
-
-            if ($afiliacion !== null) {
-                return (string) $afiliacion;
-            }
-        }
-
-        // 5. patient_data direct lookup via hc_number (examen hc or contact cedula)
-        $hcForPatient = $examenHc ?? ($contactCedulas[(int) ($opp->contact_id ?? 0)] ?? null);
         if ($hcForPatient !== null) {
             $afiliacion = DB::table('patient_data')
                 ->where('hc_number', $hcForPatient)
@@ -146,6 +93,22 @@ class CrmBackfillAfiliacionTipo extends Command
 
             if ($afiliacion !== null) {
                 return (string) $afiliacion;
+            }
+        }
+
+        if ($opp->source_type === 'consulta_examenes' && $opp->source_id !== null) {
+            $hcForPatient = DB::table('consulta_examenes')
+                ->where('id', (int) $opp->source_id)
+                ->value('hc_number');
+
+            if ($hcForPatient !== null) {
+                $afiliacion = DB::table('patient_data')
+                    ->where('hc_number', $hcForPatient)
+                    ->value('afiliacion');
+
+                if ($afiliacion !== null) {
+                    return (string) $afiliacion;
+                }
             }
         }
 

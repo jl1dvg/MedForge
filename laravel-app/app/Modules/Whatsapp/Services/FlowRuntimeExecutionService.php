@@ -3,7 +3,10 @@
 namespace App\Modules\Whatsapp\Services;
 
 use App\Modules\Shared\Support\SettingsOptionResolver;
+use App\Modules\CRM\Services\CrmContactResolverService;
+use App\Modules\CRM\Services\CrmOpportunityService;
 use App\Models\WhatsappAutoresponderSession;
+use App\Models\WhatsappContactConsent;
 use App\Models\WhatsappConversation;
 use App\Models\WhatsappConversationAttribution;
 use App\Models\WhatsappHandoff;
@@ -19,6 +22,9 @@ class FlowRuntimeExecutionService
     private ?SettingsOptionResolver $settingsResolver = null;
     private int $sessionVersion = 0;
 
+    /** @var array<string, mixed> */
+    private array $currentFlowSettings = [];
+
     public function __construct(
         private readonly FlowmakerService           $flowmakerService = new FlowmakerService(),
         private readonly FlowmakerSandboxService    $sandboxService = new FlowmakerSandboxService(),
@@ -27,6 +33,7 @@ class FlowRuntimeExecutionService
         private readonly FlowSigcenterAgendaService $sigcenterAgendaService = new FlowSigcenterAgendaService(),
         private readonly FlowAiAgentPreviewService  $aiAgentPreviewService = new FlowAiAgentPreviewService(),
         private readonly WhatsappAppointmentReminderService $appointmentReminderService = new WhatsappAppointmentReminderService(),
+        private readonly WhatsappAuditService       $auditService = new WhatsappAuditService(),
     )
     {
     }
@@ -49,9 +56,25 @@ class FlowRuntimeExecutionService
             return $this->result(false, false, null, 0, false, 'empty_text');
         }
 
+        $waNumber = (string)($conversation->wa_number ?? '');
+        $flow = $this->sandboxService->getFlowPayload($waNumber)
+            ?? $this->flowmakerService->getActiveFlowPayload();
+        $this->currentFlowSettings = is_array($flow['settings'] ?? null) ? $flow['settings'] : [];
+
         if ((bool)($conversation->assigned_user_id ?? false)) {
             if (!$this->humanQueueIsOpen()) {
                 $this->releaseConversationToBot($conversation);
+                $offHoursMsg = trim((string) ($this->currentFlowSettings['off_hours_agent_release_message'] ?? ''));
+                if ($offHoursMsg === '') {
+                    $offHoursMsg = 'Nuestros agentes ya terminaron por hoy 🌙 Pero puedo ayudarte ahora mismo.';
+                }
+                $this->sendFlowMessage($conversation, [
+                    'type'    => 'buttons',
+                    'body'    => $offHoursMsg,
+                    'buttons' => [
+                        ['id' => 'menu', 'title' => '📋 Ver opciones'],
+                    ],
+                ], []);
             } else {
                 return $this->result(false, false, null, 0, false, 'conversation_assigned');
             }
@@ -88,10 +111,6 @@ class FlowRuntimeExecutionService
             ], []);
             return $this->result(true, false, 'non_text_reply', 1, false, 'non_text_message');
         }
-
-        $waNumber = (string)($conversation->wa_number ?? '');
-        $flow = $this->sandboxService->getFlowPayload($waNumber)
-            ?? $this->flowmakerService->getActiveFlowPayload();
 
         $session = WhatsappAutoresponderSession::query()
             ->where('conversation_id', $conversation->id)
@@ -251,6 +270,17 @@ class FlowRuntimeExecutionService
                 continue;
             }
 
+            $this->auditService->log(
+                eventType: 'bot_scenario_matched',
+                severity: 'info',
+                conversationId: (int) $conversation->id,
+                messageId: (int) $inboundMessage->id,
+                waNumber: (string) $conversation->wa_number,
+                summary: 'Scenario matched: ' . ($scenario['id'] ?? 'unknown'),
+                scenarioId: (string) ($scenario['id'] ?? ''),
+                payload: ['scenario_id' => $scenario['id'] ?? null, 'inbound_text' => mb_substr($text, 0, 200)],
+            );
+
             $run = $this->executeActions($scenario['actions'] ?? [], $context, $conversation, $inboundMessage, $text, (string)($scenario['id'] ?? ''));
             $context = $run['context'];
 
@@ -264,6 +294,9 @@ class FlowRuntimeExecutionService
                 $messagePayload,
             );
 
+            if (!empty($context['off_hours_handoff_pending'])) {
+                $this->deferHandoffToBusinessHours($conversation, $context);
+            }
             if (!empty($context['handoff_requested'])) {
                 $this->markConversationForHandoff($conversation, $scenario, $context);
             }
@@ -281,6 +314,17 @@ class FlowRuntimeExecutionService
                 continue;
             }
 
+            $this->auditService->log(
+                eventType: 'bot_scenario_matched',
+                severity: 'info',
+                conversationId: (int) $conversation->id,
+                messageId: (int) $inboundMessage->id,
+                waNumber: (string) $conversation->wa_number,
+                summary: 'Fallback scenario matched: ' . ($scenario['id'] ?? 'unknown'),
+                scenarioId: (string) ($scenario['id'] ?? ''),
+                payload: ['scenario_id' => $scenario['id'] ?? null, 'is_fallback' => true, 'inbound_text' => mb_substr($text, 0, 200)],
+            );
+
             $run = $this->executeActions($scenario['actions'] ?? [], $context, $conversation, $inboundMessage, $text, (string)($scenario['id'] ?? 'fallback'));
             $context = $run['context'];
 
@@ -294,6 +338,9 @@ class FlowRuntimeExecutionService
                 $messagePayload,
             );
 
+            if (!empty($context['off_hours_handoff_pending'])) {
+                $this->deferHandoffToBusinessHours($conversation, $context);
+            }
             if (!empty($context['handoff_requested'])) {
                 $this->markConversationForHandoff($conversation, $scenario, $context);
             }
@@ -986,11 +1033,32 @@ class FlowRuntimeExecutionService
             }
 
             if ($type === 'store_consent') {
-                $context['consent'] = (bool)($action['value'] ?? true);
+                $consentValue = (bool)($action['value'] ?? true);
+                $context['consent'] = $consentValue;
+                $this->persistContactConsent($conversation, $context, $consentValue);
                 continue;
             }
 
             if ($type === 'handoff_agent') {
+                if (!$this->humanQueueIsOpen()) {
+                    $offHoursMsg = trim((string) ($action['off_hours_message']
+                        ?? $this->currentFlowSettings['off_hours_handoff_message']
+                        ?? ''));
+                    if ($offHoursMsg === '') {
+                        $offHoursMsg = 'En este momento nuestros agentes no están disponibles 🕐 En el próximo horario de atención un agente te ayudará.';
+                    }
+                    $this->sendFlowMessage($conversation, ['type' => 'text', 'body' => $offHoursMsg], $context);
+                    $messagesSent++;
+                    $context['off_hours_handoff_pending'] = true;
+                    if (isset($action['role_id']) && is_numeric($action['role_id'])) {
+                        $context['handoff_role_id'] = (int)$action['role_id'];
+                    }
+                    if (isset($action['note']) && is_string($action['note'])) {
+                        $context['handoff_note'] = $this->renderPlaceholders($action['note'], $context);
+                    }
+                    continue;
+                }
+
                 $context['handoff_requested'] = true;
                 if (isset($action['role_id']) && is_numeric($action['role_id'])) {
                     $context['handoff_role_id'] = (int)$action['role_id'];
@@ -2301,6 +2369,32 @@ class FlowRuntimeExecutionService
         return $this->settingsResolver->getOptions($keys);
     }
 
+    private function persistContactConsent(WhatsappConversation $conversation, array $context, bool $accepted): void
+    {
+        $cedula = trim((string)($context['cedula'] ?? $context['identifier'] ?? ''));
+        if ($cedula === '' || !Schema::hasTable('whatsapp_contact_consent')) {
+            return;
+        }
+
+        $waNumber = (string)$conversation->wa_number;
+        $status = $accepted ? 'accepted' : 'declined';
+
+        try {
+            WhatsappContactConsent::updateOrCreate(
+                ['wa_number' => $waNumber, 'cedula' => $cedula],
+                [
+                    'patient_hc_number'   => $context['patient_hc_number'] ?? $conversation->patient_hc_number ?? null,
+                    'patient_full_name'   => $context['patient_full_name'] ?? null,
+                    'consent_status'      => $status,
+                    'consent_source'      => 'whatsapp',
+                    'consent_responded_at' => now(),
+                ]
+            );
+        } catch (\Throwable $e) {
+            report($e);
+        }
+    }
+
     /**
      * @param array<string, mixed> $context
      * @return array<string, mixed>
@@ -2353,6 +2447,27 @@ class FlowRuntimeExecutionService
             }
         }
 
+        $crmOpportunityId = $this->upsertCrmOpportunityLeadCapture(
+            conversation: $conversation,
+            context: $context,
+            identifier: $identifier,
+            leadSource: $leadSource,
+            leadSourceDetail: $leadSourceDetail,
+        );
+        if ($crmOpportunityId !== null) {
+            $context['crm_opportunity_id'] = (string)$crmOpportunityId;
+
+            if ($attribution !== null) {
+                $meta = is_array($attribution->meta ?? null) ? $attribution->meta : [];
+                $meta['lead_capture'] = array_merge(
+                    is_array($meta['lead_capture'] ?? null) ? $meta['lead_capture'] : [],
+                    ['crm_opportunity_id' => $crmOpportunityId]
+                );
+                $attribution->meta = $meta;
+                $attribution->save();
+            }
+        }
+
         if ($email !== '') {
             $context['lead_email'] = $email;
         }
@@ -2365,6 +2480,47 @@ class FlowRuntimeExecutionService
         $context['lead_capture_saved'] = true;
 
         return $context;
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     */
+    private function upsertCrmOpportunityLeadCapture(
+        WhatsappConversation $conversation,
+        array $context,
+        string $identifier,
+        string $leadSource,
+        string $leadSourceDetail,
+    ): ?int {
+        if (!Schema::hasTable('crm_contacts')
+            || !Schema::hasTable('crm_opportunities')
+            || !Schema::hasTable('crm_activities')
+        ) {
+            return null;
+        }
+
+        $name = trim((string)data_get($context, 'patient.full_name', ''));
+        if ($name === '') {
+            $name = trim((string)($conversation->patient_full_name ?? $conversation->display_name ?? $conversation->wa_number));
+        }
+
+        $contact = app(CrmContactResolverService::class)->resolve(
+            phone: trim((string)$conversation->wa_number),
+            name: $name !== '' ? $name : trim((string)$conversation->wa_number),
+            cedula: $identifier !== '' ? $identifier : null,
+            source: 'whatsapp',
+        );
+
+        $titleDetail = $leadSourceDetail !== '' ? $leadSourceDetail : ($leadSource !== '' ? $leadSource : 'captura automática');
+        $opportunity = app(CrmOpportunityService::class)->upsertFromEvent(
+            contact: $contact,
+            title: 'Lead WhatsApp: ' . $titleDetail,
+            source: 'whatsapp',
+            sourceId: (int)$conversation->id,
+            sourceType: 'whatsapp_flow_capture',
+        );
+
+        return (int)$opportunity->id;
     }
 
     private function conversationAttribution(WhatsappConversation $conversation): ?WhatsappConversationAttribution
@@ -2782,36 +2938,49 @@ class FlowRuntimeExecutionService
         $body = $this->normalizeRenderedMessageText(
             $this->renderPlaceholders((string)($message['body'] ?? ''), $context)
         );
-        $transportResult = match ($type) {
-            'buttons' => $this->transport->sendInteractiveButtons(
-                $config['phone_number_id'],
-                $config['access_token'],
-                $config['api_version'],
-                $recipient,
-                $body,
-                is_array($message['buttons'] ?? null) ? $message['buttons'] : [],
-                isset($message['header']) ? $this->normalizeRenderedMessageText($this->renderPlaceholders((string)$message['header'], $context)) : null,
-                isset($message['footer']) ? $this->normalizeRenderedMessageText($this->renderPlaceholders((string)$message['footer'], $context)) : null,
-            ),
-            'list' => $this->transport->sendInteractiveList(
-                $config['phone_number_id'],
-                $config['access_token'],
-                $config['api_version'],
-                $recipient,
-                $body,
-                is_array($message['sections'] ?? null) ? $message['sections'] : [],
-                (string)($message['button_text'] ?? $message['button'] ?? 'Seleccionar'),
-                isset($message['footer']) ? $this->normalizeRenderedMessageText($this->renderPlaceholders((string)$message['footer'], $context)) : null,
-            ),
-            default => $this->transport->sendText(
-                $config['phone_number_id'],
-                $config['access_token'],
-                $config['api_version'],
-                $recipient,
-                $body,
-                (bool)($message['preview_url'] ?? false),
-            ),
-        };
+        try {
+            $transportResult = match ($type) {
+                'buttons' => $this->transport->sendInteractiveButtons(
+                    $config['phone_number_id'],
+                    $config['access_token'],
+                    $config['api_version'],
+                    $recipient,
+                    $body,
+                    is_array($message['buttons'] ?? null) ? $message['buttons'] : [],
+                    isset($message['header']) ? $this->normalizeRenderedMessageText($this->renderPlaceholders((string)$message['header'], $context)) : null,
+                    isset($message['footer']) ? $this->normalizeRenderedMessageText($this->renderPlaceholders((string)$message['footer'], $context)) : null,
+                ),
+                'list' => $this->transport->sendInteractiveList(
+                    $config['phone_number_id'],
+                    $config['access_token'],
+                    $config['api_version'],
+                    $recipient,
+                    $body,
+                    is_array($message['sections'] ?? null) ? $message['sections'] : [],
+                    (string)($message['button_text'] ?? $message['button'] ?? 'Seleccionar'),
+                    isset($message['footer']) ? $this->normalizeRenderedMessageText($this->renderPlaceholders((string)$message['footer'], $context)) : null,
+                ),
+                default => $this->transport->sendText(
+                    $config['phone_number_id'],
+                    $config['access_token'],
+                    $config['api_version'],
+                    $recipient,
+                    $body,
+                    (bool)($message['preview_url'] ?? false),
+                ),
+            };
+        } catch (\Throwable $e) {
+            $this->auditService->log(
+                eventType: 'bot_response_failed',
+                severity: 'error',
+                conversationId: (int) $conversation->id,
+                waNumber: (string) $conversation->wa_number,
+                summary: 'Error al enviar mensaje bot a Meta API',
+                payload: ['message_type' => $type, 'body_preview' => mb_substr($body, 0, 200)],
+                errorMessage: $e->getMessage(),
+            );
+            throw $e;
+        }
 
         $this->persistOutbound($conversation, $type === 'buttons' || $type === 'list' ? 'interactive' : $type, $body, $transportResult);
     }
@@ -2853,6 +3022,7 @@ class FlowRuntimeExecutionService
                 'conversation_id' => $conversation->id,
                 'wa_message_id' => $transportResult['wa_message_id'],
                 'direction' => 'outbound',
+                'sender_type' => 'bot',
                 'message_type' => $type,
                 'body' => $body !== '' ? $body : null,
                 'raw_payload' => $transportResult['raw'],
@@ -2902,6 +3072,27 @@ class FlowRuntimeExecutionService
      * @param array<string, mixed> $scenario
      * @param array<string, mixed> $context
      */
+    /**
+     * @param array<string, mixed> $context
+     */
+    private function deferHandoffToBusinessHours(WhatsappConversation $conversation, array $context): void
+    {
+        $note = 'Handoff solicitado fuera de horario laboral. Se activará en el próximo turno.';
+        if (!empty($context['handoff_note']) && is_string($context['handoff_note'])) {
+            $note .= ' · ' . trim($context['handoff_note']);
+        }
+
+        $conversation->fill([
+            'needs_human'          => true,
+            'handoff_notes'        => $note,
+            'handoff_role_id'      => isset($context['handoff_role_id']) && is_numeric($context['handoff_role_id'])
+                ? (int) $context['handoff_role_id']
+                : null,
+            'handoff_requested_at' => now(),
+        ])->save();
+        // No se llama syncActiveHandoffRecord() — sin notificaciones a agentes
+    }
+
     private function markConversationForHandoff(WhatsappConversation $conversation, array $scenario, array $context): void
     {
         $note = 'Escalado desde Flowmaker';
@@ -3301,6 +3492,16 @@ class FlowRuntimeExecutionService
                 'wa_number'      => $waNumber,
                 'loaded_version' => $this->sessionVersion,
             ]);
+            $this->auditService->log(
+                eventType: 'bot_session_conflict',
+                severity: 'critical',
+                conversationId: (int) $conversation->id,
+                waNumber: $waNumber,
+                summary: 'Conflicto de sesión: mensaje descartado por optimistic lock',
+                scenarioId: $scenarioId,
+                nodeId: $nodeId,
+                payload: ['loaded_version' => $this->sessionVersion, 'next_version' => $nextVersion],
+            );
             return;
         }
 

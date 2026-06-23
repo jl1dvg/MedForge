@@ -700,12 +700,12 @@ body:has(.wad) { overflow: hidden; }
         <article class="wad-panel wad-panel--bandeja">
             <header class="wad-panel-head">
                 <h3><i class="mdi mdi-inbox-arrow-down-outline"></i>Bandeja en vivo</h3>
-                <a class="wad-panel-link" href="/v2/whatsapp/chat">Ir al chat <i class="mdi mdi-arrow-right-thin"></i></a>
+                <a class="wad-panel-link" href="/v3/whatsapp/chat">Ir al chat <i class="mdi mdi-arrow-right-thin"></i></a>
             </header>
             <div class="wad-panel-body wad-inbox">
                 @foreach($inbox as $b)
                     @php $t = $tone[$b['tone']] ?? $tone['primary']; $sevTxt = $b['sev'] === 'danger' ? 'actuar' : ($b['sev'] === 'warning' ? 'vigilar' : 'ok'); @endphp
-                    <a class="wad-ib-row" href="/v2/whatsapp/chat">
+                    <a class="wad-ib-row" href="/v3/whatsapp/chat">
                         <span class="wad-ib-tile" style="background:{{ $t['bg'] }};color:{{ $t['fg'] }}"><i class="mdi {{ $b['icon'] }}"></i></span>
                         <div class="wad-ib-main">
                             <p class="wad-ib-label">{{ $b['label'] }}</p>

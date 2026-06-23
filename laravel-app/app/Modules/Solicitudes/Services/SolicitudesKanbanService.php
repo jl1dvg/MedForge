@@ -27,7 +27,10 @@ class SolicitudesKanbanService
     private const TURNERO_STATE_MAP = [
         'recibido'    => 'Recibido',
         'recibida'    => 'Recibido',
-        'llamado'     => 'Llamado',
+        'llamado'     => 'Turno llamado',
+        'turno llamado' => 'Turno llamado',
+        'turno_llamado' => 'Turno llamado',
+        'turno-llamado' => 'Turno llamado',
         'en atencion' => 'En atención',
         'en atención' => 'En atención',
         'atendido'    => 'Atendido',

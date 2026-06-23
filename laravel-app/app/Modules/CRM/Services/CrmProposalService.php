@@ -21,14 +21,21 @@ class CrmProposalService
 
         $proposal = DB::table('crm_proposals as p')
             ->leftJoin('crm_leads as l', 'l.id', '=', 'p.lead_id')
+            ->leftJoin('crm_opportunities as o', 'o.id', '=', 'p.crm_opportunity_id')
+            ->leftJoin('crm_contacts as contact', 'contact.id', '=', 'o.contact_id')
             ->leftJoin('crm_customers as c', 'c.id', '=', 'p.customer_id')
             ->where('p.id', $id)
             ->select([
                 'p.*',
-                'l.name as lead_name',
-                'l.email as lead_email',
-                'l.phone as lead_phone',
-                'l.hc_number as lead_hc_number',
+                DB::raw('COALESCE(l.name, contact.name) as lead_name'),
+                DB::raw('COALESCE(l.email, contact.email) as lead_email'),
+                DB::raw('COALESCE(l.phone, contact.phone) as lead_phone'),
+                DB::raw('COALESCE(l.hc_number, contact.cedula) as lead_hc_number'),
+                'o.title as opportunity_title',
+                'o.stage as opportunity_stage',
+                'o.source as opportunity_source',
+                'o.source_id as opportunity_source_id',
+                'o.source_type as opportunity_source_type',
                 'c.name as customer_name',
             ])
             ->first();
@@ -144,6 +151,18 @@ class CrmProposalService
             }
         }
 
+        if (!Schema::hasColumn('crm_proposals', 'crm_opportunity_id')) {
+            try {
+                Schema::table('crm_proposals', function ($table): void {
+                    $table->unsignedBigInteger('crm_opportunity_id')->nullable()->index()->after('lead_id');
+                });
+            } catch (Throwable) {
+                if (!Schema::hasColumn('crm_proposals', 'crm_opportunity_id')) {
+                    throw new RuntimeException('No se pudo preparar el vínculo de oportunidad en propuestas', 500);
+                }
+            }
+        }
+
         if (!Schema::hasTable('crm_proposal_activity')) {
             try {
                 DB::statement(
@@ -179,6 +198,14 @@ class CrmProposalService
      */
     private function resolveSolicitudId(array $proposal): ?int
     {
+        $opportunityId = (int) ($proposal['crm_opportunity_id'] ?? 0);
+        if ($opportunityId > 0) {
+            $solicitudId = $this->resolveSolicitudIdByOpportunity($opportunityId);
+            if ($solicitudId !== null) {
+                return $solicitudId;
+            }
+        }
+
         $leadId = (int) ($proposal['lead_id'] ?? 0);
         if ($leadId <= 0 || !Schema::hasTable('solicitud_crm_detalles')) {
             return null;
@@ -197,6 +224,14 @@ class CrmProposalService
      */
     private function resolveExamenId(array $proposal): ?int
     {
+        $opportunityId = (int) ($proposal['crm_opportunity_id'] ?? 0);
+        if ($opportunityId > 0) {
+            $examenId = $this->resolveExamenIdByOpportunity($opportunityId);
+            if ($examenId !== null) {
+                return $examenId;
+            }
+        }
+
         $leadId = (int) ($proposal['lead_id'] ?? 0);
         if ($leadId <= 0 || !Schema::hasTable('examen_crm_detalles')) {
             return null;
@@ -208,6 +243,56 @@ class CrmProposalService
             ->first(['examen_id']);
 
         return $row ? (int) $row->examen_id : null;
+    }
+
+    private function resolveSolicitudIdByOpportunity(int $opportunityId): ?int
+    {
+        if (Schema::hasTable('solicitud_procedimiento') && Schema::hasColumn('solicitud_procedimiento', 'crm_opportunity_id')) {
+            $id = DB::table('solicitud_procedimiento')
+                ->where('crm_opportunity_id', $opportunityId)
+                ->orderByDesc('id')
+                ->value('id');
+            if ($id !== null) {
+                return (int) $id;
+            }
+        }
+
+        if (Schema::hasTable('solicitud_crm_detalles') && Schema::hasColumn('solicitud_crm_detalles', 'crm_opportunity_id')) {
+            $id = DB::table('solicitud_crm_detalles')
+                ->where('crm_opportunity_id', $opportunityId)
+                ->orderByDesc('solicitud_id')
+                ->value('solicitud_id');
+            if ($id !== null) {
+                return (int) $id;
+            }
+        }
+
+        return null;
+    }
+
+    private function resolveExamenIdByOpportunity(int $opportunityId): ?int
+    {
+        if (Schema::hasTable('consulta_examenes') && Schema::hasColumn('consulta_examenes', 'crm_opportunity_id')) {
+            $id = DB::table('consulta_examenes')
+                ->where('crm_opportunity_id', $opportunityId)
+                ->orderByDesc('id')
+                ->value('id');
+            if ($id !== null) {
+                return (int) $id;
+            }
+        }
+
+        if (Schema::hasTable('examen_crm_detalles') && Schema::hasColumn('examen_crm_detalles', 'crm_opportunity_id')) {
+            $id = DB::table('examen_crm_detalles')
+                ->where('crm_opportunity_id', $opportunityId)
+                ->orderByDesc('examen_id')
+                ->value('examen_id');
+            if ($id !== null) {
+                return (int) $id;
+            }
+        }
+
+        return null;
     }
 
     /**

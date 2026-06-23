@@ -17,6 +17,7 @@ use App\Modules\Examenes\Services\NasImagenesService;
 use App\Modules\Examenes\Services\ImagenesSigcenterIndexService;
 use App\Modules\Examenes\Services\SigcenterImagenesService;
 use App\Modules\Reporting\Services\PdfRenderer;
+use App\Modules\Reporting\Support\ImagenesDefaultFirmante;
 use App\Modules\Shared\Support\LegacyPermissionResolver;
 use Illuminate\Support\Facades\Auth;
 use DateTimeImmutable;
@@ -25,6 +26,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Models\BillingMainModel;
 use Models\BillingProcedimientosModel;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
@@ -35,7 +37,6 @@ use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Models\ExamenModel;
-use Modules\CRM\Services\LeadConfigurationService;
 use Symfony\Component\HttpFoundation\Response;
 use Services\PreviewService;
 use Throwable;
@@ -43,8 +44,8 @@ use Throwable;
 class ExamenesParityController
 {
     private LegacyExamenesBridge $bridge;
-    private ExamenesParityService $native;
-    private ExamenesPrefacturaService $prefactura;
+    private ?ExamenesParityService $native = null;
+    private ?ExamenesPrefacturaService $prefactura = null;
     private ExamenesReportingService $reporting;
     private ImagenesUiService $imagenesUi;
     private SigcenterImagenesService $sigcenterImagenesService;
@@ -56,11 +57,31 @@ class ExamenesParityController
     {
         $pdo = DB::connection()->getPdo();
         $this->bridge = new LegacyExamenesBridge();
-        $this->native = new ExamenesParityService($pdo);
-        $this->prefactura = new ExamenesPrefacturaService($pdo);
         $this->reporting = new ExamenesReportingService($pdo);
         $this->imagenesUi = new ImagenesUiService($pdo);
         $this->sigcenterImagenesService = new SigcenterImagenesService();
+    }
+
+    private function native(): ExamenesParityService
+    {
+        if ($this->native instanceof ExamenesParityService) {
+            return $this->native;
+        }
+
+        $this->native = new ExamenesParityService(DB::connection()->getPdo());
+
+        return $this->native;
+    }
+
+    private function prefacturaService(): ExamenesPrefacturaService
+    {
+        if ($this->prefactura instanceof ExamenesPrefacturaService) {
+            return $this->prefactura;
+        }
+
+        $this->prefactura = new ExamenesPrefacturaService(DB::connection()->getPdo());
+
+        return $this->prefactura;
     }
 
     public function kanbanData(Request $request): Response
@@ -68,7 +89,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'kanbanData',
-            fn(): array => $this->native->kanbanData($request->all())
+            fn(): array => $this->native()->kanbanData($request->all())
         );
     }
 
@@ -77,7 +98,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'enviarCoberturaMail',
-            fn(): array => $this->prefactura->sendCoberturaMail(
+            fn(): array => $this->prefacturaService()->sendCoberturaMail(
                 $this->payload($request),
                 $request->file('attachment'),
                 (is_numeric(Auth::id()) ? (int) Auth::id() : null)
@@ -130,7 +151,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'actualizarEstado',
-            fn(): array => $this->native->actualizarEstado($request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null))
+            fn(): array => $this->native()->actualizarEstado($request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null))
         );
     }
 
@@ -148,7 +169,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'derivacionPreseleccion',
-            fn(): array => $this->native->derivacionPreseleccion($request->all())
+            fn(): array => $this->native()->derivacionPreseleccion($request->all())
         );
     }
 
@@ -157,7 +178,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'guardarDerivacionPreseleccion',
-            fn(): array => $this->native->guardarDerivacionPreseleccion($request->all())
+            fn(): array => $this->native()->guardarDerivacionPreseleccion($request->all())
         );
     }
 
@@ -168,7 +189,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'apiEstadoGet',
-            fn(): array => $this->native->apiEstadoGet(is_scalar($hcNumber) ? (string) $hcNumber : null)
+            fn(): array => $this->native()->apiEstadoGet(is_scalar($hcNumber) ? (string) $hcNumber : null)
         );
     }
 
@@ -177,7 +198,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'apiEstadoPost',
-            fn(): array => $this->native->apiEstadoPost($request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null))
+            fn(): array => $this->native()->apiEstadoPost($request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null))
         );
     }
 
@@ -186,7 +207,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'turneroData',
-            fn(): array => $this->native->turneroData($request->query())
+            fn(): array => $this->native()->turneroData($request->query())
         );
     }
 
@@ -199,7 +220,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'derivacionDetalle',
-            fn(): array => $this->native->derivacionDetalle(
+            fn(): array => $this->native()->derivacionDetalle(
                 is_scalar($hcNumber) ? (string) $hcNumber : null,
                 is_scalar($formId) ? (string) $formId : null,
                 is_scalar($examenId) ? (int) $examenId : null,
@@ -213,7 +234,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'turneroLlamar',
-            fn(): array => $this->native->turneroLlamar($request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null))
+            fn(): array => $this->native()->turneroLlamar($request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null))
         );
     }
 
@@ -222,7 +243,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'crmResumen',
-            fn(): array => $this->native->crmResumen($id),
+            fn(): array => $this->native()->crmResumen($id),
             [$id]
         );
     }
@@ -232,7 +253,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'crmOptions',
-            fn(): array => $this->native->crmOptions()
+            fn(): array => $this->native()->crmOptions()
         );
     }
 
@@ -311,7 +332,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'crmGuardarDetalles',
-            fn(): array => $this->native->crmGuardarDetalles($id, $request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null)),
+            fn(): array => $this->native()->crmGuardarDetalles($id, $request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null)),
             [$id]
         );
     }
@@ -321,7 +342,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'crmBootstrap',
-            fn(): array => $this->native->crmBootstrap(
+            fn(): array => $this->native()->crmBootstrap(
                 $id,
                 $request->all(),
                 (is_numeric(Auth::id()) ? (int) Auth::id() : null),
@@ -336,7 +357,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'crmChecklistState',
-            fn(): array => $this->native->crmChecklistState($id, $this->sessionPermissions($request)),
+            fn(): array => $this->native()->crmChecklistState($id, $this->sessionPermissions($request)),
             [$id]
         );
     }
@@ -346,7 +367,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'crmActualizarChecklist',
-            fn(): array => $this->native->crmActualizarChecklist(
+            fn(): array => $this->native()->crmActualizarChecklist(
                 $id,
                 $request->all(),
                 (is_numeric(Auth::id()) ? (int) Auth::id() : null),
@@ -361,7 +382,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'crmAgregarNota',
-            fn(): array => $this->native->crmAgregarNota($id, $request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null)),
+            fn(): array => $this->native()->crmAgregarNota($id, $request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null)),
             [$id]
         );
     }
@@ -371,7 +392,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'crmEnviarWhatsapp',
-            fn(): array => $this->native->crmEnviarWhatsapp($id, $request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null)),
+            fn(): array => $this->native()->crmEnviarWhatsapp($id, $request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null)),
             [$id]
         );
     }
@@ -381,7 +402,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'crmEnviarEmail',
-            fn(): array => $this->native->crmEnviarEmail($id, $request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null)),
+            fn(): array => $this->native()->crmEnviarEmail($id, $request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null)),
             [$id]
         );
     }
@@ -391,7 +412,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'crmCrearPropuesta',
-            fn(): array => $this->native->crmCrearPropuesta($id, $request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null)),
+            fn(): array => $this->native()->crmCrearPropuesta($id, $request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null)),
             [$id]
         );
     }
@@ -401,7 +422,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'crmRegistrarBloqueo',
-            fn(): array => $this->native->crmRegistrarBloqueo($id, $request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null)),
+            fn(): array => $this->native()->crmRegistrarBloqueo($id, $request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null)),
             [$id]
         );
     }
@@ -411,7 +432,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'crmGuardarTarea',
-            fn(): array => $this->native->crmGuardarTarea($id, $request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null)),
+            fn(): array => $this->native()->crmGuardarTarea($id, $request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null)),
             [$id]
         );
     }
@@ -421,7 +442,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'crmActualizarTarea',
-            fn(): array => $this->native->crmActualizarTarea($id, $request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null)),
+            fn(): array => $this->native()->crmActualizarTarea($id, $request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null)),
             [$id]
         );
     }
@@ -431,7 +452,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'crmSubirAdjunto',
-            fn(): array => $this->native->crmSubirAdjunto(
+            fn(): array => $this->native()->crmSubirAdjunto(
                 $id,
                 $request->file('archivo'),
                 is_scalar($request->input('descripcion')) ? (string) $request->input('descripcion') : null,
@@ -460,7 +481,7 @@ class ExamenesParityController
         }
 
         try {
-            $viewData = $this->prefactura->buildPrefacturaViewData(
+            $viewData = $this->prefacturaService()->buildPrefacturaViewData(
                 $hcNumber,
                 $formId,
                 $resolvedExamenId,
@@ -503,64 +524,96 @@ class ExamenesParityController
             ], 422);
         }
 
-        $nasContext = $this->resolveNasContext($hcNumber, $formId);
-        $resolvedHcNumber = $nasContext['hc_number'];
-        $resolvedFormId = $nasContext['form_id'];
+        try {
+            $result = $this->resolveImagenesNasFilesPayload($hcNumber, $formId, false);
 
-        if (!$nasContext['has_image_context']) {
-            $probeError = null;
-            $probeFiles = $this->getSigcenterFiles($formId, $hcNumber, false, $probeError);
-            if ($probeFiles !== []) {
-                $files = array_map(function (array $file) use ($hcNumber, $formId): array {
-                    $name = trim((string) ($file['name'] ?? ''));
-                    $file['url'] = $name === ''
-                        ? ''
-                        : '/v2/imagenes/examenes-realizados/nas/file?hc_number=' . rawurlencode($hcNumber)
-                            . '&form_id=' . rawurlencode($formId)
-                            . '&file=' . rawurlencode($name);
+            return response()->json([
+                'success' => $result['error'] === null,
+                'files' => $result['files'],
+                'error' => $result['error'],
+                'message' => $result['message'],
+                'resolved_form_id' => $result['resolved_form_id'],
+                'resolved_hc_number' => $result['resolved_hc_number'],
+            ]);
+        } catch (Throwable $e) {
+            Log::error('imagenes.v2.nas_list.error', [
+                'form_id' => $formId,
+                'hc_number' => $hcNumber,
+                'error' => $e->getMessage(),
+            ]);
 
-                    return $file;
-                }, $probeFiles);
+            return response()->json([
+                'success' => false,
+                'files' => [],
+                'error' => 'No se pudo consultar los archivos del examen.',
+                'resolved_form_id' => $formId,
+                'resolved_hc_number' => $hcNumber,
+            ], 200);
+        }
+    }
 
-                return response()->json([
-                    'success' => true,
-                    'files' => $files,
-                    'error' => null,
-                    'resolved_form_id' => $formId,
-                    'resolved_hc_number' => $hcNumber,
-                ]);
+    public function imagenesNasRecheck(Request $request): Response
+    {
+        if (!Auth::check()) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Sesión expirada',
+            ], 401);
+        }
+
+        $payload = $this->payload($request);
+        $hcNumber = trim((string) ($payload['hc_number'] ?? ''));
+        $formId = trim((string) ($payload['form_id'] ?? ''));
+        if ($hcNumber === '' || $formId === '') {
+            return response()->json([
+                'success' => false,
+                'error' => 'Faltan parámetros para rechequear imágenes.',
+            ], 422);
+        }
+
+        try {
+            $result = $this->resolveImagenesNasFilesPayload($hcNumber, $formId, true);
+            $files = is_array($result['files'] ?? null) ? $result['files'] : [];
+            $found = count($files) > 0;
+            $claim = null;
+
+            if ($found) {
+                $this->closeImagenesFileClaim($formId, $hcNumber);
+            } elseif (($result['error'] ?? null) === null && (bool) ($payload['create_claim'] ?? false)) {
+                $claim = $this->storeImagenesFileClaim($payload, $result);
             }
 
             return response()->json([
-                'success' => true,
-                'files' => [],
-                'error' => null,
-                'message' => 'No existe un procedimiento de imagenes asociado a este examen.',
-                'resolved_form_id' => $resolvedFormId,
-                'resolved_hc_number' => $resolvedHcNumber,
+                'success' => ($result['error'] ?? null) === null,
+                'found' => $found,
+                'files' => $files,
+                'files_count' => count($files),
+                'claim' => $claim,
+                'can_claim' => !$found && ($result['error'] ?? null) === null,
+                'error' => $result['error'] ?? null,
+                'message' => $result['message'] ?? null,
+                'resolved_form_id' => $result['resolved_form_id'] ?? $formId,
+                'resolved_hc_number' => $result['resolved_hc_number'] ?? $hcNumber,
             ]);
+        } catch (Throwable $e) {
+            Log::error('imagenes.v2.nas_recheck.error', [
+                'form_id' => $formId,
+                'hc_number' => $hcNumber,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'found' => false,
+                'files' => [],
+                'files_count' => 0,
+                'claim' => null,
+                'can_claim' => false,
+                'error' => 'No se pudo verificar el repositorio de imágenes.',
+                'resolved_form_id' => $formId,
+                'resolved_hc_number' => $hcNumber,
+            ], 200);
         }
-
-        $error = null;
-        $files = $this->getPreferredFilesWithCache($resolvedHcNumber, $resolvedFormId, false, $error);
-        $files = array_map(function (array $file) use ($resolvedHcNumber, $resolvedFormId): array {
-            $name = trim((string) ($file['name'] ?? ''));
-            $file['url'] = $name === ''
-                ? ''
-                : '/v2/imagenes/examenes-realizados/nas/file?hc_number=' . rawurlencode($resolvedHcNumber)
-                    . '&form_id=' . rawurlencode($resolvedFormId)
-                    . '&file=' . rawurlencode($name);
-
-            return $file;
-        }, $files);
-
-        return response()->json([
-            'success' => $error === null,
-            'files' => $files,
-            'error' => $error,
-            'resolved_form_id' => $resolvedFormId,
-            'resolved_hc_number' => $resolvedHcNumber,
-        ]);
     }
 
     public function imagenesNasWarm(Request $request): Response
@@ -681,12 +734,20 @@ class ExamenesParityController
 
         $opened = $this->openPreferredFile($resolvedHcNumber, $resolvedFormId, $filename);
         if (!$opened || empty($opened['stream'])) {
-            return response(
-                $this->sigcenterImagenesService->getLastError()
-                    ?? ($this->nasImagenesService?->getLastError())
-                    ?? 'Archivo no encontrado.',
-                404
-            );
+            $sigcenterError = $this->sigcenterImagenesService->getLastError();
+            $nasError = $this->nasImagenesService?->getLastError();
+            $message = $this->resolveImagenesFileOpenError($sigcenterError, $nasError);
+
+            Log::warning('imagenes.v2.nas_file.open_failed', [
+                'form_id' => $resolvedFormId,
+                'hc_number' => $resolvedHcNumber,
+                'filename' => $filename,
+                'sigcenter_error' => $sigcenterError,
+                'nas_error' => $nasError,
+                'message' => $message,
+            ]);
+
+            return response($message, 404);
         }
 
         $type = (string) ($opened['type'] ?? 'application/octet-stream');
@@ -736,7 +797,29 @@ class ExamenesParityController
             return response()->json(['success' => false, 'error' => 'Parámetros incompletos'], 400);
         }
 
-        $informe = $this->legacyExamenModel()->obtenerInformeImagen($formId);
+        try {
+            $informe = $this->legacyExamenModel()->obtenerInformeImagen($formId);
+        } catch (Throwable $e) {
+            Log::error('imagenes.v2.informe_datos.error', [
+                'form_id' => $formId,
+                'tipo_examen' => $tipoExamen,
+                'error' => $e->getMessage(),
+            ]);
+
+            $plantilla = (string) ($this->mapearPlantillaInforme($tipoExamen) ?? '');
+            if ($plantilla === '') {
+                return response()->json(['success' => false, 'error' => 'No hay plantilla para este examen'], 404);
+            }
+
+            return response()->json([
+                'success' => true,
+                'plantilla' => $plantilla,
+                'payload' => null,
+                'exists' => false,
+                'updated_at' => null,
+                'warning' => 'No se pudo leer un informe guardado previamente.',
+            ]);
+        }
         $plantilla = is_array($informe) ? trim((string) ($informe['plantilla'] ?? '')) : '';
         if ($plantilla === '') {
             $plantilla = (string) ($this->mapearPlantillaInforme($tipoExamen) ?? '');
@@ -787,7 +870,7 @@ class ExamenesParityController
 
         $checkboxes = $this->obtenerChecklistInforme($plantilla);
         $usuariosFirmantes = $this->listarUsuariosFirmantes();
-        $firmanteDefaultId = (is_numeric(Auth::id()) ? (int) Auth::id() : null);
+        $firmanteDefaultId = ImagenesDefaultFirmante::defaultUserId() ?? (is_numeric(Auth::id()) ? (int) Auth::id() : null);
 
         ob_start();
         include $view;
@@ -863,7 +946,7 @@ class ExamenesParityController
 
         try {
             $userId = (is_numeric(Auth::id()) ? (int) Auth::id() : null);
-            $firmante = $firmanteId > 0 ? $firmanteId : $userId;
+            $firmante = $firmanteId > 0 ? $firmanteId : (ImagenesDefaultFirmante::defaultUserId() ?? $userId);
             $ok = $this->legacyExamenModel()->guardarInformeImagen(
                 $formId,
                 $hcNumber !== '' ? $hcNumber : null,
@@ -1001,6 +1084,154 @@ class ExamenesParityController
         } catch (Throwable $e) {
             return response()->json(['success' => false, 'error' => $e->getMessage()], 422);
         }
+    }
+
+    /**
+     * @return array{files:array<int,array<string,mixed>>,error:?string,message:?string,resolved_form_id:string,resolved_hc_number:string}
+     */
+    private function resolveImagenesNasFilesPayload(string $hcNumber, string $formId, bool $forceRefresh): array
+    {
+        $nasContext = $this->resolveNasContext($hcNumber, $formId);
+        $resolvedHcNumber = (string) $nasContext['hc_number'];
+        $resolvedFormId = (string) $nasContext['form_id'];
+
+        if (!$nasContext['has_image_context']) {
+            $probeError = null;
+            $probeFiles = $this->getSigcenterFiles($formId, $hcNumber, $forceRefresh, $probeError);
+
+            return [
+                'files' => $this->mapImagenesNasFilesForResponse($probeFiles, $hcNumber, $formId),
+                'error' => $probeError,
+                'message' => $probeFiles === [] && $probeError === null ? 'No existe un procedimiento de imagenes asociado a este examen.' : null,
+                'resolved_form_id' => $formId,
+                'resolved_hc_number' => $hcNumber,
+            ];
+        }
+
+        $error = null;
+        $files = $this->getPreferredFilesWithCache($resolvedHcNumber, $resolvedFormId, $forceRefresh, $error);
+
+        return [
+            'files' => $this->mapImagenesNasFilesForResponse($files, $resolvedHcNumber, $resolvedFormId),
+            'error' => $error,
+            'message' => $files === [] && $error === null ? 'Sin archivos asociados.' : null,
+            'resolved_form_id' => $resolvedFormId,
+            'resolved_hc_number' => $resolvedHcNumber,
+        ];
+    }
+
+    /**
+     * @param array<int,array<string,mixed>> $files
+     * @return array<int,array<string,mixed>>
+     */
+    private function mapImagenesNasFilesForResponse(array $files, string $hcNumber, string $formId): array
+    {
+        return array_map(function (array $file) use ($hcNumber, $formId): array {
+            $name = trim((string) ($file['name'] ?? ''));
+            $file['url'] = $name === ''
+                ? ''
+                : '/v2/imagenes/examenes-realizados/nas/file?hc_number=' . rawurlencode($hcNumber)
+                    . '&form_id=' . rawurlencode($formId)
+                    . '&file=' . rawurlencode($name);
+
+            return $file;
+        }, $files);
+    }
+
+    /**
+     * @param array<string,mixed> $payload
+     * @param array<string,mixed> $checkResult
+     * @return array{id:int,status:string,requested_at:string}|null
+     */
+    private function storeImagenesFileClaim(array $payload, array $checkResult): ?array
+    {
+        if (!Schema::hasTable('imagenes_file_claims')) {
+            Log::warning('imagenes.v2.file_claim.table_missing', [
+                'form_id' => $payload['form_id'] ?? null,
+                'hc_number' => $payload['hc_number'] ?? null,
+            ]);
+            return null;
+        }
+
+        $now = date('Y-m-d H:i:s');
+        $formId = trim((string) ($payload['form_id'] ?? ''));
+        $hcNumber = trim((string) ($payload['hc_number'] ?? ''));
+        $message = trim((string) ($payload['message'] ?? ''));
+        if ($message === '') {
+            $message = 'Solicito revisar/cargar los archivos de imágenes en la carpeta correcta para este examen.';
+        }
+
+        $attributes = [
+            'form_id' => $formId,
+            'hc_number' => $hcNumber,
+            'status' => 'abierto',
+        ];
+        $values = [
+            'procedimiento_id' => is_numeric($payload['id'] ?? null) ? (int) $payload['id'] : null,
+            'paciente' => $this->nullableTrimmed($payload['full_name'] ?? $payload['paciente'] ?? null),
+            'cedula' => $this->nullableTrimmed($payload['cedula'] ?? null),
+            'tipo_examen' => $this->nullableTrimmed($payload['tipo_examen'] ?? $payload['tipo_label'] ?? null),
+            'ojo' => $this->nullableTrimmed($payload['ojo'] ?? null),
+            'afiliacion' => $this->nullableTrimmed($payload['afiliacion'] ?? null),
+            'sede' => $this->nullableTrimmed($payload['sede'] ?? null),
+            'fecha_examen' => $this->normalizeDateOrNull($payload['fecha_examen'] ?? null),
+            'message' => $message,
+            'last_check_error' => $this->nullableTrimmed($checkResult['error'] ?? null),
+            'last_checked_at' => $now,
+            'requested_by' => is_numeric(Auth::id()) ? (int) Auth::id() : null,
+            'requested_at' => $now,
+            'updated_at' => $now,
+        ];
+
+        $existing = DB::table('imagenes_file_claims')->where($attributes)->first();
+        if ($existing) {
+            DB::table('imagenes_file_claims')->where('id', (int) $existing->id)->update($values);
+            $id = (int) $existing->id;
+        } else {
+            $id = (int) DB::table('imagenes_file_claims')->insertGetId($attributes + $values + ['created_at' => $now]);
+        }
+
+        return [
+            'id' => $id,
+            'status' => 'abierto',
+            'requested_at' => $now,
+        ];
+    }
+
+    private function closeImagenesFileClaim(string $formId, string $hcNumber): void
+    {
+        if (!Schema::hasTable('imagenes_file_claims')) {
+            return;
+        }
+
+        $now = date('Y-m-d H:i:s');
+        DB::table('imagenes_file_claims')
+            ->where('form_id', trim($formId))
+            ->where('hc_number', trim($hcNumber))
+            ->where('status', 'abierto')
+            ->update([
+                'status' => 'resuelto',
+                'resolved_at' => $now,
+                'last_checked_at' => $now,
+                'updated_at' => $now,
+            ]);
+    }
+
+    private function nullableTrimmed(mixed $value): ?string
+    {
+        $value = trim((string) ($value ?? ''));
+        return $value !== '' ? $value : null;
+    }
+
+    private function normalizeDateOrNull(mixed $value): ?string
+    {
+        $value = trim((string) ($value ?? ''));
+        if ($value === '') {
+            return null;
+        }
+
+        $timestamp = strtotime($value);
+        return $timestamp !== false ? date('Y-m-d', $timestamp) : null;
     }
 
     /**
@@ -1197,14 +1428,29 @@ class ExamenesParityController
         return $this->nasImagenesService()->openFile($hcNumber, $formId, $filename);
     }
 
-    private function imagenesUseNasFallback(): bool
+    private function resolveImagenesFileOpenError(?string $sigcenterError, ?string $nasError): string
     {
-        $raw = trim((string) ($_ENV['IMAGENES_ENABLE_NAS_FALLBACK'] ?? $_SERVER['IMAGENES_ENABLE_NAS_FALLBACK'] ?? '1'));
-        if ($raw === '') {
-            return true;
+        $sigcenterError = trim((string) $sigcenterError);
+        $nasError = trim((string) $nasError);
+
+        if ($sigcenterError !== '') {
+            return $sigcenterError;
         }
 
-        return in_array(strtolower($raw), ['1', 'true', 'yes', 'on'], true);
+        if ($nasError === 'NAS no disponible.' || $nasError === 'NAS no configurado.') {
+            return 'Repositorio de imágenes no disponible. Configure NAS_IMAGES_MOUNT o NAS_IMAGES_SSH_* para abrir este archivo.';
+        }
+
+        if ($nasError !== '') {
+            return $nasError;
+        }
+
+        return 'Archivo no encontrado.';
+    }
+
+    private function imagenesUseNasFallback(): bool
+    {
+        return (bool) config('nas-imagenes.enable_fallback', true);
     }
 
     /**
@@ -1335,14 +1581,51 @@ class ExamenesParityController
      */
     private function listarUsuariosFirmantes(): array
     {
-        $service = new LeadConfigurationService(DB::connection()->getPdo());
-        $usuarios = $service->getAssignableUsers();
+        $usuarios = DB::table('users')
+            ->select(['id', 'nombre', 'email', 'profile_photo', 'especialidad'])
+            ->where('especialidad', 'Cirujano Oftalmólogo')
+            ->orderBy('nombre')
+            ->get()
+            ->map(static function (object $usuario): array {
+                $profilePhoto = trim((string) ($usuario->profile_photo ?? ''));
 
-        $filtrados = array_filter($usuarios, static function (array $usuario): bool {
-            return trim((string) ($usuario['especialidad'] ?? '')) === 'Cirujano Oftalmólogo';
-        });
+                return [
+                    'id' => (int) $usuario->id,
+                    'nombre' => (string) ($usuario->nombre ?? ''),
+                    'email' => (string) ($usuario->email ?? ''),
+                    'profile_photo' => $profilePhoto !== '' ? $profilePhoto : null,
+                    'especialidad' => (string) ($usuario->especialidad ?? ''),
+                    'avatar' => $profilePhoto !== ''
+                        ? (preg_match('~^https?://~i', $profilePhoto) ? $profilePhoto : asset($profilePhoto))
+                        : null,
+                ];
+            })
+            ->values()
+            ->all();
 
-        return array_values($filtrados);
+        $defaultUserId = ImagenesDefaultFirmante::defaultUserId();
+        if ($defaultUserId !== null && !in_array($defaultUserId, array_column($usuarios, 'id'), true)) {
+            $usuario = DB::table('users')
+                ->select(['id', 'nombre', 'email', 'profile_photo', 'especialidad'])
+                ->where('id', $defaultUserId)
+                ->first();
+
+            if (is_object($usuario)) {
+                $profilePhoto = trim((string) ($usuario->profile_photo ?? ''));
+                array_unshift($usuarios, [
+                    'id' => (int) $usuario->id,
+                    'nombre' => (string) ($usuario->nombre ?? ''),
+                    'email' => (string) ($usuario->email ?? ''),
+                    'profile_photo' => $profilePhoto !== '' ? $profilePhoto : null,
+                    'especialidad' => (string) ($usuario->especialidad ?? ''),
+                    'avatar' => $profilePhoto !== ''
+                        ? (preg_match('~^https?://~i', $profilePhoto) ? $profilePhoto : asset($profilePhoto))
+                        : null,
+                ]);
+            }
+        }
+
+        return $usuarios;
     }
 
     public function imagenesDashboardExportPdf(Request $request): Response|RedirectResponse
@@ -1435,194 +1718,56 @@ class ExamenesParityController
             $payload = $this->imagenesUi->imagenesDashboardExportPayload($request->query());
             $detailRows = is_array($payload['detailRows'] ?? null) ? $payload['detailRows'] : [];
             $requestRows = is_array($payload['requestRows'] ?? null) ? $payload['requestRows'] : [];
-            $filtersSummary = is_array($payload['filtersSummary'] ?? null) ? $payload['filtersSummary'] : [];
             $report = is_array($payload['report'] ?? null) ? $payload['report'] : [];
+            $filters = is_array($payload['filters'] ?? null) ? $payload['filters'] : [];
             $filename = 'dashboard_imagenes_' . date('Ymd_His') . '.xlsx';
+
+            $findKpi = static function (array $kpis, string $label): string {
+                foreach ($kpis as $kpi) {
+                    if ((string) ($kpi['label'] ?? '') === $label) {
+                        return (string) ($kpi['value'] ?? '—');
+                    }
+                }
+
+                return '—';
+            };
+            $cohortKpis = is_array($report['cohortKpis'] ?? null) ? $report['cohortKpis'] : [];
+            $operationalKpis = is_array($report['operationalKpis'] ?? null) ? $report['operationalKpis'] : [];
 
             $spreadsheet = new Spreadsheet();
             $sheet = $spreadsheet->getActiveSheet();
-            $sheet->setTitle('Resumen KPI');
+            $sheet->setTitle('Resumen Operativo');
             $generatedAt = (new DateTimeImmutable('now'))->format('d/m/Y H:i');
             $row = 1;
 
-            $this->writeExcelMergedTitle($sheet, $row, 'Dashboard de KPIs de imágenes', 'G');
+            $this->writeExcelMergedTitle($sheet, $row, 'Resumen operativo de imágenes', 'B');
             $row++;
             $sheet->setCellValue("A{$row}", 'Generado:');
             $sheet->setCellValue("B{$row}", $generatedAt);
-            $sheet->setCellValue("D{$row}", 'Periodo:');
-            $sheet->setCellValue("E{$row}", (string) ($report['rangeLabel'] ?? ''));
-            $sheet->setCellValue("F{$row}", 'Agendas:');
-            $sheet->setCellValueExplicit("G{$row}", (string) count($detailRows), DataType::TYPE_STRING);
-            $sheet->getStyle("A{$row}:G{$row}")->getFont()->setBold(true);
-
-            $row++;
-            $sheet->setCellValue("F{$row}", 'Solicitudes:');
-            $sheet->setCellValueExplicit("G{$row}", (string) count($requestRows), DataType::TYPE_STRING);
-            $sheet->getStyle("F{$row}:G{$row}")->getFont()->setBold(true);
-
-            $scopeNotice = trim((string) ($report['scopeNotice'] ?? ''));
-            if ($scopeNotice !== '') {
-                $row += 2;
-                $sheet->setCellValue("A{$row}", $scopeNotice);
-                $sheet->mergeCells("A{$row}:G{$row}");
-                $sheet->getStyle("A{$row}:G{$row}")->applyFromArray($this->excelNoticeStyle('EFF6FF', '1D4ED8'));
-                $sheet->getStyle("A{$row}:G{$row}")->getAlignment()->setWrapText(true);
-            }
+            $sheet->getStyle("A{$row}")->getFont()->setBold(true);
 
             $row += 2;
-            $row = $this->writeExcelSectionHeader($sheet, $row, 'Filtros aplicados', 'G');
-            $filterRows = [];
-            foreach ($filtersSummary as $filter) {
-                $filterRows[] = [
-                    (string) ($filter['label'] ?? ''),
-                    (string) ($filter['value'] ?? ''),
-                ];
-            }
+            $summaryRows = [
+                ['Período', (string) ($report['rangeLabel'] ?? '')],
+                ['Sede', trim((string) ($filters['sede'] ?? '')) !== '' ? (string) $filters['sede'] : 'Todas'],
+                ['Solicitudes', $findKpi($cohortKpis, 'Solicitudes de exámenes')],
+                ['Realizadas', $findKpi($operationalKpis, 'Atendidos')],
+                ['Facturadas', $findKpi($operationalKpis, 'Facturados')],
+                ['Pendiente de facturar', $findKpi($operationalKpis, 'Pendiente de facturar')],
+                ['Solicitudes sin agenda', $findKpi($cohortKpis, 'Solicitudes sin agenda')],
+                ['Oportunidad estimada', $findKpi($cohortKpis, 'Pérdida económica por no agendar')],
+            ];
             $row = $this->writeExcelTable(
                 $sheet,
                 $row,
-                ['Filtro', 'Valor'],
-                $filterRows,
-                'Sin filtros específicos.',
-                [26, 62]
+                ['Campo', 'Valor'],
+                $summaryRows,
+                'Sin datos para el rango seleccionado.',
+                [28, 32]
             );
-
-            $row += 2;
-            $row = $this->writeExcelSectionHeader($sheet, $row, 'Hallazgos clave', 'G');
-            $hallazgosRows = array_map(
-                static fn(string $item): array => [$item],
-                array_values(array_filter(
-                    is_array($report['hallazgosClave'] ?? null) ? $report['hallazgosClave'] : [],
-                    static fn($item): bool => trim((string) $item) !== ''
-                ))
-            );
-            $row = $this->writeExcelTable(
-                $sheet,
-                $row,
-                ['Hallazgo'],
-                $hallazgosRows,
-                'No hubo suficientes datos para generar hallazgos destacados.',
-                [96]
-            );
-
-            $row += 2;
-            $row = $this->writeExcelSectionHeader($sheet, $row, 'Metodología', 'G');
-            $methodologyRows = array_map(
-                static fn(string $item): array => [$item],
-                array_values(array_filter(
-                    is_array($report['methodology'] ?? null) ? $report['methodology'] : [],
-                    static fn($item): bool => trim((string) $item) !== ''
-                ))
-            );
-            $row = $this->writeExcelTable(
-                $sheet,
-                $row,
-                ['Criterio'],
-                $methodologyRows,
-                'Sin metodología documentada.',
-                [96]
-            );
-
-            $row += 2;
-            $row = $this->writeExcelSectionHeader($sheet, $row, 'Bloque 1 - Operación del periodo', 'G');
-            $row = $this->writeExcelTable(
-                $sheet,
-                $row,
-                ['KPI', 'Valor', 'Detalle'],
-                $this->normalizeExcelRows(is_array($report['operationalKpis'] ?? null) ? $report['operationalKpis'] : [], ['label', 'value', 'note']),
-                'Sin KPI operativos para el rango seleccionado.',
-                [28, 16, 54]
-            );
-
-            $row += 2;
-            $row = $this->writeExcelSectionHeader($sheet, $row, 'Cumplimiento y oportunidad', 'G');
-            $row = $this->writeExcelTable(
-                $sheet,
-                $row,
-                ['KPI', 'Valor', 'Detalle'],
-                $this->normalizeExcelRows(is_array($report['qualityKpis'] ?? null) ? $report['qualityKpis'] : [], ['label', 'value', 'note']),
-                'Sin KPI de oportunidad para el rango seleccionado.',
-                [28, 16, 54]
-            );
-
-            $row += 2;
-            $row = $this->writeExcelSectionHeader($sheet, $row, 'Economía y facturación', 'G');
-            $row = $this->writeExcelTable(
-                $sheet,
-                $row,
-                ['KPI', 'Valor', 'Qué significa', 'Cómo se calcula'],
-                $this->normalizeExcelRows(is_array($report['economicKpis'] ?? null) ? $report['economicKpis'] : [], ['label', 'value', 'meaning', 'formula']),
-                'Sin KPI económicos para el rango seleccionado.',
-                [24, 16, 34, 34]
-            );
-
-            $operationalTables = is_array($report['operationalTables'] ?? null) ? $report['operationalTables'] : [];
-            foreach ($operationalTables as $table) {
-                $title = trim((string) ($table['title'] ?? 'Tabla'));
-                $subtitle = trim((string) ($table['subtitle'] ?? ''));
-                $row += 2;
-                $row = $this->writeExcelSectionHeader($sheet, $row, $title, 'G');
-                if ($subtitle !== '') {
-                    $sheet->setCellValue("A{$row}", $subtitle);
-                    $sheet->mergeCells("A{$row}:G{$row}");
-                    $sheet->getStyle("A{$row}:G{$row}")->getFont()->setItalic(true)->getColor()->setRGB('64748B');
-                    $sheet->getStyle("A{$row}:G{$row}")->getAlignment()->setWrapText(true);
-                    $row++;
-                }
-                $headers = array_values(array_map(static fn($value): string => (string) $value, is_array($table['columns'] ?? null) ? $table['columns'] : []));
-                $tableRows = [];
-                foreach (is_array($table['rows'] ?? null) ? $table['rows'] : [] as $tableRow) {
-                    $tableRows[] = array_map(static fn($value): string => (string) $value, is_array($tableRow) ? $tableRow : []);
-                }
-                $row = $this->writeExcelTable(
-                    $sheet,
-                    $row,
-                    $headers,
-                    $tableRows,
-                    trim((string) ($table['empty_message'] ?? 'Sin datos.'))
-                );
-            }
-
-            $row += 2;
-            $row = $this->writeExcelSectionHeader($sheet, $row, 'Bloque 2 - Solicitudes', 'G');
-            $row = $this->writeExcelTable(
-                $sheet,
-                $row,
-                ['KPI', 'Valor', 'Detalle'],
-                $this->normalizeExcelRows(is_array($report['cohortKpis'] ?? null) ? $report['cohortKpis'] : [], ['label', 'value', 'note']),
-                'Sin KPI de solicitudes para el rango seleccionado.',
-                [28, 16, 54]
-            );
-
-            $cohortTables = is_array($report['cohortTables'] ?? null) ? $report['cohortTables'] : [];
-            foreach ($cohortTables as $table) {
-                $title = trim((string) ($table['title'] ?? 'Tabla'));
-                $subtitle = trim((string) ($table['subtitle'] ?? ''));
-                $row += 2;
-                $row = $this->writeExcelSectionHeader($sheet, $row, $title, 'G');
-                if ($subtitle !== '') {
-                    $sheet->setCellValue("A{$row}", $subtitle);
-                    $sheet->mergeCells("A{$row}:G{$row}");
-                    $sheet->getStyle("A{$row}:G{$row}")->getFont()->setItalic(true)->getColor()->setRGB('64748B');
-                    $sheet->getStyle("A{$row}:G{$row}")->getAlignment()->setWrapText(true);
-                    $row++;
-                }
-                $headers = array_values(array_map(static fn($value): string => (string) $value, is_array($table['columns'] ?? null) ? $table['columns'] : []));
-                $tableRows = [];
-                foreach (is_array($table['rows'] ?? null) ? $table['rows'] : [] as $tableRow) {
-                    $tableRows[] = array_map(static fn($value): string => (string) $value, is_array($tableRow) ? $tableRow : []);
-                }
-                $row = $this->writeExcelTable(
-                    $sheet,
-                    $row,
-                    $headers,
-                    $tableRows,
-                    trim((string) ($table['empty_message'] ?? 'Sin datos.'))
-                );
-            }
 
             $sheet->freezePane('A4');
-            foreach (['A' => 28, 'B' => 18, 'C' => 28, 'D' => 20, 'E' => 24, 'F' => 18, 'G' => 18] as $column => $width) {
+            foreach (['A' => 28, 'B' => 32] as $column => $width) {
                 $sheet->getColumnDimension($column)->setWidth($width);
             }
 
@@ -1711,6 +1856,73 @@ class ExamenesParityController
                 'Q' => 14, 'R' => 18, 'S' => 14, 'T' => 12, 'U' => 16, 'V' => 12, 'W' => 14, 'X' => 56,
             ] as $column => $width) {
                 $detailSheet->getColumnDimension($column)->setWidth($width);
+            }
+
+            $backlogSheet = $spreadsheet->createSheet();
+            $backlogSheet->setTitle('Backlog de Facturacion');
+            $backlogHeaders = [
+                '#',
+                'Paciente',
+                'HC',
+                'Examen',
+                'Sede',
+                'Empresa seguro',
+                'Afiliación / Categoría',
+                'Fecha del examen',
+                'Estado de realización',
+                'Estado de informe',
+                'Estado de facturación',
+                'Monto pendiente estimado',
+                'Sin tarifa nivel 3',
+                'Form ID',
+            ];
+
+            $backlogRow = 1;
+            foreach ($backlogHeaders as $idx => $label) {
+                $column = $this->excelColumnByIndex($idx);
+                $backlogSheet->setCellValue("{$column}{$backlogRow}", $label);
+            }
+            $lastBacklogColumn = $this->excelColumnByIndex(count($backlogHeaders) - 1);
+            $backlogSheet->getStyle("A1:{$lastBacklogColumn}1")->applyFromArray($this->excelTableHeaderStyle());
+            $backlogSheet->setAutoFilter("A1:{$lastBacklogColumn}1");
+
+            $backlogItems = array_values(array_filter($detailRows, static fn($item): bool => empty($item['facturado'])));
+            foreach ($backlogItems as $index => $item) {
+                $backlogRow++;
+                $afiliacion = trim(((string) ($item['afiliacion'] ?? '')) . ' / ' . ((string) ($item['afiliacion_categoria'] ?? '')), ' /');
+                $values = [
+                    (string) ($index + 1),
+                    (string) ($item['paciente'] ?? ''),
+                    (string) ($item['hc_number'] ?? ''),
+                    (string) ($item['examen'] ?? ''),
+                    (string) ($item['sede'] ?? ''),
+                    (string) ($item['empresa_seguro'] ?? ''),
+                    $afiliacion,
+                    (string) ($item['fecha_examen'] ?? '—'),
+                    (string) ($item['estado_realizacion'] ?? ''),
+                    (string) ($item['estado_informe'] ?? ''),
+                    (string) ($item['estado_facturacion'] ?? ''),
+                    (float) ($item['monto_pendiente_estimado'] ?? 0) > 0 ? number_format((float) ($item['monto_pendiente_estimado'] ?? 0), 2, '.', '') : '',
+                    !empty($item['sin_tarifa_publica']) ? 'SI' : 'NO',
+                    (string) ($item['form_id'] ?? ''),
+                ];
+
+                foreach ($values as $idx => $value) {
+                    $column = $this->excelColumnByIndex($idx);
+                    $backlogSheet->setCellValueExplicit("{$column}{$backlogRow}", $value, DataType::TYPE_STRING);
+                }
+            }
+
+            if ($backlogRow > 1) {
+                $backlogSheet->getStyle("A1:{$lastBacklogColumn}{$backlogRow}")->applyFromArray($this->excelTableBodyStyle());
+            }
+
+            $backlogSheet->freezePane('A2');
+            foreach ([
+                'A' => 6, 'B' => 30, 'C' => 14, 'D' => 30, 'E' => 14, 'F' => 24, 'G' => 26,
+                'H' => 16, 'I' => 18, 'J' => 16, 'K' => 24, 'L' => 18, 'M' => 14, 'N' => 16,
+            ] as $column => $width) {
+                $backlogSheet->getColumnDimension($column)->setWidth($width);
             }
 
             $requestSheet = $spreadsheet->createSheet();
@@ -2028,7 +2240,7 @@ class ExamenesParityController
             return false;
         }
 
-        $ttl = (int) ($_ENV['IMAGENES_LIST_CACHE_TTL'] ?? $_SERVER['IMAGENES_LIST_CACHE_TTL'] ?? $_ENV['NAS_IMAGES_LIST_CACHE_TTL'] ?? $_SERVER['NAS_IMAGES_LIST_CACHE_TTL'] ?? 90);
+        $ttl = (int) config('nas-imagenes.list_cache_ttl', 90);
         if ($ttl <= 0) {
             return false;
         }
@@ -2107,9 +2319,9 @@ class ExamenesParityController
 
     private function resolveNasCacheDir(): ?string
     {
-        $fromEnv = trim((string) ($_ENV['IMAGENES_CACHE_DIR'] ?? $_SERVER['IMAGENES_CACHE_DIR'] ?? $_ENV['NAS_IMAGES_CACHE_DIR'] ?? $_SERVER['NAS_IMAGES_CACHE_DIR'] ?? ''));
-        if ($fromEnv !== '') {
-            return $fromEnv;
+        $fromConfig = trim((string) (config('nas-imagenes.cache_dir') ?? ''));
+        if ($fromConfig !== '') {
+            return $fromConfig;
         }
 
         $tmp = sys_get_temp_dir();
@@ -2126,7 +2338,7 @@ class ExamenesParityController
             return false;
         }
 
-        $ttl = (int) ($_ENV['IMAGENES_CACHE_TTL'] ?? $_SERVER['IMAGENES_CACHE_TTL'] ?? $_ENV['NAS_IMAGES_CACHE_TTL'] ?? $_SERVER['NAS_IMAGES_CACHE_TTL'] ?? 1800);
+        $ttl = (int) config('nas-imagenes.cache_ttl', 1800);
         if ($ttl <= 0) {
             return false;
         }
@@ -2590,6 +2802,10 @@ class ExamenesParityController
             return 'octm';
         }
         if (str_contains($texto, 'retino') || str_contains($texto, 'retin')) {
+            return 'retino';
+        }
+        // Catch-all for "otro", generic, or unclassified exams
+        if ($texto !== '') {
             return 'retino';
         }
         return null;

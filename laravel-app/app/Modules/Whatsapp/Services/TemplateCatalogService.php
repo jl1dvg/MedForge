@@ -260,6 +260,35 @@ class TemplateCatalogService
         ];
     }
 
+    public function deleteTemplate(int $templateId): void
+    {
+        if (!$this->hasTemplateTables()) {
+            throw new RuntimeException('Las tablas locales de plantillas no están disponibles en Laravel.');
+        }
+
+        /** @var WhatsappMessageTemplate|null $template */
+        $template = WhatsappMessageTemplate::query()->find($templateId);
+        if ($template === null) {
+            throw new RuntimeException('Plantilla no encontrada.');
+        }
+
+        $revision = $template->whatsapp_template_revision;
+        $editorialState = $this->resolveEditorialState($template, $revision);
+
+        $deletable = ['stale_local', 'draft', 'published_local'];
+        if (!in_array($editorialState, $deletable, true)) {
+            throw new RuntimeException(
+                'Solo se pueden eliminar plantillas locales y desfasadas. ' .
+                'Las plantillas activas en Meta deben eliminarse desde el Business Manager.'
+            );
+        }
+
+        DB::transaction(function () use ($template): void {
+            WhatsappTemplateRevision::query()->where('template_id', $template->id)->delete();
+            $template->delete();
+        });
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -373,6 +402,13 @@ class TemplateCatalogService
             if ($value !== '') {
                 $query->where($key, $value);
             }
+        }
+
+        $source = trim((string) ($filters['source'] ?? ''));
+        if ($source === 'meta') {
+            $query->whereNull('created_by');
+        } elseif ($source === 'local') {
+            $query->whereNotNull('created_by');
         }
 
         $limit = max(1, min(200, (int) ($filters['limit'] ?? 100)));
@@ -707,7 +743,9 @@ class TemplateCatalogService
         $footerText = trim((string) ($preview['footer_text'] ?? ''));
         $buttons = $preview['buttons'] ?? [];
 
-        if ($headerType !== 'none' && $headerText !== '') {
+        if ($headerType === 'location') {
+            $components[] = ['type' => 'HEADER', 'format' => 'LOCATION'];
+        } elseif ($headerType !== 'none' && $headerText !== '') {
             if ($headerType === 'text') {
                 $components[] = ['type' => 'HEADER', 'format' => 'TEXT', 'text' => $headerText];
             } else {
@@ -739,7 +777,9 @@ class TemplateCatalogService
         $normalizedHeader = $this->normalizeHeaderForPublish((string) ($revision->header_text ?? ''));
         $normalizedBody = $this->normalizeBodyForPublish((string) $revision->body_text);
 
-        if ($revision->header_type !== 'none' && $revision->header_text !== null && $revision->header_text !== '') {
+        if ($revision->header_type === 'location') {
+            $components[] = ['type' => 'HEADER', 'format' => 'LOCATION'];
+        } elseif ($revision->header_type !== 'none' && $revision->header_text !== null && $revision->header_text !== '') {
             $header = [
                 'type' => 'HEADER',
                 'format' => strtoupper($revision->header_type === 'text' ? 'TEXT' : $revision->header_type),
@@ -1015,7 +1055,7 @@ class TemplateCatalogService
             $type = strtoupper((string) ($component['type'] ?? ''));
             if ($type === 'HEADER') {
                 $format = strtolower((string) ($component['format'] ?? 'text'));
-                if (!in_array($format, ['text', 'image', 'video', 'document'], true)) {
+                if (!in_array($format, ['text', 'image', 'video', 'document', 'location'], true)) {
                     $format = 'text';
                 }
                 $preview['header_type'] = $format;

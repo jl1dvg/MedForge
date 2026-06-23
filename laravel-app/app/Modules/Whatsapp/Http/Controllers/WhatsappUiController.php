@@ -13,6 +13,7 @@ use App\Modules\Whatsapp\Services\KnowledgeBaseService;
 use App\Modules\Whatsapp\Services\KpiDashboardService;
 use App\Modules\Whatsapp\Services\ProductivityToolkitService;
 use App\Modules\Whatsapp\Services\TemplateCatalogService;
+use App\Modules\Whatsapp\Services\WhatsappExecutiveReportService;
 use App\Modules\Whatsapp\Services\WhatsappLeadService;
 use Carbon\CarbonImmutable;
 use DateTimeImmutable;
@@ -43,6 +44,7 @@ class WhatsappUiController
         private readonly KnowledgeBaseService $knowledgeBaseService = new \App\Modules\Whatsapp\Services\KnowledgeBaseService(),
         private readonly ProductivityToolkitService $productivityToolkitService = new \App\Modules\Whatsapp\Services\ProductivityToolkitService(),
         private readonly WhatsappLeadService $leadService = new \App\Modules\Whatsapp\Services\WhatsappLeadService(),
+        private readonly WhatsappExecutiveReportService $executiveReportService = new \App\Modules\Whatsapp\Services\WhatsappExecutiveReportService(),
     ) {
     }
 
@@ -165,26 +167,31 @@ class WhatsappUiController
 
     public function templates(Request $request): View
     {
+        $statusFilter  = trim((string) $request->query('status',   $request->has('status')   ? '' : 'APPROVED'));
+        $sourceFilter  = trim((string) $request->query('source',   $request->has('source')   ? '' : 'meta'));
+
         $catalog = $this->templateCatalogService->getTemplateCatalog([
-            'search' => trim((string) $request->query('search', '')),
-            'status' => trim((string) $request->query('status', '')),
+            'search'   => trim((string) $request->query('search', '')),
+            'status'   => $statusFilter,
             'category' => trim((string) $request->query('category', '')),
             'language' => trim((string) $request->query('language', '')),
-            'limit' => (int) $request->query('limit', 100),
+            'source'   => $sourceFilter,
+            'limit'    => (int) $request->query('limit', 100),
         ]);
 
         return view('whatsapp.v2-templates', [
-            'pageTitle' => 'WhatsApp V2 - Templates',
-            'templates' => $catalog['templates'],
+            'pageTitle'          => 'WhatsApp V2 - Templates',
+            'templates'          => $catalog['templates'],
             'availableCategories' => $catalog['available_categories'],
             'availableLanguages' => $catalog['available_languages'],
-            'integration' => $catalog['integration'],
-            'source' => $catalog['source'],
+            'integration'        => $catalog['integration'],
+            'source'             => $catalog['source'],
             'filters' => [
-                'search' => trim((string) $request->query('search', '')),
-                'status' => trim((string) $request->query('status', '')),
+                'search'   => trim((string) $request->query('search', '')),
+                'status'   => $statusFilter,
                 'category' => trim((string) $request->query('category', '')),
                 'language' => trim((string) $request->query('language', '')),
+                'source'   => $sourceFilter,
             ],
         ] + $this->buildWhatsappNotificationViewData($request, [
             'scope' => 'templates',
@@ -221,6 +228,35 @@ class WhatsappUiController
         ] + $this->buildWhatsappNotificationViewData($request, [
             'scope' => 'dashboard',
         ]));
+    }
+
+    /**
+     * Executive report (/v2/whatsapp/dashboard). Lean, cached payload built on
+     * top of KpiDashboardService::buildDashboard(), reshaped into the report
+     * contract consumed by the React report layer.
+     */
+    public function dashboardReport(Request $request): View
+    {
+        $query = $request->query();
+        $forceRefresh = $request->boolean('refresh');
+
+        $payload = $this->executiveReportService->buildExecutiveReportPayload($query, $forceRefresh);
+        $report = $payload['report'];
+        $filters = $payload['filters'];
+
+        \Illuminate\Support\Facades\Log::info('whatsapp.executive_report.timings', [
+            'timings' => $payload['timings'] ?? [],
+            'cache_hit' => $payload['timings']['cache_hit'] ?? null,
+            'cache_key' => $payload['timings']['cache_key'] ?? null,
+            'ttl' => $payload['timings']['ttl'] ?? null,
+            'total_ms' => $payload['timings']['total_ms'] ?? null,
+        ]);
+
+        return view('whatsapp.v2-whatsapp-dashboard-report', [
+            'report' => $report,
+            'period' => $filters['period'],
+            'agentId' => $filters['agent_id'],
+        ]);
     }
 
     /**
@@ -423,9 +459,9 @@ class WhatsappUiController
                 'title' => 'Chat',
                 'goal' => 'Operar inbox, conversación, handoff y presencia directamente desde Laravel WhatsApp V2.',
                 'scope' => [
-                    'Inbox y conversación operan en /v2/whatsapp/chat',
+                    'Inbox y conversación operan en /v3/whatsapp/chat (React SPA)',
                     'Se mantienen handoff, presencia, notas, filtros y colas operativas',
-                    'El chat V2 pasa a ser el acceso principal para operación diaria',
+                    'El chat V3 es el acceso principal para operación diaria',
                     'Dashboard, templates, campañas y flowmaker siguen en V2 dentro del mismo stack',
                 ],
             ],
@@ -473,10 +509,10 @@ class WhatsappUiController
 
         $statusCards = [
             [
-                'label' => 'Chat V2',
+                'label' => 'Chat V3',
                 'state' => 'Operativo',
                 'tone' => 'success',
-                'detail' => 'El inbox principal de operación diaria ya corre en /v2/whatsapp/chat.',
+                'detail' => 'El inbox principal de operación diaria corre en /v3/whatsapp/chat (React SPA).',
             ],
             [
                 'label' => 'WhatsApp V2',

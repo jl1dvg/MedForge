@@ -186,6 +186,8 @@ class ConversationStartService
                 'conversation_id' => $conversation->id,
                 'wa_message_id' => $transportResult['wa_message_id'],
                 'direction' => 'outbound',
+                'sender_type' => $actorUserId !== null ? 'agent' : 'system',
+                'sender_id' => $actorUserId,
                 'message_type' => 'template',
                 'body' => $renderedTemplateBody,
                 'raw_payload' => [
@@ -281,6 +283,40 @@ class ConversationStartService
                     $headerParameters
                 ),
             ];
+        }
+
+        if ($revision->header_type === 'location') {
+            $lat = (string) ($templateVariables['_location_lat'] ?? '');
+            $lng = (string) ($templateVariables['_location_lng'] ?? '');
+            if ($lat !== '' && $lng !== '') {
+                $locationParam = ['latitude' => $lat, 'longitude' => $lng];
+                $locationName = (string) ($templateVariables['_location_name'] ?? '');
+                $locationAddress = (string) ($templateVariables['_location_address'] ?? '');
+                if ($locationName !== '') {
+                    $locationParam['name'] = $locationName;
+                }
+                if ($locationAddress !== '') {
+                    $locationParam['address'] = $locationAddress;
+                }
+                $components[] = [
+                    'type' => 'header',
+                    'parameters' => [
+                        ['type' => 'location', 'location' => $locationParam],
+                    ],
+                ];
+            }
+        }
+
+        if (in_array($revision->header_type, ['image', 'video', 'document'], true)) {
+            $mediaUrl = (string) ($templateVariables['_header_media_url'] ?? '');
+            if ($mediaUrl !== '') {
+                $components[] = [
+                    'type' => 'header',
+                    'parameters' => [
+                        ['type' => $revision->header_type, $revision->header_type => ['link' => $mediaUrl]],
+                    ],
+                ];
+            }
         }
 
         $bodyParameters = $this->buildTextParameterValues(

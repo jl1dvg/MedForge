@@ -61,6 +61,9 @@ return [
             'agent_role_id' => (int) env('WHATSAPP_LARAVEL_REMINDER_AGENT_ROLE_ID', 4),
         ],
     ],
+    'audit' => [
+        'enabled' => (bool) env('WHATSAPP_AUDIT_ENABLED', false),
+    ],
     'transport' => [
         'graph_base_url' => env('WHATSAPP_GRAPH_BASE_URL', 'https://graph.facebook.com'),
         'timeout' => (int) env('WHATSAPP_GRAPH_TIMEOUT', 15),
@@ -73,11 +76,13 @@ return [
         ],
         'video' => [
             'max_kb' => 16 * 1024,
-            'mime_types' => ['video/mp4', 'video/3gpp'],
+            // video/webm included because MediaRecorder (Chrome) saves audio-only WebM
+            // files that finfo detects as video/webm
+            'mime_types' => ['video/mp4', 'video/3gpp', 'video/webm'],
         ],
         'audio' => [
             'max_kb' => 16 * 1024,
-            'mime_types' => ['audio/mpeg', 'audio/mp4', 'audio/aac', 'audio/ogg', 'audio/amr', 'audio/webm', 'application/ogg'],
+            'mime_types' => ['audio/mpeg', 'audio/mp4', 'audio/aac', 'audio/ogg', 'audio/amr', 'audio/webm', 'audio/wav', 'application/ogg'],
         ],
         'document' => [
             'max_kb' => 100 * 1024,

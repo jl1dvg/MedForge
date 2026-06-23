@@ -2,6 +2,7 @@
 
 namespace App\Modules\Reporting\Services;
 
+use App\Modules\Reporting\Support\ImagenesDefaultFirmante;
 use DateTimeImmutable;
 use Illuminate\Support\Facades\DB;
 
@@ -127,7 +128,7 @@ class ImagenesReportDataService
         if ($firmanteId <= 0 && isset($informe['firmado_por']) && is_numeric($informe['firmado_por'])) {
             $firmanteId = (int) $informe['firmado_por'];
         }
-        $firmante = $this->obtenerDatosFirmante($firmanteId > 0 ? $firmanteId : null);
+        $firmante = ImagenesDefaultFirmante::resolve($firmanteId > 0 ? $firmanteId : null);
 
         return [
             'report' => [
@@ -581,43 +582,104 @@ class ImagenesReportDataService
      */
     private function resolveSelectedItemsExamDateTime(array $selectedItems): ?array
     {
-        $candidates = [];
-
         foreach ($selectedItems as $item) {
             if (!is_array($item)) {
                 continue;
             }
 
-            $raw = trim((string) ($item['fecha_examen'] ?? ($item['fecha'] ?? '')));
-            if ($raw === '') {
-                continue;
+            $resolved = $this->resolveSelectedItemProcedureDateTime($item);
+            if ($resolved !== null) {
+                return $resolved;
             }
-
-            $timestamp = strtotime($raw);
-            if ($timestamp === false) {
-                continue;
-            }
-
-            $candidates[] = [
-                'raw' => date('Y-m-d H:i:s', $timestamp),
-                'date' => date('Y-m-d', $timestamp),
-                'time' => date('H:i', $timestamp),
-                'ts' => $timestamp,
-            ];
         }
 
-        if ($candidates === []) {
+        return null;
+    }
+
+    /**
+     * @param array<string, mixed> $item
+     * @return array{raw:string,date:string,time:string}|null
+     */
+    private function resolveSelectedItemProcedureDateTime(array $item): ?array
+    {
+        $formId = trim((string) ($item['form_id'] ?? ''));
+        $hcNumber = trim((string) ($item['hc_number'] ?? ''));
+        $raw = trim((string) ($item['fecha_examen'] ?? ($item['fecha'] ?? '')));
+
+        if ($formId !== '' && $hcNumber !== '') {
+            $procedimiento = $this->fetchProcedimientoProyectadoByFormHc($formId, $hcNumber);
+            if ($procedimiento === null) {
+                $procedimiento = $this->fetchProcedimientoProyectadoByFormId($formId);
+            }
+
+            if (is_array($procedimiento) && $procedimiento !== []) {
+                $fechaProc = trim((string) ($procedimiento['fecha'] ?? ''));
+                $horaProc = $this->normalizeTimeFor012A($procedimiento['hora'] ?? null);
+                if ($fechaProc !== '') {
+                    return $this->buildSelectedItemDateTime($fechaProc, $horaProc !== '' ? $horaProc : null);
+                }
+            }
+        }
+
+        if ($raw === '') {
             return null;
         }
 
-        usort($candidates, static fn (array $a, array $b): int => ($a['ts'] <=> $b['ts']));
-        $selected = $candidates[0];
+        return $this->buildSelectedItemDateTime($raw, null);
+    }
+
+    /**
+     * @return array{raw:string,date:string,time:string}|null
+     */
+    private function buildSelectedItemDateTime(string $raw, ?string $timeOverride): ?array
+    {
+        $raw = trim($raw);
+        if ($raw === '') {
+            return null;
+        }
+
+        $timestamp = strtotime($raw);
+        if ($timestamp === false) {
+            return null;
+        }
+
+        $date = date('Y-m-d', $timestamp);
+        $time = $this->normalizeTimeFor012A($timeOverride);
+        if ($time === '') {
+            if (!$this->rawDateTimeHasExplicitTime($raw)) {
+                return null;
+            }
+            $time = date('H:i', $timestamp);
+        }
+        $rawDateTime = $date . ' ' . $time . ':00';
 
         return [
-            'raw' => (string) $selected['raw'],
-            'date' => (string) $selected['date'],
-            'time' => (string) $selected['time'],
+            'raw' => $rawDateTime,
+            'date' => $date,
+            'time' => $time,
         ];
+    }
+
+    private function rawDateTimeHasExplicitTime(string $value): bool
+    {
+        return preg_match('/\b\d{1,2}:\d{2}(?::\d{2})?\b/', $value) === 1;
+    }
+
+    private function normalizeTimeFor012A(mixed $value): string
+    {
+        $value = trim((string) ($value ?? ''));
+        if ($value === '') {
+            return '';
+        }
+
+        if (preg_match('/\b(\d{1,2}):(\d{2})(?::\d{2})?\b/', $value, $matches) === 1) {
+            $hour = max(0, min(23, (int) $matches[1]));
+            $minute = max(0, min(59, (int) $matches[2]));
+            return sprintf('%02d:%02d', $hour, $minute);
+        }
+
+        $timestamp = strtotime($value);
+        return $timestamp !== false ? date('H:i', $timestamp) : '';
     }
 
     /**
@@ -1165,12 +1227,12 @@ class ImagenesReportDataService
             $doctorNombreRef = trim((string) ($consulta['doctor_nombre'] ?? ($consulta['procedimiento_doctor'] ?? '')));
         }
         if ($doctorNombreRef === '') {
-            return $consulta;
+            return $this->applyDefaultFirmanteToConsulta012A($consulta);
         }
 
         $usuario = $this->obtenerUsuarioPorDoctorNombre($doctorNombreRef);
         if (!is_array($usuario) || $usuario === []) {
-            return $consulta;
+            return $this->applyDefaultFirmanteToConsulta012A($consulta);
         }
 
         if (trim((string) ($consulta['doctor_fname'] ?? '')) === '') {
@@ -1196,6 +1258,42 @@ class ImagenesReportDataService
         }
         if ((int) ($consulta['doctor_user_id'] ?? 0) <= 0 && isset($usuario['id'])) {
             $consulta['doctor_user_id'] = (int) $usuario['id'];
+        }
+
+        return $consulta;
+    }
+
+    /**
+     * @param array<string, mixed> $consulta
+     * @return array<string, mixed>
+     */
+    private function applyDefaultFirmanteToConsulta012A(array $consulta): array
+    {
+        $firmante = ImagenesDefaultFirmante::resolve(1);
+        if ($firmante['nombres'] === '' && $firmante['apellido1'] === '') {
+            return $consulta;
+        }
+
+        if (trim((string) ($consulta['doctor_fname'] ?? '')) === '') {
+            $consulta['doctor_fname'] = $firmante['nombres'];
+        }
+        if (trim((string) ($consulta['doctor_mname'] ?? '')) === '') {
+            $consulta['doctor_mname'] = '';
+        }
+        if (trim((string) ($consulta['doctor_lname'] ?? '')) === '') {
+            $consulta['doctor_lname'] = $firmante['apellido1'];
+        }
+        if (trim((string) ($consulta['doctor_lname2'] ?? '')) === '') {
+            $consulta['doctor_lname2'] = $firmante['apellido2'];
+        }
+        if (trim((string) ($consulta['doctor_cedula'] ?? '')) === '') {
+            $consulta['doctor_cedula'] = $firmante['documento'];
+        }
+        if (trim((string) ($consulta['doctor_signature_path'] ?? '')) === '') {
+            $consulta['doctor_signature_path'] = $firmante['signature_path'];
+        }
+        if (trim((string) ($consulta['doctor_firma'] ?? '')) === '') {
+            $consulta['doctor_firma'] = $firmante['firma'];
         }
 
         return $consulta;
@@ -2016,43 +2114,6 @@ class ImagenesReportDataService
         );
 
         return is_object($row) ? (array) $row : null;
-    }
-
-    /**
-     * @return array{nombres:string,apellido1:string,apellido2:string,documento:string,registro:string,firma:string,signature_path:string}
-     */
-    private function obtenerDatosFirmante(?int $firmanteId): array
-    {
-        if (!$firmanteId) {
-            return [
-                'nombres' => '',
-                'apellido1' => '',
-                'apellido2' => '',
-                'documento' => '',
-                'registro' => '',
-                'firma' => '',
-                'signature_path' => '',
-            ];
-        }
-
-        $row = DB::selectOne('SELECT * FROM users WHERE id = ? LIMIT 1', [$firmanteId]);
-        $user = is_object($row) ? (array) $row : [];
-
-        $nombres = trim((string) ($user['first_name'] ?? ''));
-        $segundoNombre = trim((string) ($user['middle_name'] ?? ''));
-        if ($segundoNombre !== '') {
-            $nombres = trim($nombres . ' ' . $segundoNombre);
-        }
-
-        return [
-            'nombres' => $nombres,
-            'apellido1' => trim((string) ($user['last_name'] ?? '')),
-            'apellido2' => trim((string) ($user['second_last_name'] ?? '')),
-            'documento' => trim((string) ($user['cedula'] ?? '')),
-            'registro' => trim((string) ($user['registro'] ?? '')),
-            'firma' => (string) ($user['firma'] ?? ''),
-            'signature_path' => (string) ($user['signature_path'] ?? ''),
-        ];
     }
 
     /**

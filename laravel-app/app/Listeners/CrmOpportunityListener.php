@@ -7,17 +7,21 @@ use App\Events\Crm\ExamenSolicitado;
 use App\Events\Crm\SolicitudCreada;
 use App\Events\Crm\SolicitudKanbanEstadoCambiado;
 use App\Events\Crm\WhatsappLeadQualified;
+use App\Models\CrmActivity;
 use App\Models\CrmOpportunity;
 use App\Models\CrmStageMapping;
 use App\Modules\CRM\Services\CrmContactResolverService;
+use App\Modules\CRM\Services\CrmIntentLeadService;
 use App\Modules\CRM\Services\CrmOpportunityService;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class CrmOpportunityListener
 {
     public function __construct(
         private readonly CrmContactResolverService $contactResolver,
         private readonly CrmOpportunityService $opportunityService,
+        private readonly CrmIntentLeadService $intentLeadService,
     ) {}
 
     public function handleWhatsappLeadQualified(WhatsappLeadQualified $event): void
@@ -31,11 +35,26 @@ class CrmOpportunityListener
             source: 'whatsapp',
         );
 
+        if (config('crm.intent_model_enabled')) {
+            // Intent model: WhatsApp signals become intent leads, not opportunities.
+            // The opportunity is created later when a solicitud arrives or the lead is converted manually.
+            $this->intentLeadService->capture(
+                contact:    $contact,
+                source:     'whatsapp',
+                sourceId:   $lead->id,
+                sourceType: 'whatsapp_lead',
+                motivo:     $lead->motivo_baja ?: null,
+                assignedTo: $event->actorUserId,
+            );
+            return;
+        }
+
+        // Legacy model: unchanged behaviour.
         $this->opportunityService->upsertFromEvent(
-            contact: $contact,
-            title: 'Lead WhatsApp: ' . ($lead->motivo_baja ?: 'sin motivo registrado'),
-            source: 'whatsapp',
-            sourceId: $lead->id,
+            contact:    $contact,
+            title:      'Lead WhatsApp: ' . ($lead->motivo_baja ?: 'sin motivo registrado'),
+            source:     'whatsapp',
+            sourceId:   $lead->id,
             sourceType: 'whatsapp_lead',
             assignedTo: $event->actorUserId,
         );
@@ -52,23 +71,32 @@ class CrmOpportunityListener
             source: 'solicitud',
         );
 
+        $episodeAt = isset($data['episode_at'])
+            ? \Carbon\Carbon::parse($data['episode_at'])
+            : null;
+
         $opp = $this->opportunityService->upsertFromEvent(
-            contact: $contact,
-            title: 'Solicitud: ' . (string) ($data['servicio'] ?? 'Servicio médico'),
-            source: 'solicitud',
-            sourceId: $event->solicitudId,
-            sourceType: 'solicitud_procedimiento',
+            contact:         $contact,
+            title:           'Solicitud: ' . (string) ($data['servicio'] ?? 'Servicio médico'),
+            source:          'solicitud',
+            sourceId:        $event->solicitudId,
+            sourceType:      'solicitud_procedimiento',
+            procedureCodigo: $data['procedimiento_codigo'] ?? null,
+            lateralidad:     $data['lateralidad']          ?? null,
+            episodeAt:       $episodeAt,
         );
 
-        // Stamp affiliation type from solicitud data so the filter column is populated immediately
-        $afiliacion = (string) ($data['afiliacion'] ?? '');
-        if ($afiliacion !== '') {
-            $tipo = self::classifyAfiliacion($afiliacion);
-            if ($opp->afiliacion_tipo !== $tipo) {
-                $opp->afiliacion_tipo = $tipo;
-                $opp->saveQuietly();
-            }
+        if ($opp === null) {
+            return;
         }
+
+        $this->linkOperationalOpportunity(
+            sourceTable:         'solicitud_procedimiento',
+            sourceId:            $event->solicitudId,
+            opportunityId:       $opp->id,
+            detailsTable:        'solicitud_crm_detalles',
+            detailsSourceColumn: 'solicitud_id',
+        );
     }
 
     public function handleExamenSolicitado(ExamenSolicitado $event): void
@@ -82,12 +110,20 @@ class CrmOpportunityListener
             source: 'examen',
         );
 
-        $this->opportunityService->upsertFromEvent(
+        $opp = $this->opportunityService->upsertFromEvent(
             contact: $contact,
             title: 'Examen: ' . (string) ($data['descripcion_examen'] ?? 'Examen solicitado'),
             source: 'examen',
             sourceId: $event->examenId,
             sourceType: 'consulta_examenes',
+        );
+
+        $this->linkOperationalOpportunity(
+            sourceTable: 'consulta_examenes',
+            sourceId: $event->examenId,
+            opportunityId: $opp->id,
+            detailsTable: 'examen_crm_detalles',
+            detailsSourceColumn: 'examen_id',
         );
     }
 
@@ -98,16 +134,27 @@ class CrmOpportunityListener
      */
     public function handleSolicitudKanbanEstadoCambiado(SolicitudKanbanEstadoCambiado $event): void
     {
+        $opp = $this->findOpportunityBySource('solicitud_procedimiento', $event->solicitudId);
+
+        if (!($opp instanceof CrmOpportunity)) {
+            return;
+        }
+
+        if ($this->isTurnoLlamadoState($event->kanbanSlug)) {
+            $this->recordTurnoLlamadoActivity(
+                opportunity: $opp,
+                type: CrmActivity::TYPE_SOLICITUD,
+                sourceId: $event->solicitudId,
+                sourceType: 'solicitud_procedimiento',
+                userId: $event->actorUserId,
+            );
+            return;
+        }
+
         $map      = CrmStageMapping::forSourceType('solicitud_procedimiento');
         $crmStage = $map[$event->kanbanSlug] ?? null;
 
         if ($crmStage === null) {
-            return;
-        }
-
-        $opp = $this->findOpportunityBySource('solicitud_procedimiento', $event->solicitudId);
-
-        if (!($opp instanceof CrmOpportunity)) {
             return;
         }
 
@@ -124,9 +171,6 @@ class CrmOpportunityListener
             newStage: $crmStage,
             userId: $event->actorUserId,
         );
-
-        // Keep afiliacion_tipo fresh whenever a solicitud transitions
-        $this->refreshAfiliacionFromSolicitud($opp, $event->solicitudId);
     }
 
     /**
@@ -139,17 +183,28 @@ class CrmOpportunityListener
         $normalized = mb_strtolower(trim($event->nuevoEstado), 'UTF-8');
         $normalized = strtr($normalized, ['á'=>'a','é'=>'e','í'=>'i','ó'=>'o','ú'=>'u','ñ'=>'n']);
 
-        $map      = CrmStageMapping::forSourceType('consulta_examenes');
-        $crmStage = $map[$normalized] ?? null;
-
-        if ($crmStage === null) {
-            return;
-        }
-
         $opp = $this->findOpportunityBySource('consulta_examenes', $event->examenId)
             ?? $this->findOpportunityByExamenHcFallback($event->examenId);
 
         if (!($opp instanceof CrmOpportunity)) {
+            return;
+        }
+
+        if ($this->isTurnoLlamadoState($normalized)) {
+            $this->recordTurnoLlamadoActivity(
+                opportunity: $opp,
+                type: CrmActivity::TYPE_EXAMEN,
+                sourceId: $event->examenId,
+                sourceType: 'consulta_examenes',
+                userId: $event->actorUserId,
+            );
+            return;
+        }
+
+        $map      = CrmStageMapping::forSourceType('consulta_examenes');
+        $crmStage = $map[$normalized] ?? null;
+
+        if ($crmStage === null) {
             return;
         }
 
@@ -186,6 +241,29 @@ class CrmOpportunityListener
                 ->first();
     }
 
+    private function linkOperationalOpportunity(
+        string $sourceTable,
+        int $sourceId,
+        int $opportunityId,
+        string $detailsTable,
+        string $detailsSourceColumn,
+    ): void {
+        if (Schema::hasTable($sourceTable) && Schema::hasColumn($sourceTable, 'crm_opportunity_id')) {
+            DB::table($sourceTable)
+                ->where('id', $sourceId)
+                ->update(['crm_opportunity_id' => $opportunityId]);
+        }
+
+        if (Schema::hasTable($detailsTable)
+            && Schema::hasColumn($detailsTable, 'crm_opportunity_id')
+            && Schema::hasColumn($detailsTable, $detailsSourceColumn)
+        ) {
+            DB::table($detailsTable)
+                ->where($detailsSourceColumn, $sourceId)
+                ->update(['crm_opportunity_id' => $opportunityId]);
+        }
+    }
+
     private function findOpportunityByExamenHcFallback(int $examenId): ?CrmOpportunity
     {
         $hcNumber = DB::table('consulta_examenes')
@@ -201,43 +279,29 @@ class CrmOpportunityListener
             ->first();
     }
 
-    private function refreshAfiliacionFromSolicitud(CrmOpportunity $opp, int $solicitudId): void
+    private function isTurnoLlamadoState(string $state): bool
     {
-        $afiliacion = DB::table('solicitud_procedimiento')
-            ->where('id', $solicitudId)
-            ->value('afiliacion');
+        return in_array($state, ['turno_llamado', 'turno-llamado', 'turno llamado', 'llamado'], true);
+    }
 
-        // Fallback: contact cedula → most recent solicitud
-        $cedula = null;
-        if ($afiliacion === null && $opp->contact_id !== null) {
-            $cedula = DB::table('crm_contacts')
-                ->where('id', $opp->contact_id)
-                ->value('cedula');
+    private function recordTurnoLlamadoActivity(
+        CrmOpportunity $opportunity,
+        string $type,
+        int $sourceId,
+        string $sourceType,
+        ?int $userId,
+    ): void {
+        CrmActivity::query()->create([
+            'opportunity_id' => $opportunity->id,
+            'type' => $type,
+            'description' => 'Turno llamado al counter del coordinador',
+            'user_id' => $userId,
+            'source_id' => $sourceId,
+            'source_type' => $sourceType,
+        ]);
 
-            if ($cedula !== null) {
-                $afiliacion = DB::table('solicitud_procedimiento')
-                    ->where('hc_number', $cedula)
-                    ->orderByDesc('id')
-                    ->value('afiliacion');
-            }
-        }
-
-        // Final fallback: patient_data direct lookup
-        if ($afiliacion === null && $cedula !== null) {
-            $afiliacion = DB::table('patient_data')
-                ->where('hc_number', $cedula)
-                ->value('afiliacion');
-        }
-
-        if ($afiliacion === null) {
-            return;
-        }
-
-        $tipo = self::classifyAfiliacion((string) $afiliacion);
-        if ($opp->afiliacion_tipo !== $tipo) {
-            $opp->afiliacion_tipo = $tipo;
-            $opp->saveQuietly();
-        }
+        $opportunity->last_activity_at = now();
+        $opportunity->saveQuietly();
     }
 
     /**
