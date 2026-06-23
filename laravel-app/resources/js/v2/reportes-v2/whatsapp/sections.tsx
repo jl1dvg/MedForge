@@ -114,13 +114,19 @@ export function WhatsappContent({ r }: { r: WhatsappReport }) {
         lede="Embudo de conversión y desempeño por segmento de ciclo de vida del paciente."
       >
         <div className="rep-grid rep-grid--4" style={{ marginBottom: 16 }}>
-          <Kpi icon="mdi-account-tie-outline" label="Citas agendadas por humano" value={humanAppointments.toLocaleString('es-EC')} sub={`${humanAppointmentConversations.toLocaleString('es-EC')} conversaciones · ${humanAppointmentPatients.toLocaleString('es-EC')} pacientes`} />
+          <Kpi
+            icon="mdi-account-tie-outline"
+            label="Citas creadas tras atención humana"
+            value={humanAppointments.toLocaleString('es-EC')}
+            sub={`Nacieron de <b>${humanAppointmentConversations.toLocaleString('es-EC')}</b> conversaciones y <b>${humanAppointmentPatients.toLocaleString('es-EC')}</b> pacientes únicos`}
+          />
           <Kpi icon="mdi-calendar-sync-outline" label="Citas agendadas por bot" value={botBookings.toLocaleString('es-EC')} />
           <Kpi icon="mdi-calendar-clock-outline" label="Estimado amplio 72h" value={humanAppointmentsMedium.toLocaleString('es-EC')} />
           <Kpi icon="mdi-percent-outline" label="Conversión total a cita" value={`${attributedBookingRate}%`} sub={`${attributedAppointments.toLocaleString('es-EC')} citas de ${s.conversationsNew.toLocaleString('es-EC')} conversaciones`} />
         </div>
         <Read>
-          Número principal: <b>{humanAppointments.toLocaleString('es-EC')}</b> citas donde hubo atención humana antes de la cita.
+          Número principal: <b>{humanAppointments.toLocaleString('es-EC')}</b> citas creadas en Sigcenter después de una atención humana.
+          Esas citas salieron de <b>{humanAppointmentConversations.toLocaleString('es-EC')}</b> conversaciones únicas; una conversación puede terminar en más de una cita.
           El estimado 72h es una mirada más amplia: cuenta citas creadas hasta 3 días después de la atención humana.
           Conversión total suma humano + bot.
         </Read>
@@ -150,21 +156,35 @@ export function WhatsappContent({ r }: { r: WhatsappReport }) {
               </tbody>
             </table>
           </div>
-          <div className="rep-card">
+          <div className="rep-card rep-reminders-card">
             <div className="rep-card-head"><h3><i className="mdi mdi-bell-ring-outline"></i>Recordatorios de cita</h3></div>
-            <p className="rep-muted" style={{ marginTop: 0 }}>
-              Se enviaron <b>{fmt(reminders.summary.sent)}</b> recordatorios; <b>{fmt(reminders.summary.confirmed)}</b> confirmaron y <b>{fmt(reminders.summary.agentRequested)}</b> pidieron hablar con una persona.
+            <div className="rep-reminder-summary" aria-label="Resumen de recordatorios">
+              <div>
+                <span>Enviados</span>
+                <strong>{fmt(reminders.summary.sent)}</strong>
+              </div>
+              <div>
+                <span>Confirmaron</span>
+                <strong>{fmt(reminders.summary.confirmed)}</strong>
+              </div>
+              <div>
+                <span>Pidieron agente</span>
+                <strong>{fmt(reminders.summary.agentRequested)}</strong>
+              </div>
+            </div>
+            <p className="rep-muted rep-reminder-read">
+              De cada recordatorio enviado, el reporte separa quién confirmó y quién pidió hablar con una persona.
             </p>
             <table className="rep-table">
-              <thead><tr><th>Tipo</th><th>Ventana</th><th>Enviados</th><th>Confirm.</th><th>Agente</th></tr></thead>
+              <thead><tr><th>Tipo</th><th>Ventana</th><th className="num">Enviados</th><th className="num">Confirm.</th><th className="num">Agente</th></tr></thead>
               <tbody>
                 {reminders.bySourceWindow.length > 0 ? reminders.bySourceWindow.map((row, i) => (
                   <tr key={i}>
                     <td>{row.sourceLabel}</td>
                     <td>{row.windowLabel}</td>
-                    <td>{fmt(row.sent)}</td>
-                    <td>{fmt(row.confirmed)}</td>
-                    <td>{fmt(row.agentRequested)}</td>
+                    <td className="num">{fmt(row.sent)}</td>
+                    <td className="num">{fmt(row.confirmed)}</td>
+                    <td className="num">{fmt(row.agentRequested)}</td>
                   </tr>
                 )) : (
                   <tr><td colSpan={5}>Sin recordatorios registrados en el período.</td></tr>

@@ -167,6 +167,13 @@ body { background: var(--bg-soft); color: var(--fg-1); -webkit-font-smoothing: a
 .rep-card-head h3 i { color: var(--primary); font-size: 18px; }
 .rep-card-note { font: 500 11.5px var(--font-body); color: var(--fg-mute); }
 
+.rep-reminders-card { gap: 0; }
+.rep-reminder-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
+.rep-reminder-summary div { border: 1px solid var(--border-soft); border-radius: 8px; background: linear-gradient(180deg, #fff, var(--bg-soft)); padding: 10px 11px; min-width: 0; }
+.rep-reminder-summary span { display: block; font: 700 9.5px/1.2 var(--font-body); text-transform: uppercase; letter-spacing: .06em; color: var(--fg-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rep-reminder-summary strong { display: block; margin-top: 5px; font: 700 22px/1 var(--font-display); color: var(--fg-1); font-variant-numeric: tabular-nums; }
+.rep-reminder-read { margin: 0 0 12px; font-size: 12.5px; line-height: 1.45; }
+
 /* ----- KPI ----- */
 .rep-kpi { background: #fff; border: 1px solid var(--border); border-radius: var(--radius-md); box-shadow: var(--shadow-xs); padding: 17px 19px 16px; position: relative; overflow: hidden; }
 .rep-kpi::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--kpi-accent, var(--primary)); }
