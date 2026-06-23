@@ -139,7 +139,14 @@ export interface Patient {
   } | null;
   afiliacion: string;
   tipo_afiliacion: string;
-  afiliacion_info: { nombre: string; tipo: string } | null;
+  afiliacion_info: {
+    nombre?: string;
+    tipo?: string;
+    categoria?: string;
+    empresa_seguro?: string;
+    afiliacion_raw?: string;
+    afiliacion_norm?: string;
+  } | null;
   aseguradora: string | null;
   poliza: string | null;
   titular: string | null;

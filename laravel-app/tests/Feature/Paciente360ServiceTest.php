@@ -112,6 +112,54 @@ class Paciente360ServiceTest extends TestCase
         ], $payload['rows'][0]['diagnosticos']);
     }
 
+    public function test_clinical_history_ignores_rows_without_real_clinical_content(): void
+    {
+        $this->createConsultaDataTable();
+        $this->createSummaryTables(['consulta_data']);
+
+        \DB::table('consulta_data')->insert([
+            'hc_number' => '100',
+            'form_id' => 'C001',
+            'fecha' => '2026-06-23',
+            'motivo_consulta' => '',
+            'enfermedad_actual' => '',
+            'examen_fisico' => '',
+            'plan' => '',
+            'diagnosticos' => '[{"idDiagnostico":"H40 - GLAUCOMA"}]',
+        ]);
+
+        $payload = (new Paciente360Service())->getSection('100', 'consultas', 10);
+
+        $this->assertSame(0, $payload['summary']['consultas']);
+        $this->assertSame(0, $payload['total_rows']);
+        $this->assertSame([], $payload['rows']);
+    }
+
+    public function test_examenes_section_points_to_v2_nas_result_files(): void
+    {
+        $this->createConsultaExamenesTable();
+        $this->createSummaryTables(['consulta_examenes']);
+
+        \DB::table('consulta_examenes')->insert([
+            'id' => 9,
+            'hc_number' => '100',
+            'form_id' => 'E001',
+            'consulta_fecha' => '2026-06-23',
+            'created_at' => '2026-06-23 08:00:00',
+            'estado' => 'ATENDIDO',
+            'prioridad' => '',
+            'examen_nombre' => 'OCT NERVIO OPTICO',
+            'examen_codigo' => 'IMA-DIA-017',
+            'doctor' => 'DRA UNO',
+            'turno' => '281032',
+        ]);
+
+        $payload = (new Paciente360Service())->getSection('100', 'examenes', 10);
+
+        $this->assertSame('/v2/imagenes/examenes-realizados/nas/list?hc_number=100&form_id=E001', $payload['rows'][0]['links']['archivos_list']);
+        $this->assertSame('/v2/imagenes/examenes-realizados?hc_number=100', $payload['rows'][0]['links']['imagenes']);
+    }
+
     public function test_protocolos_section_exposes_pdf_and_cirugias_links(): void
     {
         $this->createProtocoloDataTable();
@@ -197,6 +245,23 @@ class Paciente360ServiceTest extends TestCase
             $table->text('examen_fisico')->nullable();
             $table->text('plan')->nullable();
             $table->text('diagnosticos')->nullable();
+        });
+    }
+
+    private function createConsultaExamenesTable(): void
+    {
+        Schema::create('consulta_examenes', function (Blueprint $table): void {
+            $table->id();
+            $table->string('hc_number')->nullable();
+            $table->string('form_id')->nullable();
+            $table->date('consulta_fecha')->nullable();
+            $table->dateTime('created_at')->nullable();
+            $table->string('estado')->nullable();
+            $table->string('prioridad')->nullable();
+            $table->string('examen_nombre')->nullable();
+            $table->string('examen_codigo')->nullable();
+            $table->string('doctor')->nullable();
+            $table->string('turno')->nullable();
         });
     }
 

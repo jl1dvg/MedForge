@@ -77,6 +77,11 @@ class PacienteDetailService
             ?? (new SedePacienteResolver())->resolve($hcNumber);
         $data['sede'] = $data['sede_info']['id'] ?? '';
         $data['proxima_cita'] = $this->getProximaCita($hcNumber);
+        $data['afiliacion_info'] = $this->resolveAfiliacionInfo((string) ($data['afiliacion'] ?? ''));
+        if (is_array($data['afiliacion_info'])) {
+            $data['tipo_afiliacion'] = $data['afiliacion_info']['categoria'];
+            $data['aseguradora'] = $data['afiliacion_info']['empresa_seguro'];
+        }
 
         return $data;
     }
@@ -169,6 +174,62 @@ class PacienteDetailService
         }
 
         return null;
+    }
+
+    /**
+     * @return array{categoria:string,empresa_seguro:string,afiliacion_raw:string,afiliacion_norm:string}|null
+     */
+    private function resolveAfiliacionInfo(string $afiliacion): ?array
+    {
+        $value = trim($afiliacion);
+        if ($value === '' || !Schema::hasTable('afiliacion_categoria_map')) {
+            return null;
+        }
+
+        $columns = ['afiliacion_raw', 'afiliacion_norm', 'categoria'];
+        if (Schema::hasColumn('afiliacion_categoria_map', 'empresa_seguro')) {
+            $columns[] = 'empresa_seguro';
+        }
+
+        $needle = $this->normalizeAffiliationKey($value);
+        $rows = DB::table('afiliacion_categoria_map')->select($columns)->get();
+        foreach ($rows as $row) {
+            $raw = trim((string) ($row->afiliacion_raw ?? ''));
+            $norm = trim((string) ($row->afiliacion_norm ?? ''));
+            $empresa = trim((string) ($row->empresa_seguro ?? ''));
+            $candidates = array_filter([$raw, $norm, $empresa], static fn(string $candidate): bool => trim($candidate) !== '');
+
+            foreach ($candidates as $candidate) {
+                if ($this->normalizeAffiliationKey($candidate) !== $needle) {
+                    continue;
+                }
+
+                $categoria = strtolower(trim((string) ($row->categoria ?? '')));
+                return [
+                    'categoria' => $categoria !== '' ? $categoria : 'otros',
+                    'empresa_seguro' => $empresa !== '' ? $empresa : $raw,
+                    'afiliacion_raw' => $raw !== '' ? $raw : $value,
+                    'afiliacion_norm' => $norm,
+                ];
+            }
+        }
+
+        return null;
+    }
+
+    private function normalizeAffiliationKey(string $value): string
+    {
+        $value = mb_strtolower(trim($value), 'UTF-8');
+        $value = strtr($value, [
+            'á' => 'a',
+            'é' => 'e',
+            'í' => 'i',
+            'ó' => 'o',
+            'ú' => 'u',
+            'ñ' => 'n',
+        ]);
+
+        return preg_replace('/[^a-z0-9]+/', '', $value) ?? $value;
     }
 
     /**

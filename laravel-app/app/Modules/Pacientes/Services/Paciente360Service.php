@@ -109,7 +109,6 @@ class Paciente360Service
                      OR TRIM(COALESCE(enfermedad_actual, '')) <> ''
                      OR TRIM(COALESCE(examen_fisico, '')) <> ''
                      OR TRIM(COALESCE(plan, '')) <> ''
-                     OR TRIM(COALESCE(diagnosticos, '')) <> ''
                    )",
                 [':hc' => $hcNumber]
             ),
@@ -294,7 +293,6 @@ class Paciente360Service
                 OR TRIM(COALESCE(enfermedad_actual, '')) <> ''
                 OR TRIM(COALESCE(examen_fisico, '')) <> ''
                 OR TRIM(COALESCE(plan, '')) <> ''
-                OR TRIM(COALESCE(diagnosticos, '')) <> ''
               )
             ORDER BY fecha DESC, form_id DESC
             LIMIT :limit
@@ -811,11 +809,11 @@ class Paciente360Service
                 $links['derivacion'] = '/v2/solicitudes/derivacion?hc_number=' . rawurlencode($hcNumber) . '&form_id=' . rawurlencode($formId);
             }
         } elseif ($section === 'examenes') {
-            $links['modulo'] = '/examenes';
+            $links['modulo'] = '/v2/imagenes/examenes-realizados';
             if ($formId !== '') {
-                $links['derivacion'] = '/examenes/derivacion?hc_number=' . rawurlencode($hcNumber) . '&form_id=' . rawurlencode($formId);
-                $links['imagenes'] = '/imagenes/examenes-realizados?hc_number=' . rawurlencode($hcNumber);
-                $links['archivos_list'] = '/imagenes/examenes-realizados/nas/list?hc_number=' . rawurlencode($hcNumber) . '&form_id=' . rawurlencode($formId);
+                $links['derivacion'] = '/v2/examenes/derivacion?hc_number=' . rawurlencode($hcNumber) . '&form_id=' . rawurlencode($formId);
+                $links['imagenes'] = '/v2/imagenes/examenes-realizados?hc_number=' . rawurlencode($hcNumber);
+                $links['archivos_list'] = '/v2/imagenes/examenes-realizados/nas/list?hc_number=' . rawurlencode($hcNumber) . '&form_id=' . rawurlencode($formId);
             }
         } elseif ($section === 'agenda') {
             $links['modulo'] = '/agenda';

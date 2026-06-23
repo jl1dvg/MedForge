@@ -83,6 +83,7 @@ class PacientesDetailRouteTest extends TestCase
         $this->actingAs(\App\Models\User::query()->findOrFail(40));
         $this->createPatientDataTable();
         $this->createProcedimientosTable();
+        $this->createAfiliacionCategoriaMapTable();
 
         DB::table('patient_data')->insert([
             'hc_number' => '0902143791',
@@ -99,6 +100,15 @@ class PacientesDetailRouteTest extends TestCase
             'ciudad' => 'GUAYAQUIL',
             'medico_tratante_id' => 40,
             'sede_principal' => 'MATRIZ',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('afiliacion_categoria_map')->insert([
+            'afiliacion_raw' => 'ECUASANITAS',
+            'afiliacion_norm' => 'ec metropolitana',
+            'categoria' => 'privado',
+            'empresa_seguro' => 'ECUASANITAS',
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -123,7 +133,11 @@ class PacientesDetailRouteTest extends TestCase
             ->assertJsonPath('data.patientData.sede', 'matriz')
             ->assertJsonPath('data.patientData.sede_info.nombre', 'MATRIZ')
             ->assertJsonPath('data.patientData.proxima_cita.fecha', '2099-07-07')
-            ->assertJsonPath('data.patientData.proxima_cita.hora', '10:00');
+            ->assertJsonPath('data.patientData.proxima_cita.hora', '10:00')
+            ->assertJsonPath('data.patientData.tipo_afiliacion', 'privado')
+            ->assertJsonPath('data.patientData.aseguradora', 'ECUASANITAS')
+            ->assertJsonPath('data.patientData.afiliacion_info.categoria', 'privado')
+            ->assertJsonPath('data.patientData.afiliacion_info.empresa_seguro', 'ECUASANITAS');
     }
 
     private function createPatientDataTable(): void
@@ -163,6 +177,19 @@ class PacientesDetailRouteTest extends TestCase
             $table->string('id_sede')->nullable();
             $table->string('sede_departamento')->nullable();
             $table->integer('sigcenter_present')->default(1);
+        });
+    }
+
+    private function createAfiliacionCategoriaMapTable(): void
+    {
+        Schema::dropIfExists('afiliacion_categoria_map');
+        Schema::create('afiliacion_categoria_map', function (Blueprint $table): void {
+            $table->id();
+            $table->string('afiliacion_raw')->nullable();
+            $table->string('afiliacion_norm')->nullable();
+            $table->string('categoria')->nullable();
+            $table->string('empresa_seguro')->nullable();
+            $table->timestamps();
         });
     }
 }
