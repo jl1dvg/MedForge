@@ -112,6 +112,27 @@ class Paciente360ServiceTest extends TestCase
         ], $payload['rows'][0]['diagnosticos']);
     }
 
+    public function test_protocolos_section_exposes_pdf_and_cirugias_links(): void
+    {
+        $this->createProtocoloDataTable();
+        $this->createSummaryTables(['protocolo_data']);
+
+        \DB::table('protocolo_data')->insert([
+            'hc_number' => '100',
+            'form_id' => 'P001',
+            'fecha_inicio' => '2026-06-17',
+            'membrete' => 'Facoemulsificacion',
+            'status' => 'firmado',
+        ]);
+
+        $payload = (new Paciente360Service())->getSection('100', 'protocolos', 10);
+
+        $this->assertSame('protocolos', $payload['section']);
+        $this->assertSame('/v2/cirugias?form_id=P001', $payload['rows'][0]['links']['cirugia']);
+        $this->assertSame('/v2/cirugias/wizard?form_id=P001&hc_number=100', $payload['rows'][0]['links']['editar']);
+        $this->assertSame('/v2/reports/protocolo/pdf?form_id=P001&hc_number=100', $payload['rows'][0]['links']['pdf']);
+    }
+
     private function createSolicitudProcedimientoTable(): void
     {
         Schema::create('solicitud_procedimiento', function (Blueprint $table): void {
@@ -176,6 +197,18 @@ class Paciente360ServiceTest extends TestCase
             $table->text('examen_fisico')->nullable();
             $table->text('plan')->nullable();
             $table->text('diagnosticos')->nullable();
+        });
+    }
+
+    private function createProtocoloDataTable(): void
+    {
+        Schema::create('protocolo_data', function (Blueprint $table): void {
+            $table->id();
+            $table->string('hc_number')->nullable();
+            $table->string('form_id')->nullable();
+            $table->date('fecha_inicio')->nullable();
+            $table->string('membrete')->nullable();
+            $table->string('status')->nullable();
         });
     }
 

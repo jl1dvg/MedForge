@@ -819,6 +819,13 @@ class Paciente360Service
             }
         } elseif ($section === 'agenda') {
             $links['modulo'] = '/agenda';
+        } elseif ($section === 'protocolos') {
+            $links['modulo'] = '/v2/cirugias';
+            if ($formId !== '') {
+                $links['cirugia'] = '/v2/cirugias?form_id=' . rawurlencode($formId);
+                $links['editar'] = '/v2/cirugias/wizard?form_id=' . rawurlencode($formId) . '&hc_number=' . rawurlencode($hcNumber);
+                $links['pdf'] = '/v2/reports/protocolo/pdf?form_id=' . rawurlencode($formId) . '&hc_number=' . rawurlencode($hcNumber);
+            }
         } elseif ($section === 'derivaciones') {
             $links['modulo'] = '/derivaciones';
             if ($formId !== '') {

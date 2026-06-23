@@ -342,6 +342,18 @@ function SecProtocolos({ rows }: { rows: any[] }) {
           <span className={`badge ${String(row.status) === '1' || row.status === 'firmado' ? 'badge-green' : 'badge-warn'}`}>
             {String(row.status) === '1' || row.status === 'firmado' ? 'Firmado' : 'Pendiente'}
           </span>
+          <div className="ag-card-acts">
+            {row.links?.pdf && (
+              <button className="icon-btn" title="Ver PDF" onClick={() => window.open(row.links.pdf, '_blank', 'noopener')}>
+                <i className="mdi mdi-file-pdf-box" />
+              </button>
+            )}
+            {row.links?.cirugia && (
+              <button className="icon-btn" title="Abrir en cirugías" onClick={() => { window.location.href = row.links.cirugia; }}>
+                <i className="mdi mdi-open-in-new" />
+              </button>
+            )}
+          </div>
         </div>
       ))}
     </div>
@@ -601,7 +613,9 @@ export default function DetailView({ p, onBack, onAgendar, onWhats, onNuevaSolic
     return sd.rows.length || undefined;
   };
 
-  const m = MEDICO_MAP[p.medico];
+  const m = p.medico_tratante
+    ? { full: p.medico_tratante.nombre, esp: p.medico_tratante.especialidad }
+    : MEDICO_MAP[p.medico];
 
   function renderBody(id: string): React.ReactNode {
     if (id === 'personales')     return <SecPersonales p={p} />;
