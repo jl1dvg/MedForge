@@ -300,8 +300,9 @@ jobs:
             # cache puede chocar con la ventana de escritura de esos archivos
             # (file_put_contents sin lock) y devolver un 419/500 espurio. Absorbe
             # esa primera petición aquí en vez de dejar que la sufra un usuario.
-            curl -sk -o /dev/null -w "Warm-up /auth/login (https): %{http_code}\n" https://localhost/auth/login || true
-            curl -s -o /dev/null -w "Warm-up /auth/login (http): %{http_code}\n" http://localhost/auth/login || true
+            # Debe golpear el dominio público real: "localhost" no resuelve al
+            # vhost de la app en este hosting compartido (devolvía 404/000).
+            curl -s --max-time 10 -o /dev/null -w "Warm-up /auth/login: %{http_code}\n" https://cive.consulmed.me/auth/login || true
 
             # Copiar assets Vite al public raíz (hasta migración completa a Laravel)
             mkdir -p "$PROJECT/public/build"
