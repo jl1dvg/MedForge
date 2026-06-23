@@ -352,7 +352,7 @@ class GlobalSearchService
                 'id'       => $hcNumber,
                 'title'    => $fullName,
                 'subtitle' => 'HC: ' . $hcNumber,
-                'url'      => '/pacientes/detalles?hc_number=' . rawurlencode($hcNumber),
+                'url'      => '/v2/pacientes?hc_number=' . rawurlencode($hcNumber),
                 'badge'    => $this->string($row['afiliacion'] ?? ''),
                 'meta'     => $this->buildMeta([
                     ($row['celular'] ?? '') ? 'Celular: ' . $row['celular'] : null,

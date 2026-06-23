@@ -192,8 +192,3 @@ export interface Toast {
   icon: string;
   kind: string;
 }
-
-export interface AgendarState {
-  id: number | null;
-  open: boolean;
-}

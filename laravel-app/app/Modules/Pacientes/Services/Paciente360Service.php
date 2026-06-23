@@ -785,7 +785,7 @@ class Paciente360Service
     private function buildLinks(string $section, string $hcNumber, string $formId, string $recordId): array
     {
         $links = [
-            'paciente' => '/pacientes/detalles?hc_number=' . rawurlencode($hcNumber),
+            'paciente' => '/v2/pacientes?hc_number=' . rawurlencode($hcNumber),
         ];
 
         if (in_array($section, ['solicitudes', 'prefacturas'], true)) {

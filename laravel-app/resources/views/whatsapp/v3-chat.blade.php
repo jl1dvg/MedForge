@@ -584,6 +584,11 @@
     ],
     'canSupervise'  => $canSupervise,
     'canOperate'    => $canOperateConversation,
+    'initialQuery'  => [
+        'search' => $search,
+        'number' => (string) request()->query('number', ''),
+        'hc_number' => (string) request()->query('hc_number', ''),
+    ],
     'pusher'        => $realtimeConfig ?? [],
 ], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) !!}</script>
 <div id="wa3-react-root" style="height:calc(100vh - 60px);height:calc(100svh - 60px);min-height:400px"></div>

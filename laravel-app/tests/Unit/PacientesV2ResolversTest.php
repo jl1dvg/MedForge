@@ -3,10 +3,14 @@
 namespace Tests\Unit;
 
 use App\Modules\Pacientes\Services\MedicoTratanteResolver;
+use App\Modules\Pacientes\Services\PacientesFlujoService;
 use App\Modules\Pacientes\Services\SedePacienteResolver;
 use App\Modules\Pacientes\Services\TipoAfiliacionResolver;
-use PDO;
-use PHPUnit\Framework\TestCase;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use ReflectionClass;
+use Tests\TestCase;
 
 class PacientesV2ResolversTest extends TestCase
 {
@@ -26,7 +30,7 @@ class PacientesV2ResolversTest extends TestCase
         $this->insertProcedimiento($pdo, 'HC1', 'DR DOS', '2026-06-11', '08:00', 'CEIBOS');
         $this->insertProcedimiento($pdo, 'HC1', 'DR DOS', '2026-06-15', '08:00', 'CEIBOS');
 
-        $medico = (new MedicoTratanteResolver($pdo))->resolve('HC1');
+        $medico = (new MedicoTratanteResolver())->resolve('HC1');
 
         $this->assertSame('DR DOS', $medico['nombre']);
         $this->assertSame('Cirujano Oftalmologo', $medico['especialidad']);
@@ -40,21 +44,18 @@ class PacientesV2ResolversTest extends TestCase
         $this->createUsersTable($pdo);
         $this->createProcedimientosTable($pdo);
 
-        $stmt = $pdo->prepare('
-            INSERT INTO users (nombre, full_name, subespecialidad, especialidad, sede, id_trabajador)
-            VALUES (:nombre, :nombre, :subespecialidad, :especialidad, :sede, :id_trabajador)
-        ');
-        $stmt->execute([
-            ':nombre' => 'Andres Fernando Polit Hoyos',
-            ':subespecialidad' => 'cornea_refractiva',
-            ':especialidad' => 'Cirujano Oftalmologo',
-            ':sede' => 'CEIBOS',
-            ':id_trabajador' => '32',
+        DB::table('users')->insert([
+            'nombre' => 'Andres Fernando Polit Hoyos',
+            'full_name' => 'Andres Fernando Polit Hoyos',
+            'subespecialidad' => 'cornea_refractiva',
+            'especialidad' => 'Cirujano Oftalmologo',
+            'sede' => 'CEIBOS',
+            'id_trabajador' => '32',
         ]);
 
         $this->insertProcedimiento($pdo, 'HC1', 'POLIT HOYOS ANDRES FERNANDO', '2026-06-16', '09:00', 'CEIBOS');
 
-        $medico = (new MedicoTratanteResolver($pdo))->resolve('HC1');
+        $medico = (new MedicoTratanteResolver())->resolve('HC1');
 
         $this->assertSame('Andres Fernando Polit Hoyos', $medico['nombre']);
         $this->assertSame('Cirujano Oftalmologo', $medico['especialidad']);
@@ -70,7 +71,7 @@ class PacientesV2ResolversTest extends TestCase
         $this->insertUser($pdo, 'OPTOMETRIA OPT', 'Optometria');
         $this->insertProcedimiento($pdo, 'HC1', 'OPTOMETRIA OPT', '2026-06-16', '09:00', 'CEIBOS');
 
-        $this->assertNull((new MedicoTratanteResolver($pdo))->resolve('HC1'));
+        $this->assertNull((new MedicoTratanteResolver())->resolve('HC1'));
     }
 
     public function test_sede_uses_first_valid_projected_procedure(): void
@@ -81,7 +82,7 @@ class PacientesV2ResolversTest extends TestCase
         $this->insertProcedimiento($pdo, 'HC1', 'DR UNO', '2026-06-10', '08:00', 'VILLA CLUB');
         $this->insertProcedimiento($pdo, 'HC1', 'DR UNO', '2026-06-15', '08:00', 'CEIBOS');
 
-        $sede = (new SedePacienteResolver($pdo))->resolve('HC1');
+        $sede = (new SedePacienteResolver())->resolve('HC1');
 
         $this->assertSame('ceibos', $sede['id']);
         $this->assertSame('CEIBOS', $sede['nombre']);
@@ -100,121 +101,118 @@ class PacientesV2ResolversTest extends TestCase
         $this->assertSame('otros', $resolver->classify('ALQUILER'));
     }
 
-    private function makePdo(): PDO
+    public function test_pacientes_flujo_service_does_not_require_pdo_constructor(): void
     {
-        $pdo = new PDO('sqlite::memory:');
-        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $reflection = new ReflectionClass(PacientesFlujoService::class);
 
-        return $pdo;
+        $this->assertSame(0, $reflection->getConstructor()?->getNumberOfParameters() ?? 0);
+        $this->assertInstanceOf(PacientesFlujoService::class, new PacientesFlujoService());
     }
 
-    private function createUsersTable(PDO $pdo): void
+    private function makePdo(): null
     {
-        $pdo->exec('
-            CREATE TABLE users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                nombre TEXT,
-                full_name TEXT,
-                subespecialidad TEXT,
-                especialidad TEXT,
-                sede TEXT,
-                id_trabajador TEXT
-            )
-        ');
+        return null;
     }
 
-    private function createProcedimientosTable(PDO $pdo): void
+    private function createUsersTable(mixed $pdo): void
     {
-        $pdo->exec('
-            CREATE TABLE procedimiento_proyectado (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                hc_number TEXT,
-                doctor TEXT,
-                procedimiento_proyectado TEXT,
-                fecha TEXT,
-                hora TEXT,
-                id_sede TEXT,
-                sede_departamento TEXT,
-                sigcenter_present INTEGER DEFAULT 1
-            )
-        ');
+        Schema::dropIfExists('users');
+        Schema::create('users', function (Blueprint $table): void {
+            $table->id();
+            $table->string('nombre')->nullable();
+            $table->string('full_name')->nullable();
+            $table->string('subespecialidad')->nullable();
+            $table->string('especialidad')->nullable();
+            $table->string('sede')->nullable();
+            $table->string('id_trabajador')->nullable();
+        });
     }
 
-    private function createPatientDataTable(PDO $pdo): void
+    private function createProcedimientosTable(mixed $pdo): void
     {
-        $pdo->exec('
-            CREATE TABLE patient_data (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                hc_number TEXT,
-                cedula TEXT,
-                fname TEXT,
-                mname TEXT,
-                lname TEXT,
-                lname2 TEXT,
-                afiliacion TEXT,
-                fecha_nacimiento TEXT,
-                sexo TEXT,
-                celular TEXT,
-                telefono_alt TEXT,
-                email TEXT,
-                direccion TEXT,
-                ciudad TEXT,
-                medico_tratante_id TEXT,
-                sede_principal TEXT,
-                created_at TEXT
-            )
-        ');
+        Schema::dropIfExists('procedimiento_proyectado');
+        Schema::create('procedimiento_proyectado', function (Blueprint $table): void {
+            $table->id();
+            $table->string('hc_number')->nullable();
+            $table->string('doctor')->nullable();
+            $table->string('procedimiento_proyectado')->nullable();
+            $table->date('fecha')->nullable();
+            $table->time('hora')->nullable();
+            $table->string('id_sede')->nullable();
+            $table->string('sede_departamento')->nullable();
+            $table->unsignedTinyInteger('sigcenter_present')->default(1);
+        });
     }
 
-    private function createConsultaDataTable(PDO $pdo): void
+    private function createPatientDataTable(mixed $pdo): void
     {
-        $pdo->exec('
-            CREATE TABLE consulta_data (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                hc_number TEXT,
-                fecha TEXT,
-                antecedente_alergico TEXT
-            )
-        ');
+        Schema::dropIfExists('patient_data');
+        Schema::create('patient_data', function (Blueprint $table): void {
+            $table->id();
+            $table->string('hc_number')->nullable();
+            $table->string('cedula')->nullable();
+            $table->string('fname')->nullable();
+            $table->string('mname')->nullable();
+            $table->string('lname')->nullable();
+            $table->string('lname2')->nullable();
+            $table->string('afiliacion')->nullable();
+            $table->date('fecha_nacimiento')->nullable();
+            $table->string('sexo')->nullable();
+            $table->string('celular')->nullable();
+            $table->string('telefono_alt')->nullable();
+            $table->string('email')->nullable();
+            $table->string('direccion')->nullable();
+            $table->string('ciudad')->nullable();
+            $table->string('medico_tratante_id')->nullable();
+            $table->string('sede_principal')->nullable();
+            $table->timestamp('created_at')->nullable();
+        });
     }
 
-    private function createSolicitudProcedimientoTable(PDO $pdo): void
+    private function createConsultaDataTable(mixed $pdo): void
     {
-        $pdo->exec('
-            CREATE TABLE solicitud_procedimiento (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                hc_number TEXT,
-                estado TEXT
-            )
-        ');
+        Schema::dropIfExists('consulta_data');
+        Schema::create('consulta_data', function (Blueprint $table): void {
+            $table->id();
+            $table->string('hc_number')->nullable();
+            $table->date('fecha')->nullable();
+            $table->text('antecedente_alergico')->nullable();
+        });
     }
 
-    private function insertUser(PDO $pdo, string $nombre, string $especialidad): void
+    private function createSolicitudProcedimientoTable(mixed $pdo): void
     {
-        $stmt = $pdo->prepare('
-            INSERT INTO users (nombre, full_name, subespecialidad, especialidad, sede, id_trabajador)
-            VALUES (:nombre, :nombre, :especialidad, :especialidad, :sede, :id_trabajador)
-        ');
-        $stmt->execute([
-            ':nombre' => $nombre,
-            ':especialidad' => $especialidad,
-            ':sede' => 'CEIBOS',
-            ':id_trabajador' => $nombre,
+        Schema::dropIfExists('solicitud_procedimiento');
+        Schema::create('solicitud_procedimiento', function (Blueprint $table): void {
+            $table->id();
+            $table->string('hc_number')->nullable();
+            $table->string('estado')->nullable();
+        });
+    }
+
+    private function insertUser(mixed $pdo, string $nombre, string $especialidad): void
+    {
+        DB::table('users')->insert([
+            'nombre' => $nombre,
+            'full_name' => $nombre,
+            'subespecialidad' => $especialidad,
+            'especialidad' => $especialidad,
+            'sede' => 'CEIBOS',
+            'id_trabajador' => $nombre,
         ]);
     }
 
-    private function insertProcedimiento(PDO $pdo, string $hcNumber, string $doctor, string $fecha, string $hora, string $sede): void
+    private function insertProcedimiento(mixed $pdo, string $hcNumber, string $doctor, string $fecha, string $hora, string $sede): void
     {
-        $stmt = $pdo->prepare("
-            INSERT INTO procedimiento_proyectado (hc_number, doctor, procedimiento_proyectado, fecha, hora, id_sede, sede_departamento, sigcenter_present)
-            VALUES (:hc_number, :doctor, 'Consulta', :fecha, :hora, :sede, NULL, 1)
-        ");
-        $stmt->execute([
-            ':hc_number' => $hcNumber,
-            ':doctor' => $doctor,
-            ':fecha' => $fecha,
-            ':hora' => $hora,
-            ':sede' => $sede,
+        DB::table('procedimiento_proyectado')->insert([
+            'hc_number' => $hcNumber,
+            'doctor' => $doctor,
+            'procedimiento_proyectado' => 'Consulta',
+            'fecha' => $fecha,
+            'hora' => $hora,
+            'id_sede' => $sede,
+            'sede_departamento' => null,
+            'sigcenter_present' => 1,
         ]);
     }
 }

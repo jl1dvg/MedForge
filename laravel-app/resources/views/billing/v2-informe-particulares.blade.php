@@ -147,7 +147,7 @@
             return '#';
         }
 
-        return '/v2/pacientes/detalles?hc_number=' . urlencode($hc);
+        return '/v2/pacientes?hc_number=' . urlencode($hc);
     };
     $operationalAlertLabel = static function (?string $alert): string {
         $normalized = strtoupper(trim((string) $alert));
