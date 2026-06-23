@@ -71,6 +71,7 @@ Route::middleware(['app.auth', 'app.permission:administrativo,examenes.view,exam
     Route::get('/v2/examenes/turnero', [ExamenesUiController::class, 'turnero']);
     Route::get('/v2/imagenes/examenes-realizados', [ImagenesUiController::class, 'realizadas']);
     Route::get('/v2/imagenes/dashboard', [ImagenesUiController::class, 'dashboard']);
+    Route::get('/v2/imagenes/dashboard/report', [ImagenesUiController::class, 'dashboardReport']);
 });
 
 Route::middleware(['app.auth', 'app.permission:administrativo,agenda.view,pacientes.view,solicitudes.view,examenes.view'])->group(function (): void {
@@ -211,7 +212,7 @@ Route::middleware(['app.auth', 'app.permission:administrativo,codes.manage'])->g
 Route::middleware(['app.auth'])->group(function (): void {
     Route::get('/v2/whatsapp', [WhatsappUiController::class, 'hub'])
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.view,whatsapp.chat.send,whatsapp.chat.assign,whatsapp.chat.supervise,whatsapp.templates.manage,whatsapp.autoresponder.manage,settings.manage');
-    Route::get('/v2/whatsapp/chat', [WhatsappUiController::class, 'chat'])
+    Route::get('/v2/whatsapp/chat', [WhatsappUiController::class, 'chatV3'])
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.view,whatsapp.chat.send,whatsapp.chat.assign,whatsapp.chat.supervise,settings.manage')
         ->middleware('whatsapp.feature:ui,/whatsapp/chat');
     Route::get('/v2/whatsapp/chat-v3', [WhatsappUiController::class, 'chatV3'])
@@ -226,7 +227,10 @@ Route::middleware(['app.auth'])->group(function (): void {
     Route::get('/v2/whatsapp/templates', [WhatsappUiController::class, 'templates'])
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.templates.manage,settings.manage')
         ->middleware('whatsapp.feature:ui,/whatsapp/templates');
-    Route::get('/v2/whatsapp/dashboard', [WhatsappUiController::class, 'dashboard'])
+    Route::get('/v2/whatsapp/dashboard', [WhatsappUiController::class, 'dashboardReport'])
+        ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.view,whatsapp.chat.supervise,settings.manage')
+        ->middleware('whatsapp.feature:ui,/whatsapp/dashboard');
+    Route::get('/v2/whatsapp/dashboard-legacy', [WhatsappUiController::class, 'dashboard'])
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.view,whatsapp.chat.supervise,settings.manage')
         ->middleware('whatsapp.feature:ui,/whatsapp/dashboard');
     Route::get('/v2/whatsapp/dashboard-v3', [WhatsappUiController::class, 'dashboardV3'])

@@ -2,19 +2,12 @@
 
 namespace App\Modules\Pacientes\Services;
 
+use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
-use PDO;
 use Throwable;
 
-class Paciente360ParityService
+class Paciente360Service
 {
-    private PDO $db;
-
-    public function __construct(PDO $pdo)
-    {
-        $this->db = $pdo;
-    }
-
     /**
      * @return array{
      *     section:string,
@@ -108,7 +101,15 @@ class Paciente360ParityService
                 [':hc' => $hcNumber]
             ),
             'consultas' => $this->safeCount(
-                'SELECT COUNT(*) FROM consulta_data WHERE hc_number = :hc',
+                "SELECT COUNT(*)
+                 FROM consulta_data
+                 WHERE hc_number = :hc
+                   AND (
+                     TRIM(COALESCE(motivo_consulta, '')) <> ''
+                     OR TRIM(COALESCE(enfermedad_actual, '')) <> ''
+                     OR TRIM(COALESCE(examen_fisico, '')) <> ''
+                     OR TRIM(COALESCE(plan, '')) <> ''
+                   )",
                 [':hc' => $hcNumber]
             ),
             'protocolos' => $this->safeCount(
@@ -169,15 +170,7 @@ class Paciente360ParityService
             LIMIT :limit
         SQL;
 
-        try {
-            $stmt = $this->db->prepare($sql);
-            $stmt->bindValue(':hc', $hcNumber, PDO::PARAM_STR);
-            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-            $stmt->execute();
-            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-        } catch (Throwable) {
-            return [];
-        }
+        $rows = $this->selectRows($sql, ['hc' => $hcNumber, 'limit' => $limit]);
 
         return array_map(
             static fn(array $row): array => [
@@ -217,15 +210,7 @@ class Paciente360ParityService
             LIMIT :limit
         SQL;
 
-        try {
-            $stmt = $this->db->prepare($sql);
-            $stmt->bindValue(':hc', $hcNumber, PDO::PARAM_STR);
-            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-            $stmt->execute();
-            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-        } catch (Throwable) {
-            return [];
-        }
+        $rows = $this->selectRows($sql, ['hc' => $hcNumber, 'limit' => $limit]);
 
         return array_map(
             static fn(array $row): array => [
@@ -260,26 +245,7 @@ class Paciente360ParityService
                 pp.id_sede,
                 v.fecha_visita,
                 v.hora_llegada,
-                (
-                    SELECT u.profile_photo
-                    FROM users u
-                    WHERE u.profile_photo IS NOT NULL
-                      AND u.profile_photo <> ''
-                      AND (
-                        LOWER(TRIM(u.nombre)) = LOWER(TRIM(pp.doctor))
-                        OR LOWER(TRIM(pp.doctor)) LIKE CONCAT('%', LOWER(TRIM(u.nombre)), '%')
-                        OR LOWER(TRIM(COALESCE(u.full_name, ''))) = LOWER(TRIM(pp.doctor))
-                        OR LOWER(TRIM(pp.doctor)) LIKE CONCAT('%', LOWER(TRIM(COALESCE(u.full_name, ''))), '%')
-                        OR LOWER(TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name, u.second_last_name))) = LOWER(TRIM(pp.doctor))
-                        OR LOWER(TRIM(pp.doctor)) LIKE CONCAT('%', LOWER(TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name, u.second_last_name))), '%')
-                        OR LOWER(TRIM(CONCAT_WS(' ', u.last_name, u.second_last_name, u.first_name, u.middle_name))) = LOWER(TRIM(pp.doctor))
-                        OR LOWER(TRIM(pp.doctor)) LIKE CONCAT('%', LOWER(TRIM(CONCAT_WS(' ', u.last_name, u.second_last_name, u.first_name, u.middle_name))), '%')
-                        OR LOWER(TRIM(u.username)) = LOWER(TRIM(pp.doctor))
-                        OR LOWER(TRIM(u.email)) = LOWER(TRIM(pp.doctor))
-                      )
-                    ORDER BY u.id ASC
-                    LIMIT 1
-                ) AS doctor_avatar
+                NULL AS doctor_avatar
             FROM procedimiento_proyectado pp
             LEFT JOIN visitas v ON v.id = pp.visita_id
             WHERE pp.hc_number = :hc
@@ -288,15 +254,7 @@ class Paciente360ParityService
             LIMIT :limit
         SQL;
 
-        try {
-            $stmt = $this->db->prepare($sql);
-            $stmt->bindValue(':hc', $hcNumber, PDO::PARAM_STR);
-            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-            $stmt->execute();
-            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-        } catch (Throwable) {
-            return [];
-        }
+        $rows = $this->selectRows($sql, ['hc' => $hcNumber, 'limit' => $limit]);
 
         $historialByForm = $this->fetchAgendaStatusHistory(array_column($rows, 'form_id'));
 
@@ -330,28 +288,27 @@ class Paciente360ParityService
             SELECT *
             FROM consulta_data
             WHERE hc_number = :hc
+              AND (
+                TRIM(COALESCE(motivo_consulta, '')) <> ''
+                OR TRIM(COALESCE(enfermedad_actual, '')) <> ''
+                OR TRIM(COALESCE(examen_fisico, '')) <> ''
+                OR TRIM(COALESCE(plan, '')) <> ''
+              )
             ORDER BY fecha DESC, form_id DESC
             LIMIT :limit
         SQL;
 
-        try {
-            $stmt = $this->db->prepare($sql);
-            $stmt->bindValue(':hc', $hcNumber, PDO::PARAM_STR);
-            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-            $stmt->execute();
-            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-        } catch (Throwable) {
-            return [];
-        }
+        $rows = $this->selectRows($sql, ['hc' => $hcNumber, 'limit' => $limit]);
 
         return array_map(
-            static fn(array $row): array => [
+            fn(array $row): array => [
                 'form_id' => (string)($row['form_id'] ?? ''),
                 'fecha' => (string)($row['fecha'] ?? ($row['created_at'] ?? '')),
                 'motivo_consulta' => (string)($row['motivo_consulta'] ?? ''),
                 'enfermedad_actual' => (string)($row['enfermedad_actual'] ?? ''),
+                'examen_fisico' => (string)($row['examen_fisico'] ?? ''),
                 'plan' => (string)($row['plan'] ?? ''),
-                'diagnosticos' => (string)($row['diagnosticos'] ?? ''),
+                'diagnosticos' => $this->formatDiagnosticos((string)($row['diagnosticos'] ?? '')),
             ],
             $rows
         );
@@ -370,15 +327,7 @@ class Paciente360ParityService
             LIMIT :limit
         SQL;
 
-        try {
-            $stmt = $this->db->prepare($sql);
-            $stmt->bindValue(':hc', $hcNumber, PDO::PARAM_STR);
-            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-            $stmt->execute();
-            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-        } catch (Throwable) {
-            return [];
-        }
+        $rows = $this->selectRows($sql, ['hc' => $hcNumber, 'limit' => $limit]);
 
         return array_map(
             static fn(array $row): array => [
@@ -404,15 +353,7 @@ class Paciente360ParityService
             LIMIT :limit
         SQL;
 
-        try {
-            $stmt = $this->db->prepare($sql);
-            $stmt->bindValue(':hc', $hcNumber, PDO::PARAM_STR);
-            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-            $stmt->execute();
-            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-        } catch (Throwable) {
-            return [];
-        }
+        $rows = $this->selectRows($sql, ['hc' => $hcNumber, 'limit' => $limit]);
 
         return array_map(
             static fn(array $row): array => [
@@ -455,29 +396,19 @@ class Paciente360ParityService
             LIMIT :limit
         SQL;
 
-        try {
-            $stmt = $this->db->prepare($sqlModern);
-            $stmt->bindValue(':hc', $hcNumber, PDO::PARAM_STR);
-            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-            $stmt->execute();
-            $modernRows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-
-            foreach ($modernRows as $row) {
-                $rows[] = [
-                    'id' => (int)($row['id'] ?? 0),
-                    'form_id' => (string)($row['form_id'] ?? ''),
-                    'codigo' => (string)($row['cod_derivacion'] ?? ''),
-                    'fecha' => (string)($row['fecha_evento'] ?? ''),
-                    'fecha_vigencia' => (string)($row['fecha_vigencia'] ?? ''),
-                    'referido' => (string)($row['referido'] ?? ''),
-                    'diagnostico' => (string)($row['diagnostico'] ?? ''),
-                    'sede' => (string)($row['sede'] ?? ''),
-                    'parentesco' => (string)($row['parentesco'] ?? ''),
-                    'origen' => 'nuevo',
-                ];
-            }
-        } catch (Throwable) {
-            // Ignorar: esquema nuevo de derivaciones puede no existir en algunos entornos.
+        foreach ($this->selectRows($sqlModern, ['hc' => $hcNumber, 'limit' => $limit]) as $row) {
+            $rows[] = [
+                'id' => (int)($row['id'] ?? 0),
+                'form_id' => (string)($row['form_id'] ?? ''),
+                'codigo' => (string)($row['cod_derivacion'] ?? ''),
+                'fecha' => (string)($row['fecha_evento'] ?? ''),
+                'fecha_vigencia' => (string)($row['fecha_vigencia'] ?? ''),
+                'referido' => (string)($row['referido'] ?? ''),
+                'diagnostico' => (string)($row['diagnostico'] ?? ''),
+                'sede' => (string)($row['sede'] ?? ''),
+                'parentesco' => (string)($row['parentesco'] ?? ''),
+                'origen' => 'nuevo',
+            ];
         }
 
         $sqlLegacy = <<<'SQL'
@@ -497,29 +428,19 @@ class Paciente360ParityService
             LIMIT :limit
         SQL;
 
-        try {
-            $stmt = $this->db->prepare($sqlLegacy);
-            $stmt->bindValue(':hc', $hcNumber, PDO::PARAM_STR);
-            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-            $stmt->execute();
-            $legacyRows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-
-            foreach ($legacyRows as $row) {
-                $rows[] = [
-                    'id' => (int)($row['id'] ?? 0),
-                    'form_id' => (string)($row['form_id'] ?? ''),
-                    'codigo' => (string)($row['cod_derivacion'] ?? ''),
-                    'fecha' => (string)($row['fecha_evento'] ?? ''),
-                    'fecha_vigencia' => (string)($row['fecha_vigencia'] ?? ''),
-                    'referido' => (string)($row['referido'] ?? ''),
-                    'diagnostico' => (string)($row['diagnostico'] ?? ''),
-                    'sede' => (string)($row['sede'] ?? ''),
-                    'parentesco' => (string)($row['parentesco'] ?? ''),
-                    'origen' => 'legacy',
-                ];
-            }
-        } catch (Throwable) {
-            // Ignorar: puede existir solo el esquema nuevo.
+        foreach ($this->selectRows($sqlLegacy, ['hc' => $hcNumber, 'limit' => $limit]) as $row) {
+            $rows[] = [
+                'id' => (int)($row['id'] ?? 0),
+                'form_id' => (string)($row['form_id'] ?? ''),
+                'codigo' => (string)($row['cod_derivacion'] ?? ''),
+                'fecha' => (string)($row['fecha_evento'] ?? ''),
+                'fecha_vigencia' => (string)($row['fecha_vigencia'] ?? ''),
+                'referido' => (string)($row['referido'] ?? ''),
+                'diagnostico' => (string)($row['diagnostico'] ?? ''),
+                'sede' => (string)($row['sede'] ?? ''),
+                'parentesco' => (string)($row['parentesco'] ?? ''),
+                'origen' => 'legacy',
+            ];
         }
 
         if ($rows === []) {
@@ -603,17 +524,12 @@ class Paciente360ParityService
             LIMIT :limit
         SQL;
 
-        try {
-            $stmt = $this->db->prepare($sql);
-            $stmt->bindValue(':hc_doctor', $hcNumber, PDO::PARAM_STR);
-            $stmt->bindValue(':hc_proc', $hcNumber, PDO::PARAM_STR);
-            $stmt->bindValue(':hc_exists', $hcNumber, PDO::PARAM_STR);
-            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-            $stmt->execute();
-            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-        } catch (Throwable) {
-            return [];
-        }
+        $rows = $this->selectRows($sql, [
+            'hc_doctor' => $hcNumber,
+            'hc_proc' => $hcNumber,
+            'hc_exists' => $hcNumber,
+            'limit' => $limit,
+        ]);
 
         return array_map(
             static fn(array $row): array => [
@@ -657,27 +573,17 @@ class Paciente360ParityService
             LIMIT :limit
         SQL;
 
-        try {
-            $stmt = $this->db->prepare($leadSql);
-            $stmt->bindValue(':hc', $hcNumber, PDO::PARAM_STR);
-            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-            $stmt->execute();
-            $leadRows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-
-            foreach ($leadRows as $row) {
-                $rows[] = [
-                    'tipo' => 'Lead',
-                    'id' => (int)($row['id'] ?? 0),
-                    'fecha' => (string)($row['updated_at'] ?? ($row['created_at'] ?? '')),
-                    'titulo' => (string)($row['name'] ?? ''),
-                    'estado' => (string)($row['status'] ?? ''),
-                    'detalle' => (string)($row['source'] ?? ''),
-                    'responsable' => (string)($row['responsable'] ?? ''),
-                    'form_id' => '',
-                ];
-            }
-        } catch (Throwable) {
-            // Ignorar: CRM puede no estar desplegado completo.
+        foreach ($this->selectRows($leadSql, ['hc' => $hcNumber, 'limit' => $limit]) as $row) {
+            $rows[] = [
+                'tipo' => 'Lead',
+                'id' => (int)($row['id'] ?? 0),
+                'fecha' => (string)($row['updated_at'] ?? ($row['created_at'] ?? '')),
+                'titulo' => (string)($row['name'] ?? ''),
+                'estado' => (string)($row['status'] ?? ''),
+                'detalle' => (string)($row['source'] ?? ''),
+                'responsable' => (string)($row['responsable'] ?? ''),
+                'form_id' => '',
+            ];
         }
 
         $projectSql = <<<'SQL'
@@ -696,27 +602,17 @@ class Paciente360ParityService
             LIMIT :limit
         SQL;
 
-        try {
-            $stmt = $this->db->prepare($projectSql);
-            $stmt->bindValue(':hc', $hcNumber, PDO::PARAM_STR);
-            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-            $stmt->execute();
-            $projectRows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-
-            foreach ($projectRows as $row) {
-                $rows[] = [
-                    'tipo' => 'Proyecto',
-                    'id' => (int)($row['id'] ?? 0),
-                    'fecha' => (string)($row['updated_at'] ?? ($row['created_at'] ?? '')),
-                    'titulo' => (string)($row['title'] ?? ''),
-                    'estado' => (string)($row['status'] ?? ''),
-                    'detalle' => '',
-                    'responsable' => (string)($row['responsable'] ?? ''),
-                    'form_id' => (string)($row['form_id'] ?? ''),
-                ];
-            }
-        } catch (Throwable) {
-            // Ignorar: CRM puede no estar desplegado completo.
+        foreach ($this->selectRows($projectSql, ['hc' => $hcNumber, 'limit' => $limit]) as $row) {
+            $rows[] = [
+                'tipo' => 'Proyecto',
+                'id' => (int)($row['id'] ?? 0),
+                'fecha' => (string)($row['updated_at'] ?? ($row['created_at'] ?? '')),
+                'titulo' => (string)($row['title'] ?? ''),
+                'estado' => (string)($row['status'] ?? ''),
+                'detalle' => '',
+                'responsable' => (string)($row['responsable'] ?? ''),
+                'form_id' => (string)($row['form_id'] ?? ''),
+            ];
         }
 
         $taskSql = <<<'SQL'
@@ -737,32 +633,22 @@ class Paciente360ParityService
             LIMIT :limit
         SQL;
 
-        try {
-            $stmt = $this->db->prepare($taskSql);
-            $stmt->bindValue(':hc', $hcNumber, PDO::PARAM_STR);
-            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-            $stmt->execute();
-            $taskRows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        foreach ($this->selectRows($taskSql, ['hc' => $hcNumber, 'limit' => $limit]) as $row) {
+            $detalle = trim(implode(' · ', array_filter([
+                (string)($row['priority'] ?? ''),
+                (string)($row['source_module'] ?? ''),
+            ], static fn(string $value): bool => $value !== '')));
 
-            foreach ($taskRows as $row) {
-                $detalle = trim(implode(' · ', array_filter([
-                    (string)($row['priority'] ?? ''),
-                    (string)($row['source_module'] ?? ''),
-                ], static fn(string $value): bool => $value !== '')));
-
-                $rows[] = [
-                    'tipo' => 'Tarea',
-                    'id' => (int)($row['id'] ?? 0),
-                    'fecha' => (string)($row['updated_at'] ?? ($row['created_at'] ?? '')),
-                    'titulo' => (string)($row['title'] ?? ''),
-                    'estado' => (string)($row['status'] ?? ''),
-                    'detalle' => $detalle,
-                    'responsable' => (string)($row['responsable'] ?? ''),
-                    'form_id' => (string)($row['form_id'] ?? ''),
-                ];
-            }
-        } catch (Throwable) {
-            // Ignorar: CRM puede no estar desplegado completo.
+            $rows[] = [
+                'tipo' => 'Tarea',
+                'id' => (int)($row['id'] ?? 0),
+                'fecha' => (string)($row['updated_at'] ?? ($row['created_at'] ?? '')),
+                'titulo' => (string)($row['title'] ?? ''),
+                'estado' => (string)($row['status'] ?? ''),
+                'detalle' => $detalle,
+                'responsable' => (string)($row['responsable'] ?? ''),
+                'form_id' => (string)($row['form_id'] ?? ''),
+            ];
         }
 
         if ($rows === []) {
@@ -914,7 +800,7 @@ class Paciente360ParityService
     private function buildLinks(string $section, string $hcNumber, string $formId, string $recordId): array
     {
         $links = [
-            'paciente' => '/pacientes/detalles?hc_number=' . rawurlencode($hcNumber),
+            'paciente' => '/v2/pacientes?hc_number=' . rawurlencode($hcNumber),
         ];
 
         if (in_array($section, ['solicitudes', 'prefacturas'], true)) {
@@ -923,14 +809,21 @@ class Paciente360ParityService
                 $links['derivacion'] = '/v2/solicitudes/derivacion?hc_number=' . rawurlencode($hcNumber) . '&form_id=' . rawurlencode($formId);
             }
         } elseif ($section === 'examenes') {
-            $links['modulo'] = '/examenes';
+            $links['modulo'] = '/v2/imagenes/examenes-realizados';
             if ($formId !== '') {
-                $links['derivacion'] = '/examenes/derivacion?hc_number=' . rawurlencode($hcNumber) . '&form_id=' . rawurlencode($formId);
-                $links['imagenes'] = '/imagenes/examenes-realizados?hc_number=' . rawurlencode($hcNumber);
-                $links['archivos_list'] = '/imagenes/examenes-realizados/nas/list?hc_number=' . rawurlencode($hcNumber) . '&form_id=' . rawurlencode($formId);
+                $links['derivacion'] = '/v2/examenes/derivacion?hc_number=' . rawurlencode($hcNumber) . '&form_id=' . rawurlencode($formId);
+                $links['imagenes'] = '/v2/imagenes/examenes-realizados?hc_number=' . rawurlencode($hcNumber);
+                $links['archivos_list'] = '/v2/imagenes/examenes-realizados/nas/list?hc_number=' . rawurlencode($hcNumber) . '&form_id=' . rawurlencode($formId);
             }
         } elseif ($section === 'agenda') {
             $links['modulo'] = '/agenda';
+        } elseif ($section === 'protocolos') {
+            $links['modulo'] = '/v2/cirugias';
+            if ($formId !== '') {
+                $links['cirugia'] = '/v2/cirugias?form_id=' . rawurlencode($formId);
+                $links['editar'] = '/v2/cirugias/wizard?form_id=' . rawurlencode($formId) . '&hc_number=' . rawurlencode($hcNumber);
+                $links['pdf'] = '/v2/reports/protocolo/pdf?form_id=' . rawurlencode($formId) . '&hc_number=' . rawurlencode($hcNumber);
+            }
         } elseif ($section === 'derivaciones') {
             $links['modulo'] = '/derivaciones';
             if ($formId !== '') {
@@ -965,15 +858,8 @@ class Paciente360ParityService
             $placeholders
         );
 
-        try {
-            $stmt = $this->db->prepare($sql);
-            $stmt->execute($formIds);
-        } catch (Throwable) {
-            return [];
-        }
-
         $result = [];
-        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        foreach ($this->selectRows($sql, $formIds) as $row) {
             $formId = (string)($row['form_id'] ?? '');
             if ($formId === '') {
                 continue;
@@ -990,17 +876,94 @@ class Paciente360ParityService
     }
 
     /**
+     * @return array<int,string>
+     */
+    private function formatDiagnosticos(string $raw): array
+    {
+        $raw = trim($raw);
+        if ($raw === '') {
+            return [];
+        }
+
+        $decoded = json_decode($raw, true);
+        if (!is_array($decoded)) {
+            return [$raw];
+        }
+
+        $items = array_is_list($decoded) ? $decoded : [$decoded];
+
+        return array_values(array_filter(array_map(static function (mixed $item): string {
+            if (!is_array($item)) {
+                return trim((string) $item);
+            }
+
+            $diagnostico = trim((string) ($item['idDiagnostico']
+                ?? $item['diagnostico']
+                ?? $item['descripcion']
+                ?? $item['desc']
+                ?? $item['cie']
+                ?? $item['codigo']
+                ?? ''));
+            $ojo = trim((string) ($item['ojo'] ?? $item['lateralidad'] ?? ''));
+
+            return trim($diagnostico . ($ojo !== '' ? ' · ' . $ojo : ''));
+        }, $items)));
+    }
+
+    /**
      * @param array<string,mixed> $params
      */
     private function safeCount(string $sql, array $params): int
     {
+        return (int) $this->selectValue($sql, $params);
+    }
+
+    /**
+     * @param array<string|int,mixed> $params
+     * @return array<int,array<string,mixed>>
+     */
+    private function selectRows(string $sql, array $params = []): array
+    {
         try {
-            $stmt = $this->db->prepare($sql);
-            $stmt->execute($params);
-            return (int)$stmt->fetchColumn();
+            return array_map(
+                static fn(object|array $row): array => (array) $row,
+                DB::select($sql, $this->normalizeBindings($params))
+            );
         } catch (Throwable) {
-            return 0;
+            return [];
         }
+    }
+
+    /**
+     * @param array<string|int,mixed> $params
+     */
+    private function selectValue(string $sql, array $params = []): mixed
+    {
+        try {
+            $row = (array) (DB::selectOne($sql, $this->normalizeBindings($params)) ?? []);
+            if ($row === []) {
+                return null;
+            }
+
+            return reset($row);
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * @param array<string|int,mixed> $params
+     * @return array<string|int,mixed>
+     */
+    private function normalizeBindings(array $params): array
+    {
+        $bindings = [];
+        foreach ($params as $key => $value) {
+            $normalizedKey = is_string($key) ? ltrim($key, ':') : $key;
+            $bindings[$normalizedKey] = $value;
+        }
+
+        return $bindings;
     }
 
     private function normalizeHcNumber(string $value): string

@@ -16,6 +16,8 @@ use Illuminate\Database\Eloquent\Model;
  * @property int $conversation_id
  * @property string|null $wa_message_id
  * @property string $direction
+ * @property string|null $sender_type
+ * @property int|null $sender_id
  * @property string $message_type
  * @property string|null $body
  * @property array|null $raw_payload
@@ -48,6 +50,8 @@ class WhatsappMessage extends Model
 		'conversation_id',
 		'wa_message_id',
 		'direction',
+		'sender_type',
+		'sender_id',
 		'message_type',
 		'body',
 		'raw_payload',

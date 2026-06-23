@@ -172,11 +172,15 @@
                     <div class="box-header with-border d-flex justify-content-between align-items-center">
                         <h4 class="box-title mb-0">Filtros</h4>
                         <div class="d-flex flex-wrap gap-2 justify-content-end">
-                            <a href="/v2/cirugias/dashboard/export/pdf{{ $exportQuery !== '' ? ('?' . e($exportQuery)) : '' }}"
+                            <a id="cirugias-dashboard-export-pdf"
+                               href="/v2/cirugias/dashboard/export/pdf{{ $exportQuery !== '' ? ('?' . e($exportQuery)) : '' }}"
+                               data-export-base-url="/v2/cirugias/dashboard/export/pdf"
                                class="btn btn-outline-danger btn-sm">
                                 <i class="mdi mdi-file-pdf-box me-1"></i> Descargar PDF
                             </a>
-                            <a href="/v2/cirugias/dashboard/export/excel{{ $exportQuery !== '' ? ('?' . e($exportQuery)) : '' }}"
+                            <a id="cirugias-dashboard-export-excel"
+                               href="/v2/cirugias/dashboard/export/excel{{ $exportQuery !== '' ? ('?' . e($exportQuery)) : '' }}"
+                               data-export-base-url="/v2/cirugias/dashboard/export/excel"
                                class="btn btn-outline-success btn-sm">
                                 <i class="mdi mdi-file-excel-box me-1"></i> Descargar Excel
                             </a>
@@ -190,7 +194,7 @@
                         </div>
                     </div>
                     <div class="box-body">
-                        <form method="get" class="row g-2 align-items-end">
+                        <form id="cirugias-dashboard-filter-form" method="get" class="row g-2 align-items-end">
                             <div class="col-sm-6 col-md-3">
                                 <label for="start_date" class="form-label">Desde</label>
                                 <input type="date" id="start_date" name="start_date" class="form-control"

@@ -12,6 +12,14 @@ class LegacySessionAuth
     private const ATTR_SESSION_ID = '_legacy_session_id';
     private const ATTR_USER_ID = '_legacy_user_id';
 
+    /**
+     * Mirrors the inactivity timeout enforced for native legacy requests in
+     * bootstrap.php (handleExpiredSession). Without this, a Laravel session
+     * that expired after SESSION_LIFETIME could still be silently revived via
+     * a long-lived legacy PHPSESSID, so users were never told to log back in.
+     */
+    private const INACTIVITY_LIMIT_SECONDS = 3600;
+
     public static function isAuthenticated(Request $request): bool
     {
         return self::userId($request) !== null;
@@ -60,11 +68,36 @@ class LegacySessionAuth
 
         $sessionId = self::resolveSessionId($request);
         $session = $sessionId !== '' ? self::readBySessionId($sessionId) : [];
+
+        if ($session !== [] && self::isExpiredByInactivity($session)) {
+            self::destroyBySessionId($sessionId);
+            $session = [];
+        } elseif ($session !== [] && self::extractUserId($session) !== null) {
+            // Keep the legacy session's clock in sync with real activity so an
+            // active Laravel-only session (which never re-triggers the bridge)
+            // doesn't get treated as idle-expired on its next legacy read.
+            self::writeCompatibilitySession(['last_activity_time' => time()], $sessionId);
+            $session['last_activity_time'] = time();
+        }
+
         $userId = self::extractUserId($session);
 
         $request->attributes->set(self::ATTR_SESSION_ID, $sessionId);
         $request->attributes->set(self::ATTR_SESSION, $session);
         $request->attributes->set(self::ATTR_USER_ID, $userId);
+    }
+
+    /**
+     * @param array<string, mixed> $session
+     */
+    private static function isExpiredByInactivity(array $session): bool
+    {
+        $lastActivity = $session['last_activity_time'] ?? null;
+        if (!is_numeric($lastActivity)) {
+            return false;
+        }
+
+        return (time() - (int) $lastActivity) > self::INACTIVITY_LIMIT_SECONDS;
     }
 
     public static function sessionId(Request $request): string

@@ -187,7 +187,8 @@ class MedforgeNavigation
             string $label,
             string $href,
             string $icon,
-            array  $active = []
+            array  $active = [],
+            ?string $target = null
         ): array {
             return [
                 'type' => 'item',
@@ -195,6 +196,7 @@ class MedforgeNavigation
                 'href' => $href,
                 'icon' => $icon,
                 'active' => $active,
+                'target' => $target,
             ];
         };
 
@@ -227,7 +229,6 @@ class MedforgeNavigation
             $canAccessPacientes
                 ? $link('Lista de Pacientes', '/v2/pacientes', 'mdi mdi-account-multiple-outline', [
                 'exact' => ['/v2/pacientes'],
-                'prefix' => ['/v2/pacientes/detalles'],
             ])
                 : null,
             $canAccessDerivaciones
@@ -291,9 +292,9 @@ class MedforgeNavigation
             ])
                 : null,
             $canAccessImagenesDashboard
-                ? $link('Dashboard imagenes', '/v2/imagenes/dashboard', 'mdi mdi-monitor-dashboard', [
-                'prefix' => ['/v2/imagenes/dashboard'],
-            ])
+                ? $link('Reporte Ejecutivo Imágenes', '/v2/imagenes/dashboard/report', 'mdi mdi-file-chart-outline', [
+                'prefix' => ['/v2/imagenes/dashboard/report'],
+            ], '_blank')
                 : null,
         ]));
 
@@ -336,8 +337,13 @@ class MedforgeNavigation
                 : null,
             $canAccessWhatsAppDashboard
                 ? $link('Dashboard', '/v2/whatsapp/dashboard-v3', 'mdi mdi-chart-line', [
-                'prefix' => ['/v2/whatsapp/dashboard'],
+                'prefix' => ['/v2/whatsapp/dashboard-v3'],
             ])
+                : null,
+            $canAccessWhatsAppDashboard
+                ? $link('Reporte Ejecutivo WhatsApp', '/v2/whatsapp/dashboard', 'mdi mdi-file-chart-outline', [
+                'prefix' => ['/v2/whatsapp/dashboard'],
+            ], '_blank')
                 : null,
             $canAccessWhatsAppLeads
                 ? $link('Bajas', '/v2/whatsapp/leads', 'mdi mdi-account-remove-outline', [

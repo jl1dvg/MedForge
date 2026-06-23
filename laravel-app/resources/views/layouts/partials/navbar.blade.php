@@ -116,10 +116,12 @@ HTML;
         $href = e((string) ($item['href'] ?? '#'));
         $icon = e((string) ($item['icon'] ?? 'mdi mdi-circle-outline'));
         $label = e((string) ($item['label'] ?? ''));
+        $target = trim((string) ($item['target'] ?? ''));
+        $targetAttr = $target !== '' ? ' target="' . e($target) . '" rel="noopener noreferrer"' : '';
 
         return <<<HTML
 <li{$classAttr}>
-    <a href="{$href}">
+    <a href="{$href}"{$targetAttr}>
         <i class="{$icon}"></i>
         <span>{$label}</span>
     </a>

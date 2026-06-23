@@ -1,6 +1,7 @@
 <?php
 
 use App\Modules\Examenes\Http\Controllers\ExamenesParityController;
+use App\Modules\Examenes\Http\Controllers\ImagenesBandejaController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware([
@@ -47,10 +48,13 @@ Route::post('/examenes/{id}/crm/tareas/estado', [ExamenesParityController::class
 Route::post('/examenes/{id}/crm/bloqueo', [ExamenesParityController::class, 'crmRegistrarBloqueo'])->whereNumber('id');
 Route::post('/examenes/{id}/crm/adjuntos', [ExamenesParityController::class, 'crmSubirAdjunto'])->whereNumber('id');
 Route::post('/imagenes/examenes-realizados/nas/warm', [ExamenesParityController::class, 'imagenesNasWarm']);
+Route::post('/imagenes/examenes-realizados/nas/recheck', [ExamenesParityController::class, 'imagenesNasRecheck']);
 Route::post('/imagenes/examenes-realizados/actualizar', [ExamenesParityController::class, 'actualizarImagenRealizada']);
 Route::post('/imagenes/examenes-realizados/eliminar', [ExamenesParityController::class, 'eliminarImagenRealizada']);
 Route::post('/imagenes/informes/guardar', [ExamenesParityController::class, 'informeGuardar']);
 Route::post('/imagenes/informes/autofill', [ExamenesParityController::class, 'informeAutofill']);
+Route::post('/imagenes/bandeja', [ImagenesBandejaController::class, 'store']);
+Route::delete('/imagenes/bandeja/{procedimientoId}', [ImagenesBandejaController::class, 'destroy'])->whereNumber('procedimientoId');
 
 // Clean aliases
 Route::match(['GET', 'POST'], '/api/examenes/kanban', [ExamenesParityController::class, 'kanbanData']);

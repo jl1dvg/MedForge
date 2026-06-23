@@ -5,9 +5,19 @@ use Illuminate\Support\Facades\Route;
 
 Route::middleware([
     'app.auth',
+    'app.permission:administrativo,pacientes.manage',
+])->group(function (): void {
+    Route::put('/pacientes/editar', [PacientesReadController::class, 'editar']);
+    Route::post('/pacientes/crear', [PacientesReadController::class, 'crear']);
+});
+
+Route::middleware([
+    'app.auth',
     'app.permission:administrativo,pacientes.view,pacientes.manage',
 ])->group(function (): void {
     Route::get('/pacientes', [PacientesReadController::class, 'index']);
+    Route::get('/pacientes/catalogos', [PacientesReadController::class, 'catalogos']);
+    Route::get('/pacientes/kpis', [PacientesReadController::class, 'kpis']);
     Route::post('/pacientes/datatable', [PacientesReadController::class, 'datatable']);
     Route::match(['GET', 'POST'], '/pacientes/detalles', [PacientesReadController::class, 'detalles']);
     Route::get('/pacientes/detalles/solicitud', [PacientesReadController::class, 'detalleSolicitudApi']);

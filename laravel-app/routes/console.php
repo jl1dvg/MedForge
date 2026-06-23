@@ -1261,7 +1261,7 @@ Artisan::command('imagenes:nas-diagnose
     $service = app(NasImagenesService::class);
     $diagnostics = $service->diagnostics();
 
-    $cacheDir = trim((string) (env('IMAGENES_CACHE_DIR') ?? env('NAS_IMAGES_CACHE_DIR') ?? ''));
+    $cacheDir = trim((string) (config('nas-imagenes.cache_dir') ?? ''));
     if ($cacheDir === '') {
         $cacheDir = rtrim(sys_get_temp_dir(), '/\\') . DIRECTORY_SEPARATOR . 'medforge_imagenes_cache';
     }

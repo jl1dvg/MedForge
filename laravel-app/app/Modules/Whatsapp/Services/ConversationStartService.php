@@ -186,6 +186,8 @@ class ConversationStartService
                 'conversation_id' => $conversation->id,
                 'wa_message_id' => $transportResult['wa_message_id'],
                 'direction' => 'outbound',
+                'sender_type' => $actorUserId !== null ? 'agent' : 'system',
+                'sender_id' => $actorUserId,
                 'message_type' => 'template',
                 'body' => $renderedTemplateBody,
                 'raw_payload' => [

@@ -173,7 +173,7 @@ Route::middleware(['consultas.cors', 'cive.extension.auth'])->group(function ():
                 return response()->json(['success' => false, 'message' => 'Estado inválido proporcionado.'], 422);
             }
 
-            $service = new PacientesFlujoService(DB::connection()->getPdo());
+            $service = new PacientesFlujoService();
             $result = $service->actualizarEstadoTrayecto($formId, $targetState);
             return response()->json($result, !empty($result['success']) ? 200 : 422);
         });

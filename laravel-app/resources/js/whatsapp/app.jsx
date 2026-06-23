@@ -32,10 +32,11 @@ export function WaApp() {
   const me = config.currentUser || { id: null, name: 'Usuario' };
   const pusherConfig = config.pusher || {};
   const canSupervise = config.canSupervise || false;
+  const initialQuery = config.initialQuery || {};
 
   // ── UI state ────────────────────────────────────────────────────────────────
   const [filter, setFilter] = useState('mine');
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(String(initialQuery.search || initialQuery.number || initialQuery.hc_number || ''));
   const [view, setView] = useState('conversations');
   const [agentFilter, setAgentFilter] = useState(null);
   const [dateFrom, setDateFrom] = useState('');
