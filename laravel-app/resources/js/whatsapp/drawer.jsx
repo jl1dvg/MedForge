@@ -73,7 +73,7 @@ export function WaDrawer({ convo, notes, trail, canOperate, onAddNote, quickRepl
             <i className="mdi mdi-calendar-plus-outline"></i>Agendar
           </button>
           {convo.hc ? (
-            <a className="wa3-quickaction" href={`/v2/pacientes/detalles?hc_number=${encodeURIComponent(convo.hc)}`} target="_blank" rel="noreferrer">
+            <a className="wa3-quickaction" href={`/v2/pacientes?hc_number=${encodeURIComponent(convo.hc)}`} target="_blank" rel="noreferrer">
               <i className="mdi mdi-file-eye-outline"></i>Ficha
             </a>
           ) : (

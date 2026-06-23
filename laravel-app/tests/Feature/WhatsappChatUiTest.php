@@ -229,4 +229,22 @@ class WhatsappChatUiTest extends TestCase
             ->assertSee('wa3-react-root')
             ->assertSee('wa3-config');
     }
+
+    public function test_v3_chat_config_preserves_patient_handoff_query(): void
+    {
+        $this->actingAs(User::query()->findOrFail(40));
+
+        $response = $this->withoutMiddleware([
+            LegacySessionBridge::class,
+            RequireLegacySession::class,
+            RequireLegacyPermission::class,
+        ])->get('/v3/whatsapp/chat?search=0999999999&number=0999999999&hc_number=100');
+
+        $response
+            ->assertOk()
+            ->assertSee('"initialQuery"', false)
+            ->assertSee('"search":"0999999999"', false)
+            ->assertSee('"number":"0999999999"', false)
+            ->assertSee('"hc_number":"100"', false);
+    }
 }

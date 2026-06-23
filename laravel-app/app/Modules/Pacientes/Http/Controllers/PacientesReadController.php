@@ -2,9 +2,11 @@
 
 namespace App\Modules\Pacientes\Http\Controllers;
 
-use App\Modules\Pacientes\Services\Paciente360ParityService;
+use App\Modules\Pacientes\Services\Paciente360Service;
+use App\Modules\Pacientes\Services\PacienteDetailService;
+use App\Modules\Pacientes\Services\PacienteReadService;
+use App\Modules\Pacientes\Services\PacienteWriteService;
 use App\Modules\Pacientes\Services\PacientesFlujoService;
-use App\Modules\Pacientes\Services\PacientesParityService;
 use App\Modules\Shared\Support\LegacyCurrentUser;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Contracts\View\View;
@@ -12,21 +14,22 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use PDO;
 
 class PacientesReadController
 {
-    private PacientesParityService $service;
-    private Paciente360ParityService $paciente360Service;
+    private Paciente360Service $paciente360Service;
     private PacientesFlujoService $flujoService;
+    private PacienteDetailService $detailService;
+    private PacienteWriteService $writeService;
+    private PacienteReadService $readService;
 
     public function __construct()
     {
-        /** @var PDO $pdo */
-        $pdo = DB::connection()->getPdo();
-        $this->service = new PacientesParityService($pdo);
-        $this->paciente360Service = new Paciente360ParityService($pdo);
-        $this->flujoService = new PacientesFlujoService($pdo);
+        $this->paciente360Service = new Paciente360Service();
+        $this->flujoService = new PacientesFlujoService();
+        $this->detailService = new PacienteDetailService();
+        $this->writeService = new PacienteWriteService();
+        $this->readService = new PacienteReadService();
     }
 
     public function index(Request $request): JsonResponse|RedirectResponse|View
@@ -47,25 +50,11 @@ class PacientesReadController
             ]);
         }
 
-        $limit = min(max((int) $request->query('limit', 20), 1), 100);
-        $offset = max((int) $request->query('offset', 0), 0);
+        $limit = $request->has('limit') ? (int) $request->query('limit') : null;
+        $offset = (int) $request->query('offset', 0);
+        $payload = $this->readService->obtenerPacientesReact($limit, $offset);
 
-        $rows = DB::select(
-            'SELECT hc_number, fname, lname, lname2, afiliacion, fecha_nacimiento
-             FROM patient_data
-             ORDER BY hc_number DESC
-             LIMIT ? OFFSET ?',
-            [$limit, $offset]
-        );
-
-        return response()->json([
-            'data' => $rows,
-            'meta' => [
-                'limit' => $limit,
-                'offset' => $offset,
-                'count' => count($rows),
-            ],
-        ]);
+        return response()->json($payload);
     }
 
     public function datatable(Request $request): JsonResponse
@@ -83,7 +72,7 @@ class PacientesReadController
         $columnMap = ['hc_number', 'ultima_fecha', 'full_name', 'afiliacion'];
         $orderColumn = $columnMap[$orderColumnIndex] ?? 'hc_number';
 
-        $response = $this->service->obtenerPacientesPaginados(
+        $response = $this->readService->obtenerPacientesPaginados(
             $start,
             $length,
             $search,
@@ -119,12 +108,16 @@ class PacientesReadController
         }
 
         if ($request->isMethod('post') && $request->has('actualizar_paciente')) {
-            $this->service->actualizarPaciente($hcNumber, $request->all(), $this->legacyUserId($request));
-            return redirect('/v2/pacientes/detalles?hc_number=' . urlencode($hcNumber));
+            $this->writeService->actualizarPaciente($hcNumber, $request->all(), $this->legacyUserId($request));
+            return redirect('/v2/pacientes?hc_number=' . urlencode($hcNumber));
+        }
+
+        if (!$request->expectsJson()) {
+            return redirect('/v2/pacientes?hc_number=' . urlencode($hcNumber));
         }
 
         try {
-            $context = $this->service->obtenerContextoPaciente($hcNumber);
+            $context = $this->detailService->obtenerContextoPaciente($hcNumber);
         } catch (\Throwable $e) {
             \Illuminate\Support\Facades\Log::error('Error cargando detalles de paciente', [
                 'hc_number' => $hcNumber,
@@ -144,19 +137,76 @@ class PacientesReadController
             return redirect('/v2/pacientes?not_found=1');
         }
 
-        if (!$request->expectsJson()) {
-            return view('pacientes.v2-detalles', array_merge(
-                [
-                    'pageTitle' => 'Paciente ' . $hcNumber,
-                    'currentUser' => LegacyCurrentUser::resolve($request),
-                    'hc_number' => $hcNumber,
-                ],
-                $context
-            ));
+        return response()->json([
+            'data' => $context,
+        ]);
+    }
+
+    public function editar(Request $request): JsonResponse
+    {
+        if (!$this->isLegacyAuthenticated($request)) {
+            return response()->json(['error' => 'Sesión expirada'], 401);
+        }
+
+        $hcNumber = trim((string) $request->input('hc_number', ''));
+        if ($hcNumber === '') {
+            return response()->json(['error' => 'hc_number es requerido'], 422);
+        }
+
+        try {
+            $this->writeService->actualizarPaciente($hcNumber, $request->all(), $this->legacyUserId($request));
+            return response()->json(['success' => true]);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['error' => $e->getMessage()], 422);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('Error actualizando paciente', [
+                'hc_number' => $hcNumber,
+                'error' => $e->getMessage(),
+            ]);
+            return response()->json(['error' => 'Error al actualizar el paciente'], 500);
+        }
+    }
+
+    public function crear(Request $request): JsonResponse
+    {
+        if (!$this->isLegacyAuthenticated($request)) {
+            return response()->json(['error' => 'Sesión expirada'], 401);
+        }
+
+        try {
+            $payload = $this->writeService->crearPaciente($request->all(), $this->legacyUserId($request));
+
+            return response()->json($payload, 201);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['error' => $e->getMessage()], 422);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('Error creando paciente', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json(['error' => 'Error al crear el paciente'], 500);
+        }
+    }
+
+    public function catalogos(Request $request): JsonResponse
+    {
+        if (!$this->isLegacyAuthenticated($request)) {
+            return response()->json(['error' => 'Sesión expirada'], 401);
         }
 
         return response()->json([
-            'data' => $context,
+            'data' => $this->readService->obtenerCatalogosReact(),
+        ]);
+    }
+
+    public function kpis(Request $request): JsonResponse
+    {
+        if (!$this->isLegacyAuthenticated($request)) {
+            return response()->json(['error' => 'Sesión expirada'], 401);
+        }
+
+        return response()->json([
+            'data' => $this->readService->obtenerKpisReact(),
         ]);
     }
 
@@ -242,7 +292,7 @@ class PacientesReadController
         }
 
         try {
-            $detalle = $this->service->getDetalleSolicitud($hcNumber, $formId);
+            $detalle = $this->detailService->getDetalleSolicitud($hcNumber, $formId);
             if ($detalle === []) {
                 return response()->json(['error' => 'No se encontró la solicitud'], 404);
             }
