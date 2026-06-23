@@ -48,6 +48,7 @@ Route::post('/examenes/{id}/crm/tareas/estado', [ExamenesParityController::class
 Route::post('/examenes/{id}/crm/bloqueo', [ExamenesParityController::class, 'crmRegistrarBloqueo'])->whereNumber('id');
 Route::post('/examenes/{id}/crm/adjuntos', [ExamenesParityController::class, 'crmSubirAdjunto'])->whereNumber('id');
 Route::post('/imagenes/examenes-realizados/nas/warm', [ExamenesParityController::class, 'imagenesNasWarm']);
+Route::post('/imagenes/examenes-realizados/nas/recheck', [ExamenesParityController::class, 'imagenesNasRecheck']);
 Route::post('/imagenes/examenes-realizados/actualizar', [ExamenesParityController::class, 'actualizarImagenRealizada']);
 Route::post('/imagenes/examenes-realizados/eliminar', [ExamenesParityController::class, 'eliminarImagenRealizada']);
 Route::post('/imagenes/informes/guardar', [ExamenesParityController::class, 'informeGuardar']);

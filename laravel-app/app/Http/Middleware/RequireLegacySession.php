@@ -22,6 +22,9 @@ class RequireLegacySession
             return response()->json(['error' => 'Sesión expirada'], 401);
         }
 
-        return redirect('/auth/login?auth_required=1');
+        $hadSession = $request->cookies->has(config('session.cookie'))
+            || $request->cookies->has('PHPSESSID');
+
+        return redirect('/auth/login?' . ($hadSession ? 'expired=1' : 'auth_required=1'));
     }
 }

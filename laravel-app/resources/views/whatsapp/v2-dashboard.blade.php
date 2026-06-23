@@ -7,6 +7,11 @@
     $breakdowns = is_array($dashboard['breakdowns'] ?? null) ? $dashboard['breakdowns'] : [];
     $analytics = is_array($dashboard['analytics'] ?? null) ? $dashboard['analytics'] : [];
     $reminders = is_array($dashboard['reminders'] ?? null) ? $dashboard['reminders'] : [];
+    $humanAttributedAppointments = (int) ($summary['human_attributed_appointments_strong'] ?? 0);
+    $humanAttributedConversations = (int) ($summary['human_attributed_appointment_conversations_strong'] ?? 0);
+    $humanAttributedAppointmentsMedium = (int) ($summary['human_attributed_appointments_medium'] ?? 0);
+    $botBookings = (int) ($summary['sigcenter_bookings_created'] ?? 0);
+    $totalAttributedAppointments = $humanAttributedAppointments + $botBookings;
     $analyticsSummary = is_array($analytics['summary'] ?? null) ? $analytics['summary'] : [];
     $analyticsLifecycle = is_array($analytics['lifecycle'] ?? null) ? $analytics['lifecycle'] : [];
     $analyticsSources = is_array($analytics['sources'] ?? null) ? $analytics['sources'] : [];
@@ -83,6 +88,7 @@
         'reminders_recent' => 'Últimos recordatorios generados con su estado, respuesta y plantilla usada para auditoría rápida.',
         'series' => 'Serie diaria del periodo para leer volumen general del canal y sus principales eventos.',
         'human_by_agent' => 'Qué agente absorbió más conversaciones y en cuánto tiempo respondió por primera vez tras el handoff.',
+        'human_appointments_by_agent' => 'Citas de Sigcenter atribuibles a una conversación atendida por humano. Confianza alta: cita creada dentro de las 24 horas posteriores a la última intervención humana.',
         'human_by_queue' => 'Tiempo de primera respuesta humana agrupado por cola operativa para diferenciar captación, operación, información y backlog crítico.',
         'handoffs_by_role' => 'Distribución de handoffs por equipo para medir entrada, asignación y cierre operativo.',
         'agent_load' => 'Carga por agente para detectar saturación, reparto desigual o capacidad ociosa.',
@@ -899,6 +905,16 @@
                         <div class="wa-now-card__label">Personas que escribieron</div>
                     </div>
                     <div class="wa-now-card wa-now-card--ok">
+                        <div class="wa-now-card__value">{{ number_format($humanAttributedAppointments) }}</div>
+                        <div class="wa-now-card__label">Citas humanas atribuibles</div>
+                        <div class="wa-now-card__label">{{ number_format($humanAttributedConversations) }} conversaciones · hasta {{ number_format($humanAttributedAppointmentsMedium) }} en ventana 72h</div>
+                    </div>
+                    <div class="wa-now-card wa-now-card--ok">
+                        <div class="wa-now-card__value">{{ number_format($botBookings) }}</div>
+                        <div class="wa-now-card__label">Citas bot / integración</div>
+                        <div class="wa-now-card__label">{{ number_format($totalAttributedAppointments) }} citas atribuidas en total</div>
+                    </div>
+                    <div class="wa-now-card wa-now-card--ok">
                         <div class="wa-now-card__value">{{ $firstHumanAvg }}</div>
                         <div class="wa-now-card__label">Tiempo a primera respuesta humana</div>
                         <div class="wa-now-card__label">Desde handoff · mediana {{ $firstHumanMedian }}</div>
@@ -1262,6 +1278,55 @@
 
             <div class="col-xl-6 col-12">
                 <div class="wa-kpi-panel">
+                    <div class="wa-kpi-panel__head" style="cursor:pointer;"
+                         onclick="this.nextElementSibling.classList.toggle('d-none')">
+                        <div class="wa-kpi-title-row">
+                            <div class="wa-kpi-sideheading__title">Citas atribuibles por agente</div>
+                            <button type="button" class="wa-kpi-help"
+                                    aria-label="Ver ayuda de Citas atribuibles por agente"
+                                    onclick="event.stopPropagation()">
+                                ?
+                                <span class="wa-kpi-help__tooltip">{{ $sectionHelp['human_appointments_by_agent'] }}</span>
+                            </button>
+                            <span
+                                style="font-size:10px;background:#f0fdfa;color:#0f766e;border-radius:4px;padding:2px 7px;font-weight:600;margin-left:auto;margin-right:6px">Sigcenter</span>
+                            <button type="button" class="wa-section-toggle">▼</button>
+                        </div>
+                        <div class="wa-kpi-sideheading__meta">Relación entre conversaciones atendidas por humanos y citas que aparecieron en Sigcenter.</div>
+                    </div>
+                    <div class="wa-kpi-panel__body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-striped wa-kpi-table mb-0">
+                                <thead>
+                                <tr>
+                                    <th>Agente</th>
+                                    <th>Citas atrib.</th>
+                                    <th>Conversaciones</th>
+                                    <th>Pacientes</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                @forelse(($breakdowns['human_attributed_appointments_by_agent'] ?? []) as $row)
+                                    <tr>
+                                        <td>{{ $row['agent_name'] }}</td>
+                                        <td>{{ $row['appointment_slots'] }}</td>
+                                        <td>{{ $row['conversations'] }}</td>
+                                        <td>{{ $row['patients'] }}</td>
+                                    </tr>
+                                @empty
+                                    <tr>
+                                        <td colspan="4" class="text-center text-muted py-20">Sin citas atribuibles a atención humana en el rango actual.</td>
+                                    </tr>
+                                @endforelse
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-xl-6 col-12">
+                <div class="wa-kpi-panel">
                     <div class="wa-kpi-panel__head">
                         <div class="wa-kpi-title-row">
                             <div class="wa-kpi-sideheading__title">Serie diaria del periodo</div>
@@ -1273,16 +1338,17 @@
                                 style="font-size:10px;background:#eff6ff;color:#2563eb;border-radius:4px;padding:2px 7px;font-weight:600;margin-left:auto">📈 Chart puro</span>
                         </div>
                         <div class="wa-kpi-sideheading__meta">Evolución diaria de conversaciones nuevas, handoffs y
-                            citas creadas.
+                            citas humanas atribuibles y citas creadas por bot.
                         </div>
                     </div>
                     <div class="wa-kpi-panel__body">
                         <div id="chart-serie-diaria" class="wa-chart-wrap"></div>
                         @php
                             $chipTotals = [
-                                'Nuevas'        => array_sum($trends['conversations'] ?? []),
-                                'Con handoff'   => array_sum($trends['handoff_transfers'] ?? []),
-                                'Con cita'      => array_sum($trends['sigcenter_bookings'] ?? []),
+                                'Nuevas'       => array_sum($trends['conversations'] ?? []),
+                                'Con handoff'  => array_sum($trends['handoff_transfers'] ?? []),
+                                'Citas humanas' => array_sum($trends['human_attributed_appointments'] ?? []),
+                                'Citas bot'    => array_sum($trends['sigcenter_bookings'] ?? []),
                             ];
                         @endphp
                         <div class="wa-chart-chips">
@@ -1296,7 +1362,8 @@
                         <div class="text-muted mt-10" style="font-size:.82rem;">
                             Inbound {{ $summary['messages_inbound'] ?? 0 }} ·
                             Outbound {{ $summary['messages_outbound'] ?? 0 }} ·
-                            Citas {{ $summary['sigcenter_bookings_created'] ?? 0 }} ·
+                            Citas humanas {{ number_format($humanAttributedAppointments) }} ·
+                            Citas bot {{ number_format($botBookings) }} ·
                             Derivaciones {{ $summary['handoff_transfers'] ?? 0 }}
                         </div>
                     </div>
@@ -2422,6 +2489,7 @@
                 var convs = @json(array_values($trends['conversations'] ?? []));
                 var handoffs = @json(array_values($trends['handoff_transfers'] ?? []));
                 var bookings = @json(array_values($trends['sigcenter_bookings'] ?? []));
+                var humanAppointments = @json(array_values($trends['human_attributed_appointments'] ?? []));
                 if (!labels.length) {
                     el.innerHTML = '<div class="wa-chart-empty">Sin datos para el periodo seleccionado</div>';
                     return;
@@ -2437,11 +2505,12 @@
                     series: [
                         {name: 'Nuevas', data: convs},
                         {name: 'Con handoff', data: handoffs},
-                        {name: 'Con cita', data: bookings},
+                        {name: 'Citas humanas', data: humanAppointments},
+                        {name: 'Citas bot', data: bookings},
                     ],
-                    colors: ['#3b82f6', '#10b981', '#f59e0b'],
+                    colors: ['#3b82f6', '#10b981', '#0f766e', '#f59e0b'],
                     fill: {type: 'gradient', gradient: {opacityFrom: 0.35, opacityTo: 0.02}},
-                    stroke: {curve: 'smooth', width: [2.5, 2, 1.5]},
+                    stroke: {curve: 'smooth', width: [2.5, 2, 2, 1.5]},
                     xaxis: {
                         categories: labels,
                         labels: {rotate: -30, style: {fontSize: '10px'}},

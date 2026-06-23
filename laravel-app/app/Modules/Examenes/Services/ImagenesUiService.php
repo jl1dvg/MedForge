@@ -9,6 +9,7 @@ use App\Modules\Codes\Services\CodePriceService;
 use App\Modules\Shared\Support\AfiliacionDimensionService;
 use DateTime;
 use DateTimeImmutable;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use PDO;
@@ -98,6 +99,128 @@ class ImagenesUiService
             'afiliacionCategoriaOptions' => $afiliacionCategoriaOptions,
             'seguroOptions' => $seguroOptions,
             'sedeOptions' => $sedeOptions,
+        ];
+    }
+
+    /**
+     * Lean payload for the executive report (/v2/imagenes/dashboard/report).
+     *
+     * Unlike imagenesDashboard(), this intentionally skips
+     * buildImagenesDashboardDetailRows() (the per-row operational table),
+     * which is the single most expensive step and is not needed for the
+     * executive summary. It reuses the same pipeline/summary builders so
+     * KPI figures stay identical to the operational dashboard.
+     *
+     * @param array<string,mixed> $query
+     * @return array{filters:array<string,mixed>,dashboard:array<string,mixed>,sedeOptions:array<int,array{value:string,label:string}>,rowCount:int,timings:array<string,float>}
+     */
+    private const EXECUTIVE_REPORT_CACHE_TTL = 600;
+
+    public function buildExecutiveReportPayload(array $query, bool $forceRefresh = false): array
+    {
+        $start = microtime(true);
+
+        $filters = $this->buildFilters($query);
+        $filters['afiliacion_match_mode'] = 'grouped';
+
+        $cacheKey = 'imagenes_report:' . $this->executiveReportCacheHash($filters);
+
+        if ($forceRefresh) {
+            try {
+                Cache::forget($cacheKey);
+            } catch (\Throwable) {
+                // Redis no disponible: continuar sin cache.
+            }
+        }
+
+        $cacheHit = true;
+        $compute = function () use ($filters, &$cacheHit): array {
+            $cacheHit = false;
+
+            return $this->computeExecutiveReportPayload($filters);
+        };
+
+        try {
+            $payload = Cache::remember($cacheKey, self::EXECUTIVE_REPORT_CACHE_TTL, $compute);
+        } catch (\Throwable) {
+            $payload = $compute();
+        }
+
+        $payload['timings']['total'] = round((microtime(true) - $start) * 1000, 2);
+        $payload['timings']['cache_hit'] = $cacheHit;
+        $payload['timings']['cache_key'] = $cacheKey;
+        $payload['timings']['ttl'] = self::EXECUTIVE_REPORT_CACHE_TTL;
+        $payload['timings']['total_ms'] = $payload['timings']['total'];
+
+        return $payload;
+    }
+
+    /**
+     * @param array<string,string> $filters
+     */
+    private function executiveReportCacheHash(array $filters): string
+    {
+        $relevant = [
+            'fecha_inicio' => $filters['fecha_inicio'] ?? '',
+            'fecha_fin' => $filters['fecha_fin'] ?? '',
+            'sede' => $filters['sede'] ?? '',
+            'tipo_examen' => $filters['tipo_examen'] ?? '',
+            'afiliacion' => $filters['afiliacion'] ?? '',
+            'afiliacion_categoria' => $filters['afiliacion_categoria'] ?? '',
+            'seguro' => $filters['seguro'] ?? '',
+            'paciente' => $filters['paciente'] ?? '',
+            'estado_agenda' => $filters['estado_agenda'] ?? '',
+        ];
+
+        return md5(json_encode($relevant));
+    }
+
+    /**
+     * @param array<string,string> $filters
+     */
+    private function computeExecutiveReportPayload(array $filters): array
+    {
+        $timings = [];
+        $start = microtime(true);
+
+        $mark = function (string $label, float $since) use (&$timings): float {
+            $timings[$label] = round((microtime(true) - $since) * 1000, 2);
+
+            return microtime(true);
+        };
+
+        $t = $start;
+
+        $rows = $this->fetchImagenesRealizadas($filters, true);
+        $rows = array_map(fn (array $row): array => $this->decorateImagenRow($row), $rows);
+        $t = $mark('fetch_rows', $t);
+
+        $solicitudes = $this->fetchImagenesSolicitudPipeline($filters);
+        $t = $mark('solicitud_pipeline', $t);
+
+        $dashboard = $this->buildImagenesDashboardSummary($rows, $filters, $solicitudes);
+        $t = $mark('summary_build', $t);
+
+        $tiempoAcceso = $this->fetchImagenesTiempoAccesoExamen($filters);
+        $t = $mark('tiempo_acceso', $t);
+
+        $sedeOptions = [
+            ['value' => '', 'label' => 'Todas las sedes'],
+            ['value' => 'MATRIZ', 'label' => 'MATRIZ'],
+            ['value' => 'CEIBOS', 'label' => 'CEIBOS'],
+        ];
+        $mark('sede_options', $t);
+
+        $timings['total'] = round((microtime(true) - $start) * 1000, 2);
+        $timings['row_count'] = count($rows);
+
+        return [
+            'filters' => $filters,
+            'dashboard' => $dashboard,
+            'sedeOptions' => $sedeOptions,
+            'rowCount' => count($rows),
+            'timings' => $timings,
+            'tiempoAcceso' => $tiempoAcceso,
         ];
     }
 
@@ -285,6 +408,25 @@ class ImagenesUiService
                ibp.motivo AS bandeja_motivo";
         }
 
+        $claimJoin = '';
+        $claimSelect = "NULL AS file_claim_id,
+               NULL AS file_claim_status,
+               NULL AS file_claim_requested_at";
+        if (Schema::hasTable('imagenes_file_claims')) {
+            $claimJoin = "LEFT JOIN (
+                    SELECT MAX(id) AS id, form_id, hc_number
+                    FROM imagenes_file_claims
+                    WHERE status = 'abierto'
+                    GROUP BY form_id, hc_number
+                ) ifcx
+                    ON TRIM(COALESCE(ifcx.form_id, '')) = TRIM(COALESCE(pp.form_id, ''))
+                    AND TRIM(COALESCE(ifcx.hc_number, '')) = TRIM(COALESCE(pp.hc_number, ''))
+                LEFT JOIN imagenes_file_claims ifc ON ifc.id = ifcx.id";
+            $claimSelect = "ifc.id AS file_claim_id,
+               ifc.status AS file_claim_status,
+               ifc.requested_at AS file_claim_requested_at";
+        }
+
         $facturacionSql = $this->buildImagenesFacturacionSql($includeFacturado);
 
         $sql = "SELECT
@@ -316,12 +458,14 @@ class ImagenesUiService
                 COALESCE(ii.informes_total, 0) AS informes_total,
                 {$nasSelect},
                 {$bandejaSelect},
+                {$claimSelect},
                 {$facturacionSql['select']}
             FROM procedimiento_proyectado pp
             LEFT JOIN patient_data pd ON pd.hc_number = pp.hc_number
             {$imagenInformeJoin}
             {$nasJoin}
             {$bandejaJoin}
+            {$claimJoin}
             {$categoriaContext['join']}
             {$facturacionSql['join']}
             WHERE pp.estado_agenda IS NOT NULL
@@ -581,6 +725,8 @@ class ImagenesUiService
             'solicitudes_ausentes' => 0,
             'solicitudes_sin_agenda_monto_estimado' => 0.0,
             'solicitudes_sin_agenda_sin_tarifa' => 0,
+            'solicitudes_sin_agenda_por_examen' => [],
+            'solicitudes_sin_agenda_por_convenio' => [],
             'conversion_solicitud_realizacion_pct' => null,
             'cumplimiento_realizacion_al_corte_pct' => null,
             'cumplimiento_realizacion_acumulado_pct' => null,
@@ -750,6 +896,8 @@ class ImagenesUiService
             'solicitudes_ausentes' => (int)($row['solicitudes_ausentes'] ?? 0),
             'solicitudes_sin_agenda_monto_estimado' => round((float)($sinAgendaEstimate['monto_estimado'] ?? 0), 2),
             'solicitudes_sin_agenda_sin_tarifa' => (int)($sinAgendaEstimate['sin_tarifa'] ?? 0),
+            'solicitudes_sin_agenda_por_examen' => is_array($sinAgendaEstimate['por_examen'] ?? null) ? $sinAgendaEstimate['por_examen'] : [],
+            'solicitudes_sin_agenda_por_convenio' => is_array($sinAgendaEstimate['por_convenio'] ?? null) ? $sinAgendaEstimate['por_convenio'] : [],
             'conversion_solicitud_realizacion_pct' => $total > 0 ? round(($realizadas * 100) / $total, 1) : null,
             'cumplimiento_realizacion_al_corte_pct' => $total > 0 ? round(($realizadasAlCorte * 100) / $total, 1) : null,
             'cumplimiento_realizacion_acumulado_pct' => $total > 0 ? round(($realizadas * 100) / $total, 1) : null,
@@ -757,13 +905,101 @@ class ImagenesUiService
     }
 
     /**
+     * Tiempo de acceso al examen (solicitud -> realización), exclusivo del
+     * reporte ejecutivo (/v2/imagenes/dashboard/report). No se usa en el
+     * dashboard operativo ni en exportes Excel/PDF.
+     *
      * @param array<string,string> $filters
-     * @return array{monto_estimado:float,sin_tarifa:int}
+     * @return array{mediana_dias:?float,p90_dias:?float,promedio_dias:?float,muestra:int,fuente_confiable:int,fuente_fallback:int}
+     */
+    private function fetchImagenesTiempoAccesoExamen(array $filters): array
+    {
+        $default = [
+            'mediana_dias' => null,
+            'p90_dias' => null,
+            'promedio_dias' => null,
+            'muestra' => 0,
+            'fuente_confiable' => 0,
+            'fuente_fallback' => 0,
+        ];
+
+        if (!$this->tableExists('consulta_examenes')) {
+            return $default;
+        }
+
+        $flowSubquery = $this->buildImagenesSolicitudFlowSubquery($filters);
+
+        $sql = "SELECT
+                flow.fecha_solicitud,
+                flow.fecha_realizacion,
+                flow.fecha_agenda
+            FROM ({$flowSubquery}) flow
+            WHERE COALESCE(flow.realizada, 0) = 1
+              AND flow.fecha_solicitud IS NOT NULL
+              AND flow.fecha_realizacion IS NOT NULL
+              AND flow.examen_nombre IS NOT NULL
+              AND TRIM(flow.examen_nombre) <> ''";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute();
+
+        $dias = [];
+        $confiable = 0;
+        $fallback = 0;
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $fechaSolicitud = (string)($row['fecha_solicitud'] ?? '');
+            $fechaRealizacion = (string)($row['fecha_realizacion'] ?? '');
+            $fechaAgenda = $row['fecha_agenda'] !== null ? (string)$row['fecha_agenda'] : null;
+
+            try {
+                $solicitudDt = new DateTimeImmutable($fechaSolicitud);
+                $realizacionDt = new DateTimeImmutable($fechaRealizacion);
+            } catch (\Exception $e) {
+                continue;
+            }
+
+            $diff = (int)$solicitudDt->diff($realizacionDt)->days;
+            if ($realizacionDt < $solicitudDt) {
+                continue;
+            }
+
+            $dias[] = $diff;
+
+            if ($fechaAgenda !== null && $fechaAgenda === $fechaRealizacion) {
+                $confiable++;
+            } else {
+                $fallback++;
+            }
+        }
+
+        if ($dias === []) {
+            return $default;
+        }
+
+        sort($dias, SORT_NUMERIC);
+        $count = count($dias);
+        $mediana = $this->calcularPercentil($dias, 0.5);
+        $p90 = $this->calcularPercentil($dias, 0.9);
+        $promedio = array_sum($dias) / $count;
+
+        return [
+            'mediana_dias' => $mediana !== null ? round($mediana, 1) : null,
+            'p90_dias' => $p90 !== null ? round($p90, 1) : null,
+            'promedio_dias' => round($promedio, 1),
+            'muestra' => $count,
+            'fuente_confiable' => $confiable,
+            'fuente_fallback' => $fallback,
+        ];
+    }
+
+    /**
+     * @param array<string,string> $filters
+     * @return array{monto_estimado:float,sin_tarifa:int,por_examen:array<string,float>,por_convenio:array<string,float>}
      */
     private function fetchImagenesSolicitudesSinAgendaEstimate(array $filters): array
     {
         if (!$this->tableExists('consulta_examenes')) {
-            return ['monto_estimado' => 0.0, 'sin_tarifa' => 0];
+            return ['monto_estimado' => 0.0, 'sin_tarifa' => 0, 'por_examen' => [], 'por_convenio' => []];
         }
 
         $flowSubquery = $this->buildImagenesSolicitudFlowSubquery($filters);
@@ -864,6 +1100,8 @@ class ImagenesUiService
         $montoEstimado = 0.0;
         $sinTarifa = 0;
         $tarifarioCache = [];
+        $montoPorExamen = [];
+        $montoPorConvenio = [];
 
         while (($row = $stmt->fetch(PDO::FETCH_ASSOC)) !== false) {
             if (!is_array($row)) {
@@ -883,7 +1121,25 @@ class ImagenesUiService
 
             $amount = $this->resolveImagenTarifaPendiente($codigo, $row, is_array($tarifa) ? $tarifa : null);
             if ($amount > 0) {
-                $montoEstimado += $amount * $solicitudesCount;
+                $montoTotal = $amount * $solicitudesCount;
+                $montoEstimado += $montoTotal;
+
+                $examenLabel = trim((string)($row['examen_nombre'] ?? '')) !== ''
+                    ? trim((string)$row['examen_nombre'])
+                    : ($codigo !== '' ? $codigo : 'Sin examen');
+                if (!isset($montoPorExamen[$examenLabel])) {
+                    $montoPorExamen[$examenLabel] = 0.0;
+                }
+                $montoPorExamen[$examenLabel] += $montoTotal;
+
+                $convenioLabel = strtoupper(trim((string)($row['empresa_seguro'] ?? '')));
+                if ($convenioLabel === '') {
+                    $convenioLabel = 'SIN CONVENIO';
+                }
+                if (!isset($montoPorConvenio[$convenioLabel])) {
+                    $montoPorConvenio[$convenioLabel] = 0.0;
+                }
+                $montoPorConvenio[$convenioLabel] += $montoTotal;
             } else {
                 $sinTarifa += $solicitudesCount;
             }
@@ -892,6 +1148,8 @@ class ImagenesUiService
         return [
             'monto_estimado' => round($montoEstimado, 2),
             'sin_tarifa' => $sinTarifa,
+            'por_examen' => array_map(static fn(float $v): float => round($v, 2), $montoPorExamen),
+            'por_convenio' => array_map(static fn(float $v): float => round($v, 2), $montoPorConvenio),
         ];
     }
 
@@ -2408,6 +2666,8 @@ class ImagenesUiService
         $solicitudesSinAgenda = (int)($solicitudes['solicitudes_sin_agenda'] ?? 0);
         $solicitudesSinAgendaMontoEstimado = (float)($solicitudes['solicitudes_sin_agenda_monto_estimado'] ?? 0);
         $solicitudesSinAgendaSinTarifa = (int)($solicitudes['solicitudes_sin_agenda_sin_tarifa'] ?? 0);
+        $solicitudesSinAgendaPorExamen = is_array($solicitudes['solicitudes_sin_agenda_por_examen'] ?? null) ? $solicitudes['solicitudes_sin_agenda_por_examen'] : [];
+        $solicitudesSinAgendaPorConvenio = is_array($solicitudes['solicitudes_sin_agenda_por_convenio'] ?? null) ? $solicitudes['solicitudes_sin_agenda_por_convenio'] : [];
         $solicitudesAgendadasPendientes = (int)($solicitudes['solicitudes_agendadas_pendientes'] ?? 0);
         $solicitudesPendientesVigentes = (int)($solicitudes['solicitudes_pendientes_vigentes'] ?? 0);
         $solicitudesCanceladas = (int)($solicitudes['solicitudes_canceladas'] ?? 0);
@@ -2471,6 +2731,7 @@ class ImagenesUiService
         $aging = ['0-2 días' => 0, '3-7 días' => 0, '8-14 días' => 0, '15+ días' => 0];
         $empresaSeguroCounts = [];
         $seguroCounts = [];
+        $produccionPorConvenio = [];
         $empresaSeguroFilter = $this->normalizeAfiliacionFilter((string)($filters['afiliacion'] ?? ''));
         $selectedEmpresaSeguro = '';
 
@@ -2576,6 +2837,11 @@ class ImagenesUiService
                 } elseif ($esOtro) {
                     $facturadosOtros++;
                 }
+
+                if (!isset($produccionPorConvenio[$empresaSeguroLabel])) {
+                    $produccionPorConvenio[$empresaSeguroLabel] = 0.0;
+                }
+                $produccionPorConvenio[$empresaSeguroLabel] += $produccionRow;
             }
 
             if ($estadoRealizacion === 'CANCELADA') {
@@ -2783,6 +3049,7 @@ class ImagenesUiService
                 'tat_promedio_horas' => $tatPromedio !== null ? round($tatPromedio, 2) : null,
                 'tat_mediana_horas' => $tatMediana !== null ? round($tatMediana, 2) : null,
                 'tat_p90_horas' => $tatP90 !== null ? round($tatP90, 2) : null,
+                'facturados' => $facturados,
                 'produccion_facturada' => round($produccionFacturada, 2),
                 'produccion_facturada_publico' => round($produccionFacturadaPublico, 2),
                 'produccion_facturada_privado' => round($produccionFacturadaPrivado, 2),
@@ -2910,7 +3177,65 @@ class ImagenesUiService
                     'labels' => array_keys($insuranceBreakdownTop),
                     'values' => array_values($insuranceBreakdownTop),
                 ],
+                'rentabilidad_convenio' => $this->buildImagenesRentabilidadConvenioChart($produccionPorConvenio, $solicitudesSinAgendaPorConvenio),
+                'top_examenes_oportunidad' => $this->buildImagenesTopOportunidadChart($solicitudesSinAgendaPorExamen),
             ],
+        ];
+    }
+
+    /**
+     * Producción facturada vs. oportunidad pendiente por convenio, exclusivo
+     * de la Sección "Rentabilidad y Oportunidad" del reporte ejecutivo. No se
+     * usa en el dashboard operativo.
+     *
+     * @param array<string,float> $produccionPorConvenio
+     * @param array<string,float> $oportunidadPorConvenio
+     * @return array{labels:array<int,string>,produccion:array<int,float>,oportunidad:array<int,float>}
+     */
+    private function buildImagenesRentabilidadConvenioChart(array $produccionPorConvenio, array $oportunidadPorConvenio): array
+    {
+        $convenios = array_unique(array_merge(array_keys($produccionPorConvenio), array_keys($oportunidadPorConvenio)));
+
+        $combined = [];
+        foreach ($convenios as $convenio) {
+            $combined[$convenio] = round((float)($produccionPorConvenio[$convenio] ?? 0), 2)
+                + round((float)($oportunidadPorConvenio[$convenio] ?? 0), 2);
+        }
+        arsort($combined);
+        $top = array_slice($combined, 0, 10, true);
+
+        $labels = [];
+        $produccion = [];
+        $oportunidad = [];
+        foreach (array_keys($top) as $convenio) {
+            $labels[] = $convenio;
+            $produccion[] = round((float)($produccionPorConvenio[$convenio] ?? 0), 2);
+            $oportunidad[] = round((float)($oportunidadPorConvenio[$convenio] ?? 0), 2);
+        }
+
+        return [
+            'labels' => $labels,
+            'produccion' => $produccion,
+            'oportunidad' => $oportunidad,
+        ];
+    }
+
+    /**
+     * Top exámenes con mayor oportunidad pendiente (solicitudes sin agenda
+     * valorizadas), exclusivo de la Sección "Rentabilidad y Oportunidad" del
+     * reporte ejecutivo. No se usa en el dashboard operativo.
+     *
+     * @param array<string,float> $oportunidadPorExamen
+     * @return array{labels:array<int,string>,values:array<int,float>}
+     */
+    private function buildImagenesTopOportunidadChart(array $oportunidadPorExamen): array
+    {
+        arsort($oportunidadPorExamen);
+        $top = array_slice($oportunidadPorExamen, 0, 10, true);
+
+        return [
+            'labels' => array_keys($top),
+            'values' => array_map(static fn(float $v): float => round($v, 2), array_values($top)),
         ];
     }
 
@@ -3182,12 +3507,15 @@ class ImagenesUiService
             ? 'empresa_seguro'
             : "'' AS empresa_seguro";
 
-        $stmt = $this->db->query(
-            "SELECT afiliacion_norm, categoria, afiliacion_raw, {$empresaSeguroSelect}
-             FROM afiliacion_categoria_map
-             WHERE TRIM(COALESCE(afiliacion_norm, '')) <> ''"
-        );
-        $rows = $stmt ? ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
+        $rows = Cache::remember('imagenes.afiliacion_categoria_map.rows', 3600, function () use ($empresaSeguroSelect): array {
+            $stmt = $this->db->query(
+                "SELECT afiliacion_norm, categoria, afiliacion_raw, {$empresaSeguroSelect}
+                 FROM afiliacion_categoria_map
+                 WHERE TRIM(COALESCE(afiliacion_norm, '')) <> ''"
+            );
+
+            return $stmt ? ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
+        });
 
         $map = [];
         foreach ($rows as $row) {
@@ -3227,17 +3555,21 @@ class ImagenesUiService
             ? ['id', 'codigo', 'descripcion', 'short_description']
             : ['id', 'codigo', 'descripcion'];
 
-        $rows = Tarifario2014::query()->select($select)->get();
-        $index = [];
-        foreach ($rows as $row) {
-            $index[] = [
-                'id' => (int)$row->id,
-                'codigo' => trim((string)($row->codigo ?? '')),
-                'descripcion' => trim((string)($row->descripcion ?? '')),
-                'descripcion_norm' => $this->normalizarTexto((string)($row->descripcion ?? '')),
-                'short_description_norm' => $this->normalizarTexto((string)($row->short_description ?? '')),
-            ];
-        }
+        $index = Cache::remember('imagenes.tarifa_description_index', 3600, function () use ($select): array {
+            $rows = Tarifario2014::query()->select($select)->get();
+            $index = [];
+            foreach ($rows as $row) {
+                $index[] = [
+                    'id' => (int)$row->id,
+                    'codigo' => trim((string)($row->codigo ?? '')),
+                    'descripcion' => trim((string)($row->descripcion ?? '')),
+                    'descripcion_norm' => $this->normalizarTexto((string)($row->descripcion ?? '')),
+                    'short_description_norm' => $this->normalizarTexto((string)($row->short_description ?? '')),
+                ];
+            }
+
+            return $index;
+        });
 
         return $this->tarifaDescriptionIndexCache = $index;
     }
@@ -3256,7 +3588,13 @@ class ImagenesUiService
         }
 
         try {
-            return $this->codePriceCache[$codeId] = $this->codePriceService()->pricesForCode($codeId, $this->codePriceLevels());
+            $prices = Cache::remember(
+                "imagenes.tarifa_code_prices.{$codeId}",
+                3600,
+                fn (): array => $this->codePriceService()->pricesForCode($codeId, $this->codePriceLevels())
+            );
+
+            return $this->codePriceCache[$codeId] = $prices;
         } catch (\Throwable) {
             return $this->codePriceCache[$codeId] = [];
         }

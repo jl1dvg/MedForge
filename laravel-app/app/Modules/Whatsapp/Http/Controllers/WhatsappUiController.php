@@ -13,6 +13,7 @@ use App\Modules\Whatsapp\Services\KnowledgeBaseService;
 use App\Modules\Whatsapp\Services\KpiDashboardService;
 use App\Modules\Whatsapp\Services\ProductivityToolkitService;
 use App\Modules\Whatsapp\Services\TemplateCatalogService;
+use App\Modules\Whatsapp\Services\WhatsappExecutiveReportService;
 use App\Modules\Whatsapp\Services\WhatsappLeadService;
 use Carbon\CarbonImmutable;
 use DateTimeImmutable;
@@ -43,6 +44,7 @@ class WhatsappUiController
         private readonly KnowledgeBaseService $knowledgeBaseService = new \App\Modules\Whatsapp\Services\KnowledgeBaseService(),
         private readonly ProductivityToolkitService $productivityToolkitService = new \App\Modules\Whatsapp\Services\ProductivityToolkitService(),
         private readonly WhatsappLeadService $leadService = new \App\Modules\Whatsapp\Services\WhatsappLeadService(),
+        private readonly WhatsappExecutiveReportService $executiveReportService = new \App\Modules\Whatsapp\Services\WhatsappExecutiveReportService(),
     ) {
     }
 
@@ -226,6 +228,35 @@ class WhatsappUiController
         ] + $this->buildWhatsappNotificationViewData($request, [
             'scope' => 'dashboard',
         ]));
+    }
+
+    /**
+     * Executive report (/v2/whatsapp/dashboard). Lean, cached payload built on
+     * top of KpiDashboardService::buildDashboard(), reshaped into the report
+     * contract consumed by the React report layer.
+     */
+    public function dashboardReport(Request $request): View
+    {
+        $query = $request->query();
+        $forceRefresh = $request->boolean('refresh');
+
+        $payload = $this->executiveReportService->buildExecutiveReportPayload($query, $forceRefresh);
+        $report = $payload['report'];
+        $filters = $payload['filters'];
+
+        \Illuminate\Support\Facades\Log::info('whatsapp.executive_report.timings', [
+            'timings' => $payload['timings'] ?? [],
+            'cache_hit' => $payload['timings']['cache_hit'] ?? null,
+            'cache_key' => $payload['timings']['cache_key'] ?? null,
+            'ttl' => $payload['timings']['ttl'] ?? null,
+            'total_ms' => $payload['timings']['total_ms'] ?? null,
+        ]);
+
+        return view('whatsapp.v2-whatsapp-dashboard-report', [
+            'report' => $report,
+            'period' => $filters['period'],
+            'agentId' => $filters['agent_id'],
+        ]);
     }
 
     /**
