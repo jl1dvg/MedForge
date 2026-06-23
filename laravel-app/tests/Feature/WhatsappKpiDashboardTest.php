@@ -439,7 +439,19 @@ class WhatsappKpiDashboardTest extends TestCase
 
         $content = $response->streamedContent();
         $this->assertStringStartsWith('PK', $content);
-        $this->assertStringContainsString('xl/workbook.xml', $content);
+
+        $path = tempnam(sys_get_temp_dir(), 'whatsapp-kpis-') . '.xlsx';
+        file_put_contents($path, $content);
+
+        try {
+            $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($path);
+            $this->assertContains('Resumen', $spreadsheet->getSheetNames());
+            $this->assertContains('Citas logradas', $spreadsheet->getSheetNames());
+            $this->assertContains('Tipos de cita', $spreadsheet->getSheetNames());
+            $this->assertContains('Recordatorios', $spreadsheet->getSheetNames());
+        } finally {
+            @unlink($path);
+        }
     }
 
     public function test_it_exports_dashboard_pdf(): void

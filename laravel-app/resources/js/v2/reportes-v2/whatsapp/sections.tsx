@@ -13,6 +13,22 @@ export function WhatsappContent({ r }: { r: WhatsappReport }) {
   const attributedAppointments = s.attributedAppointments ?? (botBookings + humanAppointments);
   const attributedBookingRate = s.attributedBookingRate ?? s.bookingRate ?? 0;
   const humanAppointmentAgents = r.humanAppointmentAgents ?? [];
+  const appointmentTypes = r.appointmentTypes ?? [];
+  const reminders = r.reminders ?? {
+    summary: {
+      total: 0,
+      sent: 0,
+      delivered: 0,
+      failed: 0,
+      responded: 0,
+      confirmed: 0,
+      agentRequested: 0,
+      deliveryRate: 0,
+      responseRate: 0,
+      confirmationRate: 0,
+    },
+    bySourceWindow: [],
+  };
   const topSource = r.sources[0];
   const opportunityLoss = r.opportunityLoss ?? {
     appointmentIntentConversations: 0,
@@ -98,13 +114,19 @@ export function WhatsappContent({ r }: { r: WhatsappReport }) {
         lede="Embudo de conversión y desempeño por segmento de ciclo de vida del paciente."
       >
         <div className="rep-grid rep-grid--4" style={{ marginBottom: 16 }}>
-          <Kpi icon="mdi-account-tie-outline" label="Citas agendadas por humano" value={humanAppointments.toLocaleString('es-EC')} sub={`${humanAppointmentConversations.toLocaleString('es-EC')} conversaciones · ${humanAppointmentPatients.toLocaleString('es-EC')} pacientes`} />
+          <Kpi
+            icon="mdi-account-tie-outline"
+            label="Citas creadas tras atención humana"
+            value={humanAppointments.toLocaleString('es-EC')}
+            sub={`Nacieron de <b>${humanAppointmentConversations.toLocaleString('es-EC')}</b> conversaciones y <b>${humanAppointmentPatients.toLocaleString('es-EC')}</b> pacientes únicos`}
+          />
           <Kpi icon="mdi-calendar-sync-outline" label="Citas agendadas por bot" value={botBookings.toLocaleString('es-EC')} />
           <Kpi icon="mdi-calendar-clock-outline" label="Estimado amplio 72h" value={humanAppointmentsMedium.toLocaleString('es-EC')} />
           <Kpi icon="mdi-percent-outline" label="Conversión total a cita" value={`${attributedBookingRate}%`} sub={`${attributedAppointments.toLocaleString('es-EC')} citas de ${s.conversationsNew.toLocaleString('es-EC')} conversaciones`} />
         </div>
         <Read>
-          Número principal: <b>{humanAppointments.toLocaleString('es-EC')}</b> citas donde hubo atención humana antes de la cita.
+          Número principal: <b>{humanAppointments.toLocaleString('es-EC')}</b> citas creadas en Sigcenter después de una atención humana.
+          Esas citas salieron de <b>{humanAppointmentConversations.toLocaleString('es-EC')}</b> conversaciones únicas; una conversación puede terminar en más de una cita.
           El estimado 72h es una mirada más amplia: cuenta citas creadas hasta 3 días después de la atención humana.
           Conversión total suma humano + bot.
         </Read>
@@ -114,6 +136,63 @@ export function WhatsappContent({ r }: { r: WhatsappReport }) {
             {(topSource.attributedAppointments ?? topSource.bookings ?? 0).toLocaleString('es-EC')} citas y {topSource.attributedRate ?? topSource.bookingRate ?? 0}% de conversión.
           </Read>
         ) : null}
+        <div className="rep-grid rep-grid--2" style={{ marginBottom: 16 }}>
+          <div className="rep-card">
+            <div className="rep-card-head"><h3><i className="mdi mdi-calendar-multiselect"></i>Tipo de cita agendada</h3></div>
+            <table className="rep-table">
+              <thead><tr><th>Tipo</th><th>Total</th><th>Humano</th><th>Bot</th><th>%</th></tr></thead>
+              <tbody>
+                {appointmentTypes.length > 0 ? appointmentTypes.map((row, i) => (
+                  <tr key={i}>
+                    <td>{row.label}</td>
+                    <td>{fmt(row.total)}</td>
+                    <td>{fmt(row.human)}</td>
+                    <td>{fmt(row.bot)}</td>
+                    <td>{row.share}%</td>
+                  </tr>
+                )) : (
+                  <tr><td colSpan={5}>Sin citas clasificadas en el período.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <div className="rep-card rep-reminders-card">
+            <div className="rep-card-head"><h3><i className="mdi mdi-bell-ring-outline"></i>Recordatorios de cita</h3></div>
+            <div className="rep-reminder-summary" aria-label="Resumen de recordatorios">
+              <div>
+                <span>Enviados</span>
+                <strong>{fmt(reminders.summary.sent)}</strong>
+              </div>
+              <div>
+                <span>Confirmaron</span>
+                <strong>{fmt(reminders.summary.confirmed)}</strong>
+              </div>
+              <div>
+                <span>Pidieron agente</span>
+                <strong>{fmt(reminders.summary.agentRequested)}</strong>
+              </div>
+            </div>
+            <p className="rep-muted rep-reminder-read">
+              De cada recordatorio enviado, el reporte separa quién confirmó y quién pidió hablar con una persona.
+            </p>
+            <table className="rep-table">
+              <thead><tr><th>Tipo</th><th>Ventana</th><th className="num">Enviados</th><th className="num">Confirm.</th><th className="num">Agente</th></tr></thead>
+              <tbody>
+                {reminders.bySourceWindow.length > 0 ? reminders.bySourceWindow.map((row, i) => (
+                  <tr key={i}>
+                    <td>{row.sourceLabel}</td>
+                    <td>{row.windowLabel}</td>
+                    <td className="num">{fmt(row.sent)}</td>
+                    <td className="num">{fmt(row.confirmed)}</td>
+                    <td className="num">{fmt(row.agentRequested)}</td>
+                  </tr>
+                )) : (
+                  <tr><td colSpan={5}>Sin recordatorios registrados en el período.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
         <div className="rep-grid rep-grid--2" style={{ marginBottom: 16 }}>
           <div className="rep-card">
             <div className="rep-card-head"><h3><i className="mdi mdi-filter-variant"></i>Embudo de conversión</h3></div>

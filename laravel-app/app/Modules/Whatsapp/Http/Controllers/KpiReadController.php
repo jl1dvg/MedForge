@@ -218,9 +218,10 @@ class KpiReadController
         ], is_array($sheets['opportunities'] ?? null) ? $sheets['opportunities'] : []));
 
         $this->addTableSheet($spreadsheet, 'Citas logradas', [
-            'Tipo', 'Teléfono', 'HC / cédula', 'Paciente', 'Origen', 'Campaña / anuncio', 'Fecha cita', 'Hora', 'Sede', 'Médico', 'Procedimiento', 'Agente', 'Creada en',
+            'Tipo cierre', 'Tipo cita', 'Teléfono', 'HC / cédula', 'Paciente', 'Origen', 'Campaña / anuncio', 'Fecha cita', 'Hora', 'Sede', 'Médico', 'Procedimiento', 'Agente', 'Creada en',
         ], array_map(static fn (array $row): array => [
             $row['booking_type'] ?? '',
+            $row['appointment_type_label'] ?? '',
             $row['wa_number'] ?? '',
             $row['patient_hc_number'] ?? '',
             $row['patient_name'] ?? '',
@@ -234,6 +235,37 @@ class KpiReadController
             $row['agent_name'] ?? '',
             $row['booking_created_at'] ?? '',
         ], is_array($sheets['appointments'] ?? null) ? $sheets['appointments'] : []));
+
+        $this->addTableSheet($spreadsheet, 'Tipos de cita', [
+            'Tipo de cita', 'Total citas', 'Por humano', 'Por bot', 'Participación',
+        ], array_map(static fn (array $row): array => [
+            $row['label'] ?? '',
+            (int) ($row['total'] ?? 0),
+            (int) ($row['human'] ?? 0),
+            (int) ($row['bot'] ?? 0),
+            ($row['share'] ?? 0) . ' %',
+        ], is_array($sheets['appointment_types'] ?? null) ? $sheets['appointment_types'] : []));
+
+        $this->addTableSheet($spreadsheet, 'Recordatorios', [
+            'Teléfono', 'HC / cédula', 'Paciente', 'Tipo cita', 'Procedimiento', 'Médico', 'Sede', 'Ventana', 'Estado', 'Respuesta', 'Fecha cita', 'Enviado', 'Entregado', 'Respondido', 'Plantilla', 'Form ID',
+        ], array_map(static fn (array $row): array => [
+            $row['wa_number'] ?? '',
+            $row['hc_number'] ?? '',
+            $row['patient_name'] ?? '',
+            $row['appointment_type_label'] ?? '',
+            $row['procedure_name'] ?? '',
+            $row['doctor_name'] ?? '',
+            $row['site_name'] ?? '',
+            $row['window_label'] ?? '',
+            $row['status_label'] ?? '',
+            $row['response_label'] ?? '',
+            $row['event_at'] ?? '',
+            $row['sent_at'] ?? '',
+            $row['delivered_at'] ?? '',
+            $row['responded_at'] ?? '',
+            $row['template_code'] ?? '',
+            $row['form_id'] ?? '',
+        ], is_array($sheets['reminders'] ?? null) ? $sheets['reminders'] : []));
 
         $this->addTableSheet($spreadsheet, 'Ads cerrados', [
             'Teléfono', 'HC / cédula', 'Campaña / anuncio', 'Intención', 'Etapa', 'Resultado', 'Agente', 'Fecha conversación',
@@ -316,6 +348,8 @@ class KpiReadController
             ['Citas por humano', $summary['human_attributed_appointments_strong'] ?? 0],
             ['Citas por bot / integración', $summary['sigcenter_bookings_created'] ?? 0],
             ['Oportunidades para cerrar cita', count(is_array($sheets['opportunities'] ?? null) ? $sheets['opportunities'] : [])],
+            ['Recordatorios enviados', $summary['reminders_sent'] ?? 0],
+            ['Recordatorios confirmados', $summary['reminders_confirmed'] ?? 0],
             ['Ads cerrados o resueltos', count(is_array($sheets['ads_closed'] ?? null) ? $sheets['ads_closed'] : [])],
             ['Ads perdidos', count(is_array($sheets['ads_lost'] ?? null) ? $sheets['ads_lost'] : [])],
             ['Conversaciones con fricción', count(is_array($sheets['frictions'] ?? null) ? $sheets['frictions'] : [])],
