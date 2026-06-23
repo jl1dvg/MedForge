@@ -13,6 +13,22 @@ export function WhatsappContent({ r }: { r: WhatsappReport }) {
   const attributedAppointments = s.attributedAppointments ?? (botBookings + humanAppointments);
   const attributedBookingRate = s.attributedBookingRate ?? s.bookingRate ?? 0;
   const humanAppointmentAgents = r.humanAppointmentAgents ?? [];
+  const appointmentTypes = r.appointmentTypes ?? [];
+  const reminders = r.reminders ?? {
+    summary: {
+      total: 0,
+      sent: 0,
+      delivered: 0,
+      failed: 0,
+      responded: 0,
+      confirmed: 0,
+      agentRequested: 0,
+      deliveryRate: 0,
+      responseRate: 0,
+      confirmationRate: 0,
+    },
+    bySourceWindow: [],
+  };
   const topSource = r.sources[0];
   const opportunityLoss = r.opportunityLoss ?? {
     appointmentIntentConversations: 0,
@@ -114,6 +130,49 @@ export function WhatsappContent({ r }: { r: WhatsappReport }) {
             {(topSource.attributedAppointments ?? topSource.bookings ?? 0).toLocaleString('es-EC')} citas y {topSource.attributedRate ?? topSource.bookingRate ?? 0}% de conversión.
           </Read>
         ) : null}
+        <div className="rep-grid rep-grid--2" style={{ marginBottom: 16 }}>
+          <div className="rep-card">
+            <div className="rep-card-head"><h3><i className="mdi mdi-calendar-multiselect"></i>Tipo de cita agendada</h3></div>
+            <table className="rep-table">
+              <thead><tr><th>Tipo</th><th>Total</th><th>Humano</th><th>Bot</th><th>%</th></tr></thead>
+              <tbody>
+                {appointmentTypes.length > 0 ? appointmentTypes.map((row, i) => (
+                  <tr key={i}>
+                    <td>{row.label}</td>
+                    <td>{fmt(row.total)}</td>
+                    <td>{fmt(row.human)}</td>
+                    <td>{fmt(row.bot)}</td>
+                    <td>{row.share}%</td>
+                  </tr>
+                )) : (
+                  <tr><td colSpan={5}>Sin citas clasificadas en el período.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <div className="rep-card">
+            <div className="rep-card-head"><h3><i className="mdi mdi-bell-ring-outline"></i>Recordatorios de cita</h3></div>
+            <p className="rep-muted" style={{ marginTop: 0 }}>
+              Se enviaron <b>{fmt(reminders.summary.sent)}</b> recordatorios; <b>{fmt(reminders.summary.confirmed)}</b> confirmaron y <b>{fmt(reminders.summary.agentRequested)}</b> pidieron hablar con una persona.
+            </p>
+            <table className="rep-table">
+              <thead><tr><th>Tipo</th><th>Ventana</th><th>Enviados</th><th>Confirm.</th><th>Agente</th></tr></thead>
+              <tbody>
+                {reminders.bySourceWindow.length > 0 ? reminders.bySourceWindow.map((row, i) => (
+                  <tr key={i}>
+                    <td>{row.sourceLabel}</td>
+                    <td>{row.windowLabel}</td>
+                    <td>{fmt(row.sent)}</td>
+                    <td>{fmt(row.confirmed)}</td>
+                    <td>{fmt(row.agentRequested)}</td>
+                  </tr>
+                )) : (
+                  <tr><td colSpan={5}>Sin recordatorios registrados en el período.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
         <div className="rep-grid rep-grid--2" style={{ marginBottom: 16 }}>
           <div className="rep-card">
             <div className="rep-card-head"><h3><i className="mdi mdi-filter-variant"></i>Embudo de conversión</h3></div>

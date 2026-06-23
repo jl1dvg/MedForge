@@ -63,12 +63,28 @@ class KpiDashboardService
         $humanAppointmentAttribution = $this->humanAppointmentAttribution($fromSql, $toSql, $roleId, $agentId);
         $analytics = $this->conversationAnalytics($fromSql, $toSql, $roleId, $agentId);
         $reminders = $this->appointmentReminderAnalytics($reminderFromSql, $reminderToSql);
+        $botBookingDetails = $this->botBookingDetailRows($fromSql, $toSql, $roleId, $agentId);
+        $appointmentTypes = $this->appointmentTypeBreakdown(array_merge(
+            is_array($humanAppointmentAttribution['details'] ?? null) ? $humanAppointmentAttribution['details'] : [],
+            $botBookingDetails
+        ));
         $closeReasons = $this->closeReasonSummary($fromSql, $toSql, $roleId, $agentId);
         $operationalInbox = $this->operationalInboxSummary($roleId, $agentId);
 
+        $reminderSummary = is_array($reminders['summary'] ?? null) ? $reminders['summary'] : [];
         $summary = array_merge($summary, $human, $queue, $window, $sla, [
             'handoff_transfers' => $transfers,
             'peak_open_conversations' => (int) ($human['peak_open_conversations'] ?? 0),
+            'reminders_total' => (int) ($reminderSummary['total'] ?? 0),
+            'reminders_sent' => (int) ($reminderSummary['sent'] ?? 0),
+            'reminders_delivered' => (int) ($reminderSummary['delivered'] ?? 0),
+            'reminders_failed' => (int) ($reminderSummary['failed'] ?? 0),
+            'reminders_responded' => (int) ($reminderSummary['responded'] ?? 0),
+            'reminders_confirmed' => (int) ($reminderSummary['confirmed'] ?? 0),
+            'reminders_agent_requested' => (int) ($reminderSummary['agent_requested'] ?? 0),
+            'reminders_delivery_rate' => (float) ($reminderSummary['delivery_rate'] ?? 0),
+            'reminders_response_rate' => (float) ($reminderSummary['response_rate'] ?? 0),
+            'reminders_confirmation_rate' => (float) ($reminderSummary['confirmation_rate'] ?? 0),
         ], $bookings, $humanAppointmentAttribution['summary'], $closeReasons, $operationalInbox);
 
         return [
@@ -148,6 +164,7 @@ class KpiDashboardService
                 'human_attributed_appointments_by_agent' => $humanAppointmentAttribution['by_agent'],
                 'human_attributed_appointments_by_sede' => $humanAppointmentAttribution['by_sede'],
                 'human_attributed_appointments_by_source' => $humanAppointmentAttribution['by_source'],
+                'appointments_by_type' => $appointmentTypes,
             ],
             'analytics' => $analytics,
             'reminders' => $reminders,
@@ -308,15 +325,18 @@ class KpiDashboardService
         $toExclusive = $endDate->setTime(0, 0, 0)->modify('+1 day');
         $fromSql = $from->format('Y-m-d H:i:s');
         $toSql = $toExclusive->format('Y-m-d H:i:s');
+        [$reminderFromSql, $reminderToSql] = $this->localReminderDateRangeSql($from, $endDate);
 
         $dashboard = $this->buildDashboard($startDate, $endDate, $roleId, $agentId, $slaTargetMinutes);
         $conversationRows = $this->exportConversationDetailRows($fromSql, $toSql, $roleId, $agentId);
         $humanAttribution = $this->humanAppointmentAttribution($fromSql, $toSql, $roleId, $agentId);
         $botBookings = $this->botBookingDetailRows($fromSql, $toSql, $roleId, $agentId);
+        $reminderRows = $this->appointmentReminderDetailRows($reminderFromSql, $reminderToSql);
         $humanBookings = is_array($humanAttribution['details'] ?? null) ? $humanAttribution['details'] : [];
 
         $appointments = array_merge($botBookings, $humanBookings);
         usort($appointments, static fn (array $a, array $b): int => strcmp((string) ($b['booking_created_at'] ?? ''), (string) ($a['booking_created_at'] ?? '')));
+        $appointmentTypes = $this->appointmentTypeBreakdown($appointments);
 
         $opportunities = array_values(array_filter($conversationRows, static function (array $row): bool {
             if ((int) ($row['has_booking'] ?? 0) === 1) {
@@ -364,6 +384,8 @@ class KpiDashboardService
             'sheets' => [
                 'opportunities' => array_slice($opportunities, 0, 10000),
                 'appointments' => array_slice($appointments, 0, 10000),
+                'appointment_types' => $appointmentTypes,
+                'reminders' => array_slice($reminderRows, 0, 10000),
                 'ads_closed' => array_slice($adsClosed, 0, 10000),
                 'ads_lost' => array_slice($adsLost, 0, 10000),
                 'agents' => array_slice($agentRows, 0, 10000),
@@ -451,6 +473,10 @@ class KpiDashboardService
 
         return array_map(function ($row): array {
             $source = (string) ($row->source_category ?? 'unknown');
+            $appointmentType = $this->appointmentTypeForProcedure(
+                (string) ($row->procedimiento_nombre ?? ''),
+                (string) ($row->source_type ?? '')
+            );
 
             return [
                 'booking_type' => 'Bot / integración',
@@ -460,11 +486,14 @@ class KpiDashboardService
                 'patient_name' => (string) ($row->patient_full_name ?? ''),
                 'source_category' => $source,
                 'source_label' => $this->sourceCategoryLabel($source),
+                'source_type' => (string) ($row->source_type ?? ''),
                 'source_id' => (string) ($row->source_id ?? ''),
                 'campaign_headline' => (string) ($row->headline ?? ''),
                 'initial_intent' => (string) ($row->initial_intent ?? ''),
                 'initial_intent_label' => $this->initialIntentLabel((string) ($row->initial_intent ?? '')),
                 'patient_segment' => (string) ($row->patient_segment ?? ''),
+                'appointment_type' => $appointmentType['key'],
+                'appointment_type_label' => $appointmentType['label'],
                 'appointment_date' => $this->dateOnly($row->fecha_inicio ?? null),
                 'appointment_time' => $this->timeOnly($row->fecha_inicio ?? null),
                 'booking_created_at' => $row->booked_at !== null ? (string) $row->booked_at : (string) ($row->created_at ?? ''),
@@ -474,6 +503,177 @@ class KpiDashboardService
                 'agent_name' => (string) ($row->assigned_agent_name ?? ''),
             ];
         }, $rows);
+    }
+
+    /**
+     * @return array<int,array<string,mixed>>
+     */
+    private function appointmentReminderDetailRows(string $fromSql, string $toSql): array
+    {
+        if (!Schema::hasTable('whatsapp_appointment_reminders')) {
+            return [];
+        }
+
+        $patientNameSql = 'COALESCE(
+            NULLIF(' . $this->jsonTextExtract('war.payload', '$.patient_name') . ', ""),
+            NULLIF(wc.patient_full_name, ""),
+            NULLIF(wc.display_name, ""),
+            war.hc_number
+        )';
+        $procedureSql = $this->jsonTextExtract('war.payload', '$.appointment.procedure_full');
+        $procedureShortSql = $this->jsonTextExtract('war.payload', '$.appointment.procedure');
+        $doctorSql = $this->jsonTextExtract('war.payload', '$.appointment.doctor');
+        $siteSql = $this->jsonTextExtract('war.payload', '$.site.name');
+
+        $rows = DB::select(
+            'SELECT
+                war.id,
+                war.form_id,
+                war.hc_number,
+                war.wa_number,
+                war.source_type,
+                war.template_code,
+                war.reminder_window,
+                war.event_at,
+                war.status,
+                war.response_value,
+                war.sent_at,
+                war.delivered_at,
+                war.failed_at,
+                war.responded_at,
+                war.created_at,
+                ' . $patientNameSql . ' AS patient_name,
+                COALESCE(NULLIF(' . $procedureSql . ', ""), NULLIF(' . $procedureShortSql . ', "")) AS procedure_name,
+                ' . $doctorSql . ' AS doctor_name,
+                ' . $siteSql . ' AS site_name
+             FROM whatsapp_appointment_reminders war
+             LEFT JOIN whatsapp_conversations wc ON wc.id = war.conversation_id
+             WHERE war.created_at >= ? AND war.created_at < ?
+             ORDER BY COALESCE(war.sent_at, war.created_at) DESC, war.id DESC
+             LIMIT 10000',
+            [$fromSql, $toSql]
+        );
+
+        return array_map(function ($row): array {
+            $appointmentType = $this->appointmentTypeForProcedure(
+                (string) ($row->procedure_name ?? ''),
+                (string) ($row->source_type ?? '')
+            );
+
+            return [
+                'id' => (int) ($row->id ?? 0),
+                'form_id' => (int) ($row->form_id ?? 0),
+                'hc_number' => trim((string) ($row->hc_number ?? '')),
+                'wa_number' => trim((string) ($row->wa_number ?? '')),
+                'patient_name' => trim((string) ($row->patient_name ?? '')),
+                'source_type' => (string) ($row->source_type ?? ''),
+                'source_label' => $this->reminderSourceLabel((string) ($row->source_type ?? '')),
+                'appointment_type' => $appointmentType['key'],
+                'appointment_type_label' => $appointmentType['label'],
+                'procedure_name' => trim((string) ($row->procedure_name ?? '')),
+                'doctor_name' => trim((string) ($row->doctor_name ?? '')),
+                'site_name' => trim((string) ($row->site_name ?? '')),
+                'template_code' => trim((string) ($row->template_code ?? '')),
+                'reminder_window' => trim((string) ($row->reminder_window ?? '')),
+                'window_label' => $this->reminderWindowLabel((string) ($row->reminder_window ?? '')),
+                'event_at' => (string) ($row->event_at ?? ''),
+                'status' => (string) ($row->status ?? ''),
+                'status_label' => $this->reminderStatusLabel((string) ($row->status ?? '')),
+                'response_value' => (string) ($row->response_value ?? ''),
+                'response_label' => $this->reminderResponseLabel((string) ($row->response_value ?? '')),
+                'sent_at' => (string) ($row->sent_at ?? ''),
+                'delivered_at' => (string) ($row->delivered_at ?? ''),
+                'failed_at' => (string) ($row->failed_at ?? ''),
+                'responded_at' => (string) ($row->responded_at ?? ''),
+                'created_at' => (string) ($row->created_at ?? ''),
+            ];
+        }, $rows);
+    }
+
+    /**
+     * @param array<int,array<string,mixed>> $appointments
+     * @return array<int,array{key:string,label:string,total:int,human:int,bot:int,share:float}>
+     */
+    private function appointmentTypeBreakdown(array $appointments): array
+    {
+        $groups = [];
+        foreach ($appointments as $appointment) {
+            $type = (string) ($appointment['appointment_type'] ?? '');
+            $label = (string) ($appointment['appointment_type_label'] ?? '');
+            if ($type === '' || $label === '') {
+                $classified = $this->appointmentTypeForProcedure(
+                    (string) ($appointment['procedimiento_nombre'] ?? ''),
+                    (string) ($appointment['source_type'] ?? '')
+                );
+                $type = $classified['key'];
+                $label = $classified['label'];
+            }
+
+            if (!isset($groups[$type])) {
+                $groups[$type] = [
+                    'key' => $type,
+                    'label' => $label,
+                    'total' => 0,
+                    'human' => 0,
+                    'bot' => 0,
+                    'share' => 0.0,
+                ];
+            }
+
+            $groups[$type]['total']++;
+            if ((string) ($appointment['booking_type'] ?? '') === 'Humano atribuido') {
+                $groups[$type]['human']++;
+            } else {
+                $groups[$type]['bot']++;
+            }
+        }
+
+        $total = array_sum(array_map(static fn (array $row): int => (int) $row['total'], $groups));
+        $rows = array_values(array_map(static function (array $row) use ($total): array {
+            $row['share'] = $total > 0 ? round(((int) $row['total'] / $total) * 100, 1) : 0.0;
+            return $row;
+        }, $groups));
+
+        usort($rows, static fn (array $a, array $b): int => ((int) $b['total'] <=> (int) $a['total']) ?: strcmp((string) $a['label'], (string) $b['label']));
+
+        return $rows;
+    }
+
+    /**
+     * @return array{key:string,label:string}
+     */
+    private function appointmentTypeForProcedure(string $procedure, string $sourceType = ''): array
+    {
+        $normalizedSource = strtolower(trim($sourceType));
+        $normalizedProcedure = $this->normalizeText($procedure);
+
+        if ($normalizedSource === 'imagenes') {
+            return ['key' => 'imagenes', 'label' => 'Imágenes'];
+        }
+
+        foreach (['tomografia', 'oct', 'campimetria', 'biometria', 'ecografia', 'retinografia', 'paquimetria', 'topografia', 'imagen', 'imagenes'] as $needle) {
+            if (str_contains($normalizedProcedure, $needle)) {
+                return ['key' => 'imagenes', 'label' => 'Imágenes'];
+            }
+        }
+
+        foreach (['cirugia', 'quirurg', 'laser', 'inyeccion', 'yag', 'procedimiento'] as $needle) {
+            if (str_contains($normalizedProcedure, $needle)) {
+                return ['key' => 'procedimiento', 'label' => 'Procedimiento / cirugía'];
+            }
+        }
+
+        foreach (['consulta', 'control', 'evaluacion', 'valoracion', 'oftalmolog'] as $needle) {
+            if (str_contains($normalizedProcedure, $needle)) {
+                return ['key' => 'consulta', 'label' => 'Consulta / control'];
+            }
+        }
+
+        if ($normalizedSource === 'servicios_oftalmologicos_generales') {
+            return ['key' => 'consulta', 'label' => 'Consulta / control'];
+        }
+
+        return ['key' => 'otros', 'label' => 'Otro / sin clasificar'];
     }
 
     /**
@@ -2887,7 +3087,7 @@ class KpiDashboardService
             if (Schema::hasColumn('procedimiento_proyectado', 'sede_departamento')) {
                 $query->addSelect('sede_departamento');
             }
-            foreach (['medico_nombre', 'trabajador_nombre', 'procedimiento_nombre'] as $optionalColumn) {
+            foreach (['medico_nombre', 'trabajador_nombre', 'procedimiento_nombre', 'procedimiento_proyectado'] as $optionalColumn) {
                 if (Schema::hasColumn('procedimiento_proyectado', $optionalColumn)) {
                     $query->addSelect($optionalColumn);
                 }
@@ -2967,6 +3167,11 @@ class KpiDashboardService
                 $sourceCategory = $sourceCategory !== '' ? $sourceCategory : 'unknown';
                 $sedeNombre = trim((string) ($appointment->sede_departamento ?? ''));
                 $sedeNombre = $sedeNombre !== '' ? $sedeNombre : 'Sin sede';
+                $procedureName = trim((string) ($appointment->procedimiento_nombre ?? ''));
+                if ($procedureName === '') {
+                    $procedureName = trim((string) ($appointment->procedimiento_proyectado ?? ''));
+                }
+                $appointmentType = $this->appointmentTypeForProcedure($procedureName, '');
 
                 if ($createdAt->betweenIncluded($strongWindowStart, $strongWindowEnd)) {
                     $strongSlots[$slotKey] = true;
@@ -3032,12 +3237,14 @@ class KpiDashboardService
                         'initial_intent' => '',
                         'initial_intent_label' => '',
                         'patient_segment' => '',
+                        'appointment_type' => $appointmentType['key'],
+                        'appointment_type_label' => $appointmentType['label'],
                         'appointment_date' => $appointmentDate,
                         'appointment_time' => $appointmentTime,
                         'booking_created_at' => $createdAt->format('Y-m-d H:i:s'),
                         'sede_nombre' => $sedeNombre,
                         'medico_nombre' => (string) ($appointment->medico_nombre ?? $appointment->trabajador_nombre ?? ''),
-                        'procedimiento_nombre' => (string) ($appointment->procedimiento_nombre ?? ''),
+                        'procedimiento_nombre' => $procedureName,
                         'agent_id' => $agentIdForGroup,
                         'agent_name' => '',
                         'first_human_at' => $firstHumanAt->format('Y-m-d H:i:s'),
@@ -4279,6 +4486,13 @@ class KpiDashboardService
             [$fromSql, $toSql]
         );
 
+        $patientNameSql = 'COALESCE(
+            NULLIF(' . $this->jsonTextExtract('war.payload', '$.patient_name') . ', ""),
+            NULLIF(wc.patient_full_name, ""),
+            NULLIF(wc.display_name, ""),
+            war.hc_number
+        )';
+
         $recentRows = DB::select(
             'SELECT
                 war.id,
@@ -4296,16 +4510,9 @@ class KpiDashboardService
                 war.failed_at,
                 war.responded_at,
                 war.created_at,
-                COALESCE(
-                    NULLIF(JSON_UNQUOTE(JSON_EXTRACT(war.payload, "$.patient_name")), ""),
-                    NULLIF(TRIM(CONCAT_WS(" ", NULLIF(pd.fname, ""), NULLIF(pd.mname, ""), NULLIF(pd.lname, ""), NULLIF(pd.lname2, ""))), ""),
-                    NULLIF(wc.patient_full_name, ""),
-                    NULLIF(wc.display_name, ""),
-                    war.hc_number
-                ) AS patient_name
+                ' . $patientNameSql . ' AS patient_name
              FROM whatsapp_appointment_reminders war
              LEFT JOIN whatsapp_conversations wc ON wc.id = war.conversation_id
-             LEFT JOIN patient_data pd ON pd.hc_number = war.hc_number
              WHERE war.created_at >= ? AND war.created_at < ?
              ORDER BY COALESCE(war.sent_at, war.created_at) DESC, war.id DESC
              LIMIT 12',
@@ -4512,6 +4719,22 @@ class KpiDashboardService
         $rawHols  = (string) $this->settingValue('whatsapp_handoff_business_holidays', '');
         $holidays = array_filter(array_map('trim', explode("\n", $rawHols)));
         return new BusinessHoursCalculator($schedule, $timezone, array_values($holidays));
+    }
+
+    private function normalizeText(string $value): string
+    {
+        $value = strtolower(trim($value));
+        $value = strtr($value, [
+            'á' => 'a',
+            'é' => 'e',
+            'í' => 'i',
+            'ó' => 'o',
+            'ú' => 'u',
+            'ñ' => 'n',
+            'ü' => 'u',
+        ]);
+
+        return preg_replace('/\s+/', ' ', $value) ?? $value;
     }
 
     /**

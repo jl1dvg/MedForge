@@ -58,6 +58,45 @@ export interface WaHumanAppointmentAgentRow {
   forms: number;
 }
 
+export interface WaAppointmentTypeRow {
+  key: string;
+  label: string;
+  total: number;
+  human: number;
+  bot: number;
+  share: number;
+}
+
+export interface WaReminderSummary {
+  total: number;
+  sent: number;
+  delivered: number;
+  failed: number;
+  responded: number;
+  confirmed: number;
+  agentRequested: number;
+  deliveryRate: number;
+  responseRate: number;
+  confirmationRate: number;
+}
+
+export interface WaReminderBySourceWindow {
+  sourceLabel: string;
+  windowLabel: string;
+  total: number;
+  sent: number;
+  delivered: number;
+  responded: number;
+  confirmed: number;
+  agentRequested: number;
+  responseRate: number;
+}
+
+export interface WaReminders {
+  summary: WaReminderSummary;
+  bySourceWindow: WaReminderBySourceWindow[];
+}
+
 export interface WaTeamRow {
   name: string;
   total: number;
@@ -133,6 +172,8 @@ export interface WhatsappReport {
   frictions: WaFrictionItem[];
   agents: WaAgentRow[];
   humanAppointmentAgents: WaHumanAppointmentAgentRow[];
+  appointmentTypes: WaAppointmentTypeRow[];
+  reminders: WaReminders;
   teams: WaTeamRow[];
   opportunityLoss: WaOpportunityLoss;
   insights: WaInsight[];

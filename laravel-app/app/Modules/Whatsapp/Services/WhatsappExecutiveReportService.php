@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Cache;
 class WhatsappExecutiveReportService
 {
     private const EXECUTIVE_REPORT_CACHE_TTL = 600;
-    private const EXECUTIVE_REPORT_PAYLOAD_VERSION = 5;
+    private const EXECUTIVE_REPORT_PAYLOAD_VERSION = 6;
 
     private const PERIODS = [
         'hoy' => ['label' => 'Hoy', 'days' => 1],
@@ -147,6 +147,17 @@ class WhatsappExecutiveReportService
         $ps = $prev['summary'];
         $analytics = $d['analytics'];
         $aSummary = $analytics['summary'];
+        $reminders = is_array($d['reminders'] ?? null) ? $d['reminders'] : [];
+        $reminderSummary = is_array($reminders['summary'] ?? null) ? $reminders['summary'] : [];
+        $reminderRows = is_array($reminders['by_source_window'] ?? null) ? $reminders['by_source_window'] : [];
+        $appointmentTypes = array_map(static fn (array $row): array => [
+            'key' => (string) ($row['key'] ?? ''),
+            'label' => (string) ($row['label'] ?? 'Otro / sin clasificar'),
+            'total' => (int) ($row['total'] ?? 0),
+            'human' => (int) ($row['human'] ?? 0),
+            'bot' => (int) ($row['bot'] ?? 0),
+            'share' => (float) ($row['share'] ?? 0),
+        ], is_array($d['breakdowns']['appointments_by_type'] ?? null) ? $d['breakdowns']['appointments_by_type'] : []);
 
         $conversationsNew = (int) ($s['conversations_new'] ?? 0);
         $prevConversations = (int) ($ps['conversations_new'] ?? 0);
@@ -415,6 +426,32 @@ class WhatsappExecutiveReportService
             'frictions' => $frictions,
             'agents' => $agents,
             'humanAppointmentAgents' => $humanAppointmentAgents,
+            'appointmentTypes' => $appointmentTypes,
+            'reminders' => [
+                'summary' => [
+                    'total' => (int) ($reminderSummary['total'] ?? 0),
+                    'sent' => (int) ($reminderSummary['sent'] ?? 0),
+                    'delivered' => (int) ($reminderSummary['delivered'] ?? 0),
+                    'failed' => (int) ($reminderSummary['failed'] ?? 0),
+                    'responded' => (int) ($reminderSummary['responded'] ?? 0),
+                    'confirmed' => (int) ($reminderSummary['confirmed'] ?? 0),
+                    'agentRequested' => (int) ($reminderSummary['agent_requested'] ?? 0),
+                    'deliveryRate' => (float) ($reminderSummary['delivery_rate'] ?? 0),
+                    'responseRate' => (float) ($reminderSummary['response_rate'] ?? 0),
+                    'confirmationRate' => (float) ($reminderSummary['confirmation_rate'] ?? 0),
+                ],
+                'bySourceWindow' => array_map(static fn (array $row): array => [
+                    'sourceLabel' => (string) ($row['source_label'] ?? 'Sin clasificar'),
+                    'windowLabel' => (string) ($row['window_label'] ?? 'Sin ventana'),
+                    'total' => (int) ($row['total'] ?? 0),
+                    'sent' => (int) ($row['sent'] ?? 0),
+                    'delivered' => (int) ($row['delivered'] ?? 0),
+                    'responded' => (int) ($row['responded'] ?? 0),
+                    'confirmed' => (int) ($row['confirmed'] ?? 0),
+                    'agentRequested' => (int) ($row['agent_requested'] ?? 0),
+                    'responseRate' => (float) ($row['response_rate'] ?? 0),
+                ], $reminderRows),
+            ],
             'teams' => $teams,
             'opportunityLoss' => [
                 'appointmentIntentConversations' => $appointmentIntentConversations,
