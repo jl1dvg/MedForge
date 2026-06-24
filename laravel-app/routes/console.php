@@ -23,6 +23,7 @@ use App\Modules\Whatsapp\Services\FlowRuntimeShadowCompareService;
 use App\Modules\Whatsapp\Services\FlowRuntimeShadowObserverService;
 use App\Modules\Whatsapp\Services\WhatsappAppointmentReminderService;
 use App\Modules\Whatsapp\Services\WhatsappHandoffAutoAssignService;
+use App\Modules\Whatsapp\Services\WhatsappRescueMetricsService;
 use App\Models\WhatsappConversation;
 use App\Models\WhatsappConversationAttribution;
 use App\Models\WhatsappMessage;
@@ -553,6 +554,68 @@ Artisan::command('whatsapp:handoff-auto-assign
         return 1;
     }
 })->purpose('Autoasigna oportunidades calientes de WhatsApp a agentes disponibles');
+
+Artisan::command('whatsapp:rescue-metrics
+    {--from= : Fecha inicial YYYY-MM-DD}
+    {--to= : Fecha final exclusiva YYYY-MM-DD}
+    {--days=7 : Ventana en días si no se envían fechas}', function (): int {
+    /** @var WhatsappRescueMetricsService $service */
+    $service = app(WhatsappRescueMetricsService::class);
+
+    $fromOption = trim((string) $this->option('from'));
+    $toOption = trim((string) $this->option('to'));
+    $days = max(1, min(90, (int) $this->option('days')));
+
+    $to = $toOption !== ''
+        ? \Illuminate\Support\Carbon::parse($toOption)->startOfDay()
+        : now()->startOfDay()->addDay();
+    $from = $fromOption !== ''
+        ? \Illuminate\Support\Carbon::parse($fromOption)->startOfDay()
+        : $to->copy()->subDays($days);
+
+    $metrics = $service->summary($from, $to);
+
+    $this->line('Periodo: ' . data_get($metrics, 'period.from') . ' → ' . data_get($metrics, 'period.to'));
+
+    $this->table(
+        ['Metric', 'Value'],
+        collect((array) ($metrics['handoffs'] ?? []))
+            ->map(fn ($value, $key): array => [(string) $key, (int) $value])
+            ->values()
+            ->all()
+    );
+
+    $hot = (array) ($metrics['hot_opportunities'] ?? []);
+    $this->table(
+        ['hot_opportunities', 'Value'],
+        [
+            ['total', (int) ($hot['total'] ?? 0)],
+            ['booked', (int) ($hot['booked'] ?? 0)],
+        ]
+    );
+
+    $reminders = (array) ($metrics['reminders'] ?? []);
+    $this->table(
+        ['reminders', 'Value'],
+        [
+            ['sent_to_confirmation', (int) ($reminders['sent_to_confirmation'] ?? 0)],
+            ['failed', (int) ($reminders['failed'] ?? 0)],
+        ]
+    );
+
+    $failureReasons = (array) ($reminders['failure_reasons'] ?? []);
+    if ($failureReasons !== []) {
+        $this->table(
+            ['failure_reason', 'Count'],
+            collect($failureReasons)
+                ->map(fn ($count, $reason): array => [(string) $reason, (int) $count])
+                ->values()
+                ->all()
+        );
+    }
+
+    return 0;
+})->purpose('Mide si rescates operativos de WhatsApp terminan en respuesta, confirmación o cita');
 
 Artisan::command('whatsapp:monitor-abandonment
     {--dry-run : Solo muestra conversaciones candidatas sin encolarlas}
@@ -2541,7 +2604,7 @@ Artisan::command('cron:legacy-task {slug : Slug de la tarea en cron_schedule}', 
         Schedule::command('whatsapp:close-zombie-handoffs --days=7')->dailyAt('02:00');
 
         // Autoasignación de oportunidades calientes WhatsApp sin dueño.
-        Schedule::command('whatsapp:handoff-auto-assign --limit=100')
+        Schedule::command('whatsapp:handoff-auto-assign --limit=100 --max-age-hours=72')
             ->everyFiveMinutes()
             ->withoutOverlapping();
     }

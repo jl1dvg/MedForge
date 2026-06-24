@@ -166,6 +166,12 @@ class ConversationAbandonmentMonitorService
                             true,
                             $note
                         );
+                        $this->conversationOpsService->recordHandoffEventForConversation(
+                            (int) $conversation->id,
+                            'abandonment_escalated',
+                            null,
+                            $note
+                        );
                         $this->realtime->broadcastHandoffOperationalEvent([
                             'event' => 'handoff.escalated',
                             'conversation_id' => (int) $conversation->id,

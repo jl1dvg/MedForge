@@ -613,6 +613,16 @@ class ConversationOpsService
             ->first();
     }
 
+    public function recordHandoffEventForConversation(int $conversationId, string $eventType, ?int $actorUserId = null, ?string $notes = null): void
+    {
+        $handoff = $this->findActiveHandoff($conversationId);
+        if (!$handoff instanceof WhatsappHandoff) {
+            return;
+        }
+
+        $this->insertHandoffEvent((int) $handoff->id, $eventType, $actorUserId, $notes);
+    }
+
     private function insertHandoffEvent(?int $handoffId, string $eventType, ?int $actorUserId, ?string $notes): void
     {
         if ($handoffId === null || $handoffId <= 0 || !Schema::hasTable('whatsapp_handoff_events')) {
