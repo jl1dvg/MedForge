@@ -17,6 +17,7 @@ class WhatsappOperationalBaselineServiceTest extends TestCase
         parent::setUp();
 
         Schema::dropIfExists('whatsapp_operational_snapshots');
+        Schema::dropIfExists('whatsapp_operational_booking_attributions');
         Schema::dropIfExists('whatsapp_appointment_reminders');
         Schema::dropIfExists('whatsapp_sigcenter_bookings');
         Schema::dropIfExists('whatsapp_handoff_events');
@@ -111,6 +112,21 @@ class WhatsappOperationalBaselineServiceTest extends TestCase
             $table->timestamps();
         });
 
+        Schema::create('whatsapp_operational_booking_attributions', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('booking_id')->unique();
+            $table->unsignedBigInteger('booking_conversation_id')->nullable();
+            $table->unsignedBigInteger('attributed_conversation_id')->nullable();
+            $table->unsignedBigInteger('handoff_id')->nullable();
+            $table->unsignedBigInteger('event_id')->nullable();
+            $table->string('event_type', 64);
+            $table->string('attribution_method', 64);
+            $table->string('confidence', 24);
+            $table->timestamp('event_at')->nullable();
+            $table->timestamp('booking_at')->nullable();
+            $table->timestamps();
+        });
+
         Schema::create('whatsapp_operational_snapshots', function (Blueprint $table): void {
             $table->id();
             $table->date('snapshot_date')->unique();
@@ -146,6 +162,7 @@ class WhatsappOperationalBaselineServiceTest extends TestCase
 
         $this->seedEvent(3, 'auto_assigned', now()->subDays(2)->addHour());
         $this->seedEvent(3, 'requeued', now()->subDays(2)->addMinutes(10));
+        $this->seedBookingAttribution(1, 1, 3, 3, 1, 'auto_assigned', now()->subDays(2)->addHour(), now()->subHour());
         $this->seedOutbound(3, now()->subDays(2)->addHours(2));
         $this->seedReminder(3, 'responded', now()->subHours(2), 'confirmar');
         $this->seedReminder(4, 'failed', now()->subHours(3), null, 'Meta rejected template');
@@ -314,6 +331,33 @@ class WhatsappOperationalBaselineServiceTest extends TestCase
             'notes' => $notes,
             'created_at' => $at,
             'updated_at' => $at,
+        ]);
+    }
+
+    private function seedBookingAttribution(
+        int $id,
+        int $bookingId,
+        int $conversationId,
+        int $handoffId,
+        int $eventId,
+        string $eventType,
+        Carbon $eventAt,
+        Carbon $bookingAt,
+    ): void {
+        DB::table('whatsapp_operational_booking_attributions')->insert([
+            'id' => $id,
+            'booking_id' => $bookingId,
+            'booking_conversation_id' => $conversationId,
+            'attributed_conversation_id' => $conversationId,
+            'handoff_id' => $handoffId,
+            'event_id' => $eventId,
+            'event_type' => $eventType,
+            'attribution_method' => 'same_conversation_7d',
+            'confidence' => 'high',
+            'event_at' => $eventAt,
+            'booking_at' => $bookingAt,
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
     }
 }

@@ -26,14 +26,15 @@ class WhatsappOperationalBaselineService
     ];
 
     private const OPERATIONAL_BOOKING_EVENTS = [
-        'auto_assigned',
+        'handoff_created',
         'handoff_requeued',
-        'requeued',
-        'expired',
+        'auto_assigned',
+        'agent_taken',
+        'first_response_after_assignment',
         'abandonment_escalated',
+        'template_rescue_sent',
+        'reminder_rescue_sent',
         'supervisor_alerted',
-        'reminder_rescue',
-        'template_rescue',
     ];
 
     /**
@@ -185,11 +186,11 @@ class WhatsappOperationalBaselineService
                 ->selectRaw(
                     'handoff_id,
                     MAX(CASE WHEN event_type = "auto_assigned" THEN 1 ELSE 0 END) AS has_auto_assigned,
-                    MAX(CASE WHEN event_type IN ("requeued", "expired", "handoff_requeued") THEN 1 ELSE 0 END) AS has_requeue,
-                    MAX(CASE WHEN event_type IN ("auto_assigned", "handoff_requeued", "requeued", "expired", "abandonment_escalated", "supervisor_alerted", "reminder_rescue", "template_rescue") THEN 1 ELSE 0 END) AS has_operational_intervention,
+                    MAX(CASE WHEN event_type IN ("requeued", "handoff_requeued") THEN 1 ELSE 0 END) AS has_requeue,
+                    MAX(CASE WHEN event_type IN ("auto_assigned", "handoff_requeued", "requeued", "abandonment_escalated", "supervisor_alerted", "reminder_rescue", "reminder_rescue_sent", "template_rescue", "template_rescue_sent") THEN 1 ELSE 0 END) AS has_operational_intervention,
                     MIN(CASE WHEN event_type = "auto_assigned" THEN created_at ELSE NULL END) AS first_auto_assigned_at,
-                    MIN(CASE WHEN event_type IN ("requeued", "expired", "handoff_requeued") THEN created_at ELSE NULL END) AS first_requeue_at,
-                    MIN(CASE WHEN event_type IN ("auto_assigned", "handoff_requeued", "requeued", "expired", "abandonment_escalated", "supervisor_alerted", "reminder_rescue", "template_rescue") THEN created_at ELSE NULL END) AS first_operational_event_at'
+                    MIN(CASE WHEN event_type IN ("requeued", "handoff_requeued") THEN created_at ELSE NULL END) AS first_requeue_at,
+                    MIN(CASE WHEN event_type IN ("auto_assigned", "handoff_requeued", "requeued", "abandonment_escalated", "supervisor_alerted", "reminder_rescue", "reminder_rescue_sent", "template_rescue", "template_rescue_sent") THEN created_at ELSE NULL END) AS first_operational_event_at'
                 )
                 ->groupBy('handoff_id');
 
@@ -355,29 +356,22 @@ class WhatsappOperationalBaselineService
             'by_event' => array_fill_keys(self::OPERATIONAL_BOOKING_EVENTS, 0),
         ];
 
-        if (!Schema::hasTable('whatsapp_handoff_events') || !Schema::hasTable('whatsapp_handoffs') || !Schema::hasTable('whatsapp_sigcenter_bookings')) {
+        if (!Schema::hasTable('whatsapp_operational_booking_attributions')) {
             return $result;
         }
 
-        $rows = DB::table('whatsapp_sigcenter_bookings as b')
-            ->join('whatsapp_handoffs as h', 'h.conversation_id', '=', 'b.conversation_id')
-            ->join('whatsapp_handoff_events as e', 'e.handoff_id', '=', 'h.id')
-            ->select(['b.id as booking_id', 'e.event_type'])
-            ->whereIn('b.status', ['created', 'confirmed'])
-            ->whereIn('e.event_type', self::OPERATIONAL_BOOKING_EVENTS)
-            ->whereRaw('COALESCE(b.booked_at, b.created_at) >= ?', [$from->format('Y-m-d H:i:s')])
-            ->whereRaw('COALESCE(b.booked_at, b.created_at) < ?', [$to->format('Y-m-d H:i:s')])
-            ->whereRaw('COALESCE(b.booked_at, b.created_at) > e.created_at')
-            ->orderBy('b.id')
+        $rows = DB::table('whatsapp_operational_booking_attributions')
+            ->select(['booking_id', 'event_type'])
+            ->whereIn('event_type', self::OPERATIONAL_BOOKING_EVENTS)
+            ->where('booking_at', '>=', $from->format('Y-m-d H:i:s'))
+            ->where('booking_at', '<', $to->format('Y-m-d H:i:s'))
+            ->orderBy('booking_id')
             ->get();
 
         $bookingIds = [];
         foreach ($rows as $row) {
             $bookingIds[(int) $row->booking_id] = true;
             $eventType = (string) ($row->event_type ?? '');
-            if ($eventType === 'expired') {
-                $eventType = 'requeued';
-            }
             if ($eventType !== '' && array_key_exists($eventType, $result['by_event'])) {
                 $result['by_event'][$eventType]++;
             }
