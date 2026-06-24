@@ -331,15 +331,24 @@
         const json = await resp.json();
         if (!json.ok) throw new Error(json.error || "Error del servidor");
         const data = json.data || {};
-        const lostRaw = [
-          ...data.lost_opportunities || [],
-          ...data.expired_or_lost || []
-        ];
-        setHotOpps((data.hot_opportunities || []).map((c) => mapConversation(c, "hot")));
-        setRescueOpps((data.rescue_opportunities || []).map((c) => mapConversation(c, "rescue")));
-        setBacklogOpps((data.historical_backlog || []).map((c) => mapConversation(c, "backlog")));
-        setLostOpps(lostRaw.map((c) => mapConversation(c, "lost")));
-        setApiCounts(data.counts || {});
+        const hasNewShape = Array.isArray(data.hot_opportunities);
+        if (hasNewShape) {
+          const lostRaw = [
+            ...data.lost_opportunities || [],
+            ...data.expired_or_lost || []
+          ];
+          setHotOpps((data.hot_opportunities || []).map((c) => mapConversation(c, "hot")));
+          setRescueOpps((data.rescue_opportunities || []).map((c) => mapConversation(c, "rescue")));
+          setBacklogOpps((data.historical_backlog || []).map((c) => mapConversation(c, "backlog")));
+          setLostOpps(lostRaw.map((c) => mapConversation(c, "lost")));
+          setApiCounts(data.counts || {});
+        } else {
+          setHotOpps((data.conversations || []).map((c) => mapConversation(c, "hot")));
+          setRescueOpps([]);
+          setBacklogOpps([]);
+          setLostOpps([]);
+          setApiCounts({});
+        }
         setAgents((data.agents || []).map(mapAgent));
         setReminders((data.reminders || []).map(mapReminder));
         setTs(/* @__PURE__ */ new Date());

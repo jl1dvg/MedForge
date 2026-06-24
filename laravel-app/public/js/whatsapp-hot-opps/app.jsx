@@ -574,17 +574,30 @@ function App() {
 
       const data = json.data || {};
 
-      /* expired_or_lost is an alias for lost_opportunities */
-      const lostRaw = [
-        ...(data.lost_opportunities || []),
-        ...(data.expired_or_lost    || []),
-      ];
+      /* Detect API shape:
+         NEW → data.hot_opportunities array exists (Codex classification)
+         OLD → data.conversations array (legacy, everything goes to HOT) */
+      const hasNewShape = Array.isArray(data.hot_opportunities);
 
-      setHotOpps(    (data.hot_opportunities  || []).map(c => mapConversation(c, 'hot')));
-      setRescueOpps( (data.rescue_opportunities|| []).map(c => mapConversation(c, 'rescue')));
-      setBacklogOpps((data.historical_backlog  || []).map(c => mapConversation(c, 'backlog')));
-      setLostOpps(   lostRaw                        .map(c => mapConversation(c, 'lost')));
-      setApiCounts(  data.counts || {});
+      if (hasNewShape) {
+        /* New bucket structure from Codex classification */
+        const lostRaw = [
+          ...(data.lost_opportunities || []),
+          ...(data.expired_or_lost    || []),
+        ];
+        setHotOpps(    (data.hot_opportunities   || []).map(c => mapConversation(c, 'hot')));
+        setRescueOpps( (data.rescue_opportunities|| []).map(c => mapConversation(c, 'rescue')));
+        setBacklogOpps((data.historical_backlog   || []).map(c => mapConversation(c, 'backlog')));
+        setLostOpps(   lostRaw                        .map(c => mapConversation(c, 'lost')));
+        setApiCounts(  data.counts || {});
+      } else {
+        /* Legacy shape — all conversations go to HOT until backend deploys new structure */
+        setHotOpps(    (data.conversations || []).map(c => mapConversation(c, 'hot')));
+        setRescueOpps( []);
+        setBacklogOpps([]);
+        setLostOpps(   []);
+        setApiCounts(  {});
+      }
       setAgents(    (data.agents    || []).map(mapAgent));
       setReminders( (data.reminders || []).map(mapReminder));
       setTs(new Date());
