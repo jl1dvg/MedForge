@@ -22,6 +22,7 @@ use App\Modules\Whatsapp\Services\ConversationOpsService;
 use App\Modules\Whatsapp\Services\FlowRuntimeShadowCompareService;
 use App\Modules\Whatsapp\Services\FlowRuntimeShadowObserverService;
 use App\Modules\Whatsapp\Services\WhatsappAppointmentReminderService;
+use App\Modules\Whatsapp\Services\WhatsappHandoffAutoAssignService;
 use App\Models\WhatsappConversation;
 use App\Models\WhatsappConversationAttribution;
 use App\Models\WhatsappMessage;
@@ -490,6 +491,68 @@ Artisan::command('whatsapp:handoff-requeue-expired {--dry-run : Solo muestra los
         return 0;
     }
 })->purpose('Reencola handoffs vencidos del inbox WhatsApp Laravel');
+
+Artisan::command('whatsapp:handoff-auto-assign
+    {--dry-run : Solo muestra candidatos sin asignar}
+    {--limit=100 : Máximo de conversaciones calientes a procesar}
+    {--max-age-hours=72 : Solo revisa handoffs recientes dentro de esta ventana}', function (): int {
+    /** @var WhatsappHandoffAutoAssignService $service */
+    $service = app(WhatsappHandoffAutoAssignService::class);
+
+    try {
+        $result = $service->run([
+            'dry_run' => (bool) $this->option('dry-run'),
+            'limit' => (int) $this->option('limit'),
+            'max_age_hours' => (int) $this->option('max-age-hours'),
+        ]);
+
+        if (!empty($result['error'])) {
+            $this->warn((string) $result['error']);
+        }
+
+        $this->table(
+            ['Eligible', 'Assigned', 'Would assign', 'Supervisor', 'Skipped'],
+            [[
+                (int) ($result['eligible'] ?? 0),
+                (int) ($result['assigned'] ?? 0),
+                (int) ($result['would_assign'] ?? 0),
+                (int) ($result['supervisor'] ?? 0),
+                (int) ($result['skipped'] ?? 0),
+            ]]
+        );
+
+        $byTopic = $result['by_topic'] ?? [];
+        if (is_array($byTopic) && $byTopic !== []) {
+            $this->table(
+                ['Topic', 'Count'],
+                collect($byTopic)->map(fn ($count, $topic): array => [(string) $topic, (int) $count])->values()->all()
+            );
+        }
+
+        $rows = array_slice(is_array($result['rows'] ?? null) ? $result['rows'] : [], 0, 25);
+        if ($rows !== []) {
+            $this->table(
+                ['Conversation', 'Handoff', 'Topic', 'Priority', 'Reason', 'Status', 'Assigned to'],
+                array_map(static fn (array $row): array => [
+                    (int) ($row['conversation_id'] ?? 0),
+                    (int) ($row['handoff_id'] ?? 0),
+                    (string) ($row['topic'] ?? ''),
+                    (string) ($row['priority'] ?? ''),
+                    (string) ($row['reason'] ?? ''),
+                    (string) ($row['status'] ?? ''),
+                    (string) data_get($row, 'assigned_to.name', ''),
+                ], $rows)
+            );
+        }
+
+        return 0;
+    } catch (\Throwable $e) {
+        $this->warn('No fue posible autoasignar handoffs WhatsApp.');
+        $this->line($e->getMessage());
+
+        return 1;
+    }
+})->purpose('Autoasigna oportunidades calientes de WhatsApp a agentes disponibles');
 
 Artisan::command('whatsapp:monitor-abandonment
     {--dry-run : Solo muestra conversaciones candidatas sin encolarlas}
@@ -2476,6 +2539,11 @@ Artisan::command('cron:legacy-task {slug : Slug de la tarea en cron_schedule}', 
 
         // Cierre de handoffs WhatsApp zombies (sin actividad en 7+ días)
         Schedule::command('whatsapp:close-zombie-handoffs --days=7')->dailyAt('02:00');
+
+        // Autoasignación de oportunidades calientes WhatsApp sin dueño.
+        Schedule::command('whatsapp:handoff-auto-assign --limit=100')
+            ->everyFiveMinutes()
+            ->withoutOverlapping();
     }
 })();
 
