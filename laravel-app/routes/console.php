@@ -24,6 +24,7 @@ use App\Modules\Whatsapp\Services\FlowRuntimeShadowObserverService;
 use App\Modules\Whatsapp\Services\WhatsappAppointmentReminderService;
 use App\Modules\Whatsapp\Services\WhatsappDailyRescueReportService;
 use App\Modules\Whatsapp\Services\WhatsappHandoffAutoAssignService;
+use App\Modules\Whatsapp\Services\WhatsappOperationalAttributionService;
 use App\Modules\Whatsapp\Services\WhatsappOperationalBaselineService;
 use App\Modules\Whatsapp\Services\WhatsappRescueMetricsService;
 use App\Models\WhatsappConversation;
@@ -744,6 +745,63 @@ Artisan::command('whatsapp:operational-baseline
 
     return 0;
 })->purpose('Genera la línea base operacional diaria de WhatsApp por buckets');
+
+Artisan::command('whatsapp:operational-attribution
+    {--date= : Día a recalcular YYYY-MM-DD}
+    {--from= : Inicio explícito YYYY-MM-DD HH:MM:SS}
+    {--to= : Fin explícito YYYY-MM-DD HH:MM:SS}
+    {--json : Imprime el resumen en JSON}', function (): int {
+    /** @var WhatsappOperationalAttributionService $service */
+    $service = app(WhatsappOperationalAttributionService::class);
+
+    $fromOption = trim((string) $this->option('from'));
+    $toOption = trim((string) $this->option('to'));
+    $dateOption = trim((string) $this->option('date'));
+
+    if ($fromOption !== '' || $toOption !== '') {
+        $from = $fromOption !== ''
+            ? \Illuminate\Support\Carbon::parse($fromOption)
+            : now()->startOfDay();
+        $to = $toOption !== ''
+            ? \Illuminate\Support\Carbon::parse($toOption)
+            : $from->copy()->addDay();
+    } else {
+        $from = $dateOption !== ''
+            ? \Illuminate\Support\Carbon::parse($dateOption)->startOfDay()
+            : now()->startOfDay();
+        $to = $from->copy()->addDay();
+    }
+
+    $summary = $service->refresh($from, $to);
+    $payload = [
+        'period' => [
+            'from' => $from->format('Y-m-d H:i:s'),
+            'to' => $to->format('Y-m-d H:i:s'),
+        ],
+        'summary' => $summary,
+    ];
+
+    if ((bool) $this->option('json')) {
+        $this->line((string) json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+
+        return 0;
+    }
+
+    $this->line('Atribución operacional WhatsApp');
+    $this->table(
+        ['Métrica', 'Valor'],
+        [
+            ['Desde', $payload['period']['from']],
+            ['Hasta', $payload['period']['to']],
+            ['Bookings procesadas', (string) $summary['processed']],
+            ['Atribuciones creadas', (string) $summary['created']],
+            ['Atribuciones actualizadas', (string) $summary['updated']],
+            ['Bookings sin atribución', (string) $summary['skipped']],
+        ]
+    );
+
+    return 0;
+})->purpose('Calcula atribuciones persistentes entre eventos operacionales y citas WhatsApp');
 
 Artisan::command('whatsapp:monitor-abandonment
     {--dry-run : Solo muestra conversaciones candidatas sin encolarlas}
