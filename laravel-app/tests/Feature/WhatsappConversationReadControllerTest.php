@@ -578,6 +578,128 @@ class WhatsappConversationReadControllerTest extends TestCase
             ->assertJsonPath('meta.role_id', 5);
     }
 
+    public function test_hot_opportunities_returns_bucket_structure(): void
+    {
+        $now = now();
+
+        // HOT: unassigned, recent handoff → high priority (unread + no agent = critical)
+        \DB::table('whatsapp_conversations')->insert([
+            'id' => 61,
+            'wa_number' => '593999111261',
+            'display_name' => 'Paciente HOT',
+            'needs_human' => 1,
+            'assigned_user_id' => null,
+            'unread_count' => 5,
+            'handoff_requested_at' => $now->subMinutes(30),
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+        \DB::table('whatsapp_messages')->insert([
+            'conversation_id' => 61,
+            'direction' => 'inbound',
+            'message_type' => 'text',
+            'body' => 'Hola reciente',
+            'message_timestamp' => $now->subMinutes(30),
+            'created_at' => $now->subMinutes(30),
+            'updated_at' => $now->subMinutes(30),
+        ]);
+
+        // BACKLOG: unassigned, >24h → critical_backlog, but recent message (window open)
+        \DB::table('whatsapp_conversations')->insert([
+            'id' => 62,
+            'wa_number' => '593999111262',
+            'display_name' => 'Paciente BACKLOG',
+            'needs_human' => 1,
+            'assigned_user_id' => null,
+            'unread_count' => 0,
+            'handoff_requested_at' => $now->subHours(30),
+            'created_at' => $now->subHours(30),
+            'updated_at' => $now->subHours(30),
+        ]);
+        \DB::table('whatsapp_messages')->insert([
+            'conversation_id' => 62,
+            'direction' => 'inbound',
+            'message_type' => 'text',
+            'body' => 'Mensaje reciente aunque viejo',
+            'message_timestamp' => $now->subHours(2),
+            'created_at' => $now->subHours(2),
+            'updated_at' => $now->subHours(2),
+        ]);
+
+        // LOST: unassigned, >24h → critical_backlog AND message >24h (needs_template)
+        \DB::table('whatsapp_conversations')->insert([
+            'id' => 63,
+            'wa_number' => '593999111263',
+            'display_name' => 'Paciente LOST',
+            'needs_human' => 1,
+            'assigned_user_id' => null,
+            'unread_count' => 0,
+            'handoff_requested_at' => $now->subDays(3),
+            'created_at' => $now->subDays(3),
+            'updated_at' => $now->subDays(3),
+        ]);
+        \DB::table('whatsapp_messages')->insert([
+            'conversation_id' => 63,
+            'direction' => 'inbound',
+            'message_type' => 'text',
+            'body' => 'Mensaje muy viejo',
+            'message_timestamp' => $now->subDays(3),
+            'created_at' => $now->subDays(3),
+            'updated_at' => $now->subDays(3),
+        ]);
+
+        $response = $this->withoutMiddleware()->getJson('/v2/whatsapp/api/hot-opportunities');
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonStructure([
+                'data' => [
+                    'hot_opportunities',
+                    'rescue_opportunities',
+                    'historical_backlog',
+                    'lost_opportunities',
+                    'counts' => [
+                        'executive_operational',
+                        'historical_debt',
+                        'hot',
+                        'rescue',
+                        'backlog',
+                        'lost',
+                    ],
+                    'agents',
+                    'reminders',
+                ],
+            ]);
+
+        $data = $response->json('data');
+
+        // Conv 61 → HOT (unassigned + unread + recent = critical priority)
+        $hotIds = array_column($data['hot_opportunities'], 'id');
+        $this->assertContains(61, $hotIds, 'Conv 61 debe estar en hot_opportunities');
+
+        // Conv 62 → BACKLOG (24h+ unassigned, window still open)
+        $backlogIds = array_column($data['historical_backlog'], 'id');
+        $this->assertContains(62, $backlogIds, 'Conv 62 debe estar en historical_backlog');
+
+        // Conv 63 → LOST (24h+ unassigned, window closed/needs_template)
+        $lostIds = array_column($data['lost_opportunities'], 'id');
+        $this->assertContains(63, $lostIds, 'Conv 63 debe estar en lost_opportunities');
+
+        // counts consistency
+        $counts = $data['counts'];
+        $this->assertSame(
+            $counts['hot'] + $counts['rescue'],
+            $counts['executive_operational'],
+            'executive_operational debe ser hot + rescue'
+        );
+        $this->assertSame(
+            $counts['backlog'] + $counts['lost'],
+            $counts['historical_debt'],
+            'historical_debt debe ser backlog + lost'
+        );
+    }
+
     public function test_it_exposes_queue_role_name_in_ownership_label(): void
     {
         \DB::table('whatsapp_conversations')->insert([
