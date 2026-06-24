@@ -221,9 +221,9 @@ export const TEMPLATES = {
   },
   ANGIOGRAFIA: {
     titulo: 'Angiografía con fluoresceína',
-    bilateral: false,
+    bilateral: true,
     campos: [
-      { k: 'hallazgos', label: 'Conclusión', type: 'text', ph: 'Áreas de no perfusión, neovascularización…' },
+      { k: 'hallazgos', label: 'Hallazgos angiográficos', type: 'text', ph: 'Áreas de no perfusión, neovascularización, fugas…' },
     ],
     legacyMap: { hallazgos: 'input' },
     checksTextKey: 'hallazgos',
