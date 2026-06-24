@@ -385,9 +385,14 @@ class WhatsappAppointmentReminderService
                     'patient_name' => $recipient['patient_name'],
                 ];
             } catch (\Throwable $e) {
+                $failureReason = $this->classifyReminderFailure($e->getMessage());
+
                 $reminder->fill([
                     'status' => 'failed',
                     'failed_at' => now(),
+                    'payload' => array_merge($payload, [
+                        'failure_reason' => $failureReason,
+                    ]),
                     'notes' => mb_substr($e->getMessage(), 0, 2000),
                 ])->save();
 
@@ -398,6 +403,7 @@ class WhatsappAppointmentReminderService
                     'source_type' => $sourceType,
                     'status' => 'failed',
                     'wa_number' => $targetWaNumber,
+                    'failure_reason' => $failureReason,
                     'reason' => $e->getMessage(),
                 ];
             }
@@ -1212,6 +1218,33 @@ class WhatsappAppointmentReminderService
             ->where('wm.direction', 'outbound')
             ->where('wm.created_at', '>=', now($this->reminderTimezone())->subHours($hours))
             ->exists();
+    }
+
+    private function classifyReminderFailure(string $message): string
+    {
+        $normalized = $this->normalizeText($message);
+
+        if (in_array($normalized, ['reminder_location_header_missing_coordinates', 'template_location_header_missing_coordinates'], true)) {
+            return 'location_header_missing_coordinates';
+        }
+
+        if (
+            str_contains($normalized, 'template_header_location_mismatch')
+            || (str_contains($normalized, 'expected') && str_contains($normalized, 'location') && str_contains($normalized, 'unknown'))
+            || str_contains($normalized, '132012')
+        ) {
+            return 'template_header_location_mismatch';
+        }
+
+        if (str_contains($normalized, 'whatsapp_messages') && str_contains($normalized, 'doesn') && str_contains($normalized, 'exist')) {
+            return 'whatsapp_messages_table_missing';
+        }
+
+        if (str_contains($normalized, 'whatsapp cloud api error')) {
+            return 'cloud_api_error';
+        }
+
+        return 'unexpected_error';
     }
 
     private function hasReachedPatientDailyLimit(string $hcNumber): bool
