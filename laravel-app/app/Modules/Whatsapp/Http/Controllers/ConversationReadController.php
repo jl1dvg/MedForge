@@ -102,6 +102,25 @@ class ConversationReadController
         ]);
     }
 
+    public function hotOpportunities(Request $request): JsonResponse
+    {
+        $viewerUserId = $this->actorUserId();
+        $canViewAssignedOthers = $this->canViewAssignedOthers();
+
+        $conversations = $this->service->findHotOpportunities($viewerUserId, $canViewAssignedOthers);
+        $reminders = $this->service->findFailedReminders();
+        $agents = $this->service->getAgentWorkloads();
+
+        return response()->json([
+            'ok' => true,
+            'data' => [
+                'conversations' => $conversations,
+                'reminders' => $reminders,
+                'agents' => $agents,
+            ],
+        ]);
+    }
+
     private function nullableIntQuery(Request $request, string $key): ?int
     {
         if (!$request->query->has($key)) {
