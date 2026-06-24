@@ -107,56 +107,25 @@ class ConversationReadController
         $viewerUserId = $this->actorUserId();
         $canViewAssignedOthers = $this->canViewAssignedOthers();
 
-        $all       = $this->service->findHotOpportunities($viewerUserId, $canViewAssignedOthers);
+        $buckets = $this->service->findOperationalOpportunityBuckets($viewerUserId, $canViewAssignedOthers);
         $reminders = $this->service->findFailedReminders();
         $agents    = $this->service->getAgentWorkloads();
-
-        // Classify conversations into operational buckets using already-computed fields.
-        // queue_bucket and messaging_window_state are resolved by ConversationReadService
-        // and require no recalculation here.
-        $hotOpportunities    = [];
-        $rescueOpportunities = [];
-        $historicalBacklog   = [];
-        $lostOpportunities   = [];
-
-        foreach ($all as $conv) {
-            $queueBucket = $conv['queue_bucket']          ?? '';
-            $winState    = $conv['messaging_window_state'] ?? 'window_open';
-            $prioLevel   = $conv['priority_level']         ?? 'normal';
-
-            if ($queueBucket === 'critical_backlog') {
-                // Backlog >24h unassigned. Lost = window also closed (template required).
-                if ($winState === 'needs_template') {
-                    $lostOpportunities[] = $conv;
-                } else {
-                    $historicalBacklog[] = $conv;
-                }
-            } elseif (in_array($prioLevel, ['critical', 'high'], true)) {
-                // Active conversations with high/critical priority → attend now
-                $hotOpportunities[] = $conv;
-            } else {
-                // Active conversations with normal priority → rescue / follow-up
-                $rescueOpportunities[] = $conv;
-            }
-        }
-
-        $execTotal = count($hotOpportunities) + count($rescueOpportunities);
-        $debtTotal = count($historicalBacklog) + count($lostOpportunities);
 
         return response()->json([
             'ok' => true,
             'data' => [
-                'hot_opportunities'    => $hotOpportunities,
-                'rescue_opportunities' => $rescueOpportunities,
-                'historical_backlog'   => $historicalBacklog,
-                'lost_opportunities'   => $lostOpportunities,
-                'counts' => [
-                    'executive_operational' => $execTotal,
-                    'historical_debt'       => $debtTotal,
-                    'hot'                   => count($hotOpportunities),
-                    'rescue'                => count($rescueOpportunities),
-                    'backlog'               => count($historicalBacklog),
-                    'lost'                  => count($lostOpportunities),
+                'conversations' => $buckets['hot_open'],
+                'hot_open' => $buckets['hot_open'],
+                'hot_needs_template' => $buckets['hot_needs_template'],
+                'hot_opportunities' => $buckets['hot_opportunities'],
+                'rescue_opportunities' => $buckets['rescue_opportunities'],
+                'historical_backlog' => $buckets['historical_backlog'],
+                'lost_opportunities' => $buckets['lost_opportunities'],
+                'expired_or_lost' => $buckets['expired_or_lost'],
+                'counts' => $buckets['counts'],
+                'kpi_scope' => [
+                    'executive' => ['hot_open', 'hot_needs_template', 'rescue_opportunities'],
+                    'historical_debt' => ['historical_backlog', 'lost_opportunities'],
                 ],
                 'reminders' => $reminders,
                 'agents'    => $agents,
