@@ -277,6 +277,14 @@ class WhatsappUiController
         return view('whatsapp.reporte-ejecutivo');
     }
 
+    public function hotOpportunities(Request $request): View
+    {
+        return view('whatsapp.v3-hot-opportunities', [
+            'apiUrl' => url('/v2/whatsapp/api/hot-opportunities'),
+            'chatUrl' => url('/v2/whatsapp/chat'),
+        ]);
+    }
+
     public function dashboardV3Live(Request $request): \Illuminate\Http\JsonResponse
     {
         $slaMeta = (int) ($request->query('sla_target_minutes', 15));

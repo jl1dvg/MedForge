@@ -20,6 +20,7 @@ use App\Modules\Shared\Http\Controllers\FeedbackWriteController;
 use App\Modules\Usuarios\Http\Controllers\RolesUiController;
 use App\Modules\Usuarios\Http\Controllers\UsuariosUiController;
 use App\Modules\Whatsapp\Http\Controllers\WhatsappUiController;
+use App\Modules\Whatsapp\Http\Controllers\ConversationReadController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -242,6 +243,11 @@ Route::middleware(['app.auth'])->group(function (): void {
     Route::get('/v2/whatsapp/dashboard-v3/live', [WhatsappUiController::class, 'dashboardV3Live'])
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.view,whatsapp.chat.supervise,settings.manage')
         ->middleware('whatsapp.feature:ui,/whatsapp/dashboard');
+    Route::get('/v2/whatsapp/hot-opportunities', [WhatsappUiController::class, 'hotOpportunities'])
+        ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.supervise,settings.manage')
+        ->middleware('whatsapp.feature:ui,/whatsapp/dashboard');
+    Route::get('/v2/whatsapp/api/hot-opportunities', [ConversationReadController::class, 'hotOpportunities'])
+        ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.supervise,settings.manage');
     Route::get('/v2/whatsapp/flowmaker', [WhatsappUiController::class, 'flowmaker'])
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.autoresponder.manage,settings.manage')
         ->middleware('whatsapp.feature:ui,/whatsapp/flowmaker');
