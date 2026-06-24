@@ -288,8 +288,9 @@ class ConversationOpsService
 
         $count = 0;
         $ids = [];
+        $events = [];
 
-        DB::transaction(function () use ($expired, &$count, &$ids): void {
+        DB::transaction(function () use ($expired, &$count, &$ids, &$events): void {
             foreach ($expired as $handoff) {
                 $handoff->fill([
                     'status' => 'queued',
@@ -314,10 +315,24 @@ class ConversationOpsService
                 $this->insertHandoffEvent($handoff->id, 'expired', null, 'TTL vencido');
                 $this->insertHandoffEvent($handoff->id, 'requeued', null, $this->sanitizeNotes($handoff->notes));
 
+                $events[] = [
+                    'event' => 'handoff.requeued',
+                    'conversation_id' => (int) $handoff->conversation_id,
+                    'priority' => (string) ($handoff->priority ?: 'normal'),
+                    'topic' => (string) ($handoff->topic ?: 'faq_escalada'),
+                    'reason' => 'ttl_expired',
+                    'assigned_to' => null,
+                    'timestamp' => now()->toISOString(),
+                ];
+
                 $count++;
                 $ids[] = (int) $handoff->id;
             }
         });
+
+        foreach ($events as $event) {
+            $this->realtime->broadcastHandoffOperationalEvent($event);
+        }
 
         return ['count' => $count, 'ids' => $ids];
     }
