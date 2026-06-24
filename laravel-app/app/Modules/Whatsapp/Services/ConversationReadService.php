@@ -548,50 +548,57 @@ class ConversationReadService
             return [];
         }
 
+        // Two separate queries to avoid ONLY_FULL_GROUP_BY issues on older MySQL.
         $userCols = Schema::getColumnListing('users');
         $nameExpr = match (true) {
-            in_array('nombre', $userCols)     => DB::raw("ANY_VALUE(COALESCE(NULLIF(TRIM(u.nombre),''), NULLIF(TRIM(u.username),''), CONCAT('Agente #', u.id))) AS display_name"),
-            in_array('first_name', $userCols) => DB::raw("ANY_VALUE(COALESCE(NULLIF(TRIM(CONCAT(u.first_name,' ',COALESCE(u.last_name,''))),''), NULLIF(TRIM(u.username),''), CONCAT('Agente #', u.id))) AS display_name"),
-            in_array('name', $userCols)       => DB::raw("ANY_VALUE(COALESCE(NULLIF(TRIM(u.name),''), CONCAT('Agente #', u.id))) AS display_name"),
-            default                           => DB::raw("CONCAT('Agente #', u.id) AS display_name"),
+            in_array('nombre', $userCols)     => DB::raw("COALESCE(NULLIF(TRIM(nombre),''), NULLIF(TRIM(username),''), CONCAT('Agente #', id)) AS display_name"),
+            in_array('first_name', $userCols) => DB::raw("COALESCE(NULLIF(TRIM(CONCAT(first_name,' ',COALESCE(last_name,''))),''), NULLIF(TRIM(username),''), CONCAT('Agente #', id)) AS display_name"),
+            in_array('name', $userCols)       => DB::raw("COALESCE(NULLIF(TRIM(name),''), CONCAT('Agente #', id)) AS display_name"),
+            default                           => DB::raw("CONCAT('Agente #', id) AS display_name"),
         };
 
-        $agents = DB::table('users as u')
-            ->leftJoin('whatsapp_conversations as wc', function ($join): void {
-                $join->on('wc.assigned_user_id', '=', 'u.id')
-                    ->where('wc.needs_human', true);
-            })
+        $userNames = DB::table('users')
+            ->select(['id', $nameExpr])
+            ->whereIn('id', $agentIds)
+            ->get()
+            ->keyBy('id');
+
+        $counts = DB::table('whatsapp_conversations')
             ->select([
-                'u.id',
-                $nameExpr,
-                DB::raw('COUNT(DISTINCT wc.id) AS assigned_open_count'),
-                DB::raw('SUM(CASE WHEN wc.unread_count > 0 THEN 1 ELSE 0 END) AS unread_open_count'),
-                DB::raw('"available" AS presence_status'),
+                'assigned_user_id',
+                DB::raw('COUNT(DISTINCT id) AS assigned_open_count'),
+                DB::raw('SUM(CASE WHEN unread_count > 0 THEN 1 ELSE 0 END) AS unread_open_count'),
             ])
-            ->whereIn('u.id', $agentIds)
-            ->groupBy('u.id')
-            ->orderByDesc(DB::raw('assigned_open_count'))
-            ->limit(30)
-            ->get();
+            ->where('needs_human', true)
+            ->whereIn('assigned_user_id', $agentIds)
+            ->groupBy('assigned_user_id')
+            ->get()
+            ->keyBy('assigned_user_id');
 
-        return $agents->map(function (object $a): array {
-            $name = trim((string) ($a->display_name ?? ''));
-            if ($name === '') {
-                $name = 'Agente #' . $a->id;
-            }
-            $initials = $this->makeInitials($name);
-            $assigned = (int) $a->assigned_open_count;
+        return $agentIds
+            ->map(function (int $uid) use ($userNames, $counts): array {
+                $u = $userNames->get($uid);
+                $c = $counts->get($uid);
+                $name = trim((string) ($u->display_name ?? ''));
+                if ($name === '') {
+                    $name = 'Agente #' . $uid;
+                }
+                $assigned = (int) ($c->assigned_open_count ?? 0);
 
-            return [
-                'id' => (int) $a->id,
-                'name' => $name,
-                'initials' => $initials,
-                'assigned_open_count' => $assigned,
-                'unread_open_count' => (int) ($a->unread_open_count ?? 0),
-                'presence_status' => (string) ($a->presence_status ?? 'available'),
-                'color' => $this->agentColor((int) $a->id),
-            ];
-        })->values()->all();
+                return [
+                    'id' => $uid,
+                    'name' => $name,
+                    'initials' => $this->makeInitials($name),
+                    'assigned_open_count' => $assigned,
+                    'unread_open_count' => (int) ($c->unread_open_count ?? 0),
+                    'presence_status' => 'available',
+                    'color' => $this->agentColor($uid),
+                ];
+            })
+            ->sortByDesc('assigned_open_count')
+            ->take(30)
+            ->values()
+            ->all();
     }
 
     private function inferFailureReasonFromNotes(string $notes): string
