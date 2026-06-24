@@ -22,6 +22,7 @@ use App\Modules\Whatsapp\Services\ConversationOpsService;
 use App\Modules\Whatsapp\Services\FlowRuntimeShadowCompareService;
 use App\Modules\Whatsapp\Services\FlowRuntimeShadowObserverService;
 use App\Modules\Whatsapp\Services\WhatsappAppointmentReminderService;
+use App\Modules\Whatsapp\Services\WhatsappDailyRescueReportService;
 use App\Modules\Whatsapp\Services\WhatsappHandoffAutoAssignService;
 use App\Modules\Whatsapp\Services\WhatsappRescueMetricsService;
 use App\Models\WhatsappConversation;
@@ -616,6 +617,79 @@ Artisan::command('whatsapp:rescue-metrics
 
     return 0;
 })->purpose('Mide si rescates operativos de WhatsApp terminan en respuesta, confirmación o cita');
+
+Artisan::command('whatsapp:daily-rescue-report
+    {--date= : Día a reportar YYYY-MM-DD}
+    {--from= : Fecha/hora inicial}
+    {--to= : Fecha/hora final exclusiva}
+    {--json : Imprime el payload completo en JSON}', function (): int {
+    /** @var WhatsappDailyRescueReportService $service */
+    $service = app(WhatsappDailyRescueReportService::class);
+
+    $date = trim((string) $this->option('date'));
+    $fromOption = trim((string) $this->option('from'));
+    $toOption = trim((string) $this->option('to'));
+
+    if ($fromOption !== '' || $toOption !== '') {
+        $to = $toOption !== '' ? \Illuminate\Support\Carbon::parse($toOption) : now();
+        $from = $fromOption !== '' ? \Illuminate\Support\Carbon::parse($fromOption) : $to->copy()->subDay();
+    } else {
+        $from = $date !== ''
+            ? \Illuminate\Support\Carbon::parse($date)->startOfDay()
+            : now()->startOfDay();
+        $to = $from->copy()->addDay();
+    }
+
+    $report = $service->summary($from, $to, now());
+
+    if ((bool) $this->option('json')) {
+        $this->line((string) json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+
+        return 0;
+    }
+
+    $this->line('Reporte diario WhatsApp: ' . data_get($report, 'period.from') . ' → ' . data_get($report, 'period.to'));
+    $this->table(
+        ['Bucket', 'Abiertas', 'Citas', 'Total', 'Conv.'],
+        collect((array) ($report['buckets'] ?? []))
+            ->map(fn (array $bucket, string $name): array => [
+                $name,
+                (int) ($bucket['open'] ?? 0),
+                (int) ($bucket['booked'] ?? 0),
+                (int) ($bucket['total'] ?? 0),
+                ((float) ($bucket['conversion_rate'] ?? 0.0)) . '%',
+            ])
+            ->values()
+            ->all()
+    );
+
+    $this->table(
+        ['Operación', 'Valor'],
+        collect((array) ($report['operations'] ?? []))
+            ->map(fn ($value, $key): array => [(string) $key, (int) $value])
+            ->values()
+            ->all()
+    );
+
+    $this->table(
+        ['Recordatorios', 'Valor'],
+        collect((array) ($report['reminders'] ?? []))
+            ->except('failure_reasons')
+            ->map(fn ($value, $key): array => [(string) $key, (int) $value])
+            ->values()
+            ->all()
+    );
+
+    $this->table(
+        ['Tasa', 'Valor'],
+        collect((array) ($report['rates'] ?? []))
+            ->map(fn ($value, $key): array => [(string) $key, ((float) $value) . '%'])
+            ->values()
+            ->all()
+    );
+
+    return 0;
+})->purpose('Genera el reporte diario de rescate operacional de WhatsApp');
 
 Artisan::command('whatsapp:monitor-abandonment
     {--dry-run : Solo muestra conversaciones candidatas sin encolarlas}
