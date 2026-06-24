@@ -2587,6 +2587,11 @@ Artisan::command('cron:legacy-task {slug : Slug de la tarea en cron_schedule}', 
             ->everyFifteenMinutes()
             ->withoutOverlapping()
             ->runInBackground();
+
+        // Autoasignación staging: límite conservador para validar cola sin saturar agentes.
+        Schedule::command('whatsapp:handoff-auto-assign --limit=50 --max-age-hours=72')
+            ->everyTenMinutes()
+            ->withoutOverlapping();
     }
 
     // ── PRODUCCIÓN ────────────────────────────────────────────────────────────
