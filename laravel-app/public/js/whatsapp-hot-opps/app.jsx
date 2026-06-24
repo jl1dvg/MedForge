@@ -9,38 +9,46 @@ const CFG = window.HOT_OPPS_CONFIG || { apiUrl: '/v2/whatsapp/api/hot-opportunit
 /* ─────────────────────────── Field mapping (API → UI) ─────────────────────────── */
 
 function mapConversation(c) {
-  /* source / intent */
+  /* source — null if absent, no fabricated default */
   const src = (c.attribution_source_category || '').toLowerCase();
   const sourceLabel =
-    src === 'paid'    ? 'Ads'      :
-    src === 'organic' ? 'Orgánico' :
-    src === 'return'  ? 'Retorno'  :
-    src === 'campaign'? 'Campaña'  :
-    (c.attribution_source_category || 'Orgánico');
+    src === 'paid'     ? 'Ads'      :
+    src === 'organic'  ? 'Orgánico' :
+    src === 'return'   ? 'Retorno'  :
+    src === 'campaign' ? 'Campaña'  :
+    (c.attribution_source_category || null);   // null → "Sin origen" in render
 
-  const intentRaw = (c.attribution_initial_intent || '').toLowerCase();
+  /* intent — null if absent, no fabricated default */
+  const intentRaw = c.attribution_initial_intent || '';
+  const intentLower = intentRaw.toLowerCase();
   const intentLabel =
-    intentRaw.includes('agenda') || intentRaw.includes('agendar') ? 'agendar'    :
-    intentRaw.includes('reagend')                                  ? 'reagendar'  :
-    intentRaw.includes('cancel')                                   ? 'cancelar'   : 'información';
+    intentLower.includes('agenda') || intentLower.includes('agendar') ? 'agendar'   :
+    intentLower.includes('reagend')                                    ? 'reagendar' :
+    intentLower.includes('cancel')                                     ? 'cancelar'  :
+    (intentRaw || null);   // null → "Sin intención" in render
 
-  const topic = c.handoff_topic || 'captacion_agendar';
+  /* topic — null if absent, no fabricated default */
+  const topic = c.handoff_topic || null;
 
   /* wait time */
   const waitMin = typeof c.queue_age_minutes === 'number' ? c.queue_age_minutes : 0;
 
-  /* meta window */
+  /* meta window — use backend state + label, no hardcoded minutes */
+  const mwState = c.messaging_window_state || '';
   let metaState = 'open';
-  let metaMinLeft = null;
-  const mw = c.messaging_window_state || '';
-  if (mw === 'needs_template') { metaState = 'warn'; metaMinLeft = 120; }
-  if (mw === 'closed') { metaState = 'critical'; metaMinLeft = 0; }
+  if (mwState === 'needs_template') metaState = 'warn';
+  // 'critical' removed — backend never emits 'closed' as messaging_window_state
+  const metaLabel = c.messaging_window_label || (metaState !== 'open' ? 'Requiere plantilla' : 'Abierta');
 
-  /* priority */
-  const score = c.priority_score || 0;
+  /* priority — from backend, not recalculated in React */
+  const prio = mapPrioLevel(c.priority_level);
+  const score = typeof c.priority_score === 'number' ? c.priority_score : 0;
 
-  /* reasons (from priority_reasons array) */
-  const reasons = buildReasons(c, waitMin);
+  /* reasons — from backend priority_reasons (string[]) */
+  const reasons = (c.priority_reasons || []).map(mapReason).slice(0, 4);
+
+  /* requeue — null if backend doesn't provide field; do not fabricate 0 */
+  const requeued = typeof c.requeue_count === 'number' ? c.requeue_count : null;
 
   return {
     id: c.id,
@@ -52,37 +60,36 @@ function mapConversation(c) {
     waitMin,
     agentId: c.assigned_user_id || null,
     metaState,
-    metaMinLeft,
+    metaLabel,
+    prio,
     score,
-    requeued: 0,
+    requeued,
     reasons,
     _raw: c,
   };
 }
 
-function buildReasons(c, waitMin) {
-  const reasons = [];
-  const assigned = !!c.assigned_user_id;
-  const mw = c.messaging_window_state || '';
-
-  if (!assigned && waitMin > 20) reasons.push(['alarm', `Sin asignar hace ${waitMin} min`, 'crit']);
-  else if (!assigned && waitMin > 0) reasons.push(['alarm', `Sin asignar hace ${waitMin} min`, 'risk']);
-
-  if (!assigned) reasons.push(['account-off', 'Sin asignar', assigned ? 'info' : 'crit']);
-
-  if (mw === 'needs_template') reasons.push(['timer-sand', 'Ventana Meta por cerrar', 'risk']);
-  if (mw === 'closed') reasons.push(['timer-alert-outline', 'Ventana Meta cerrada', 'crit']);
-
-  if (c.attribution_initial_intent && (c.attribution_initial_intent.includes('agenda') || c.attribution_initial_intent.includes('agendar'))) {
-    reasons.push(['calendar-check', 'Intención de agendar', 'info']);
+/* Maps backend priority_level → frontend section key */
+function mapPrioLevel(level) {
+  switch (level) {
+    case 'critical': return 'crit';
+    case 'high':     return 'risk';
+    case 'normal':   return 'norm';
+    default:         return 'norm';
   }
-  if (c.patient_hc_number) reasons.push(['card-account-details', 'Paciente identificado · HC', 'info']);
+}
 
-  if ((c.priority_reasons || []).length > 0 && reasons.length === 0) {
-    c.priority_reasons.forEach(r => reasons.push(['information-outline', r, 'info']));
-  }
-
-  return reasons.slice(0, 4);
+/* Maps backend priority_reason string → [icon, text, severity] for display */
+function mapReason(r) {
+  if (!r) return ['information-outline', r, 'info'];
+  if (r.includes('Sin agente'))      return ['account-off',           r, 'crit'];
+  if (r.includes('sin leer'))        return ['message-alert-outline',  r, 'crit'];
+  if (r.includes('min en cola') || r.includes('Backlog'))
+                                     return ['timer-sand',             r, 'risk'];
+  if (r.includes('Ventana'))         return ['timer-alert-outline',    r, 'risk'];
+  if (r.includes('asignada a ti') || r.includes('Asignada a ti'))
+                                     return ['account-arrow-right',    r, 'info'];
+  return ['information-outline', r, 'info'];
 }
 
 function mapReminder(r) {
@@ -108,7 +115,6 @@ function fmtApptDate(isoStr) {
     const today = new Date();
     const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
     const sameDay = d => d.getDate() === today.getDate() && d.getMonth() === today.getMonth();
-    const sameYear = d => d.getFullYear() === today.getFullYear();
     const prefix = sameDay(d) ? 'Hoy' : (d.getDate() === tomorrow.getDate() && d.getMonth() === tomorrow.getMonth()) ? 'Mañana' : d.toLocaleDateString('es-EC', { day: '2-digit', month: 'short' });
     const time = d.toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit', hour12: false });
     return `${prefix} ${time}`;
@@ -125,7 +131,6 @@ function mapAgent(a) {
     status: STATUS_MAP[a.presence_status] || 'available',
     convs: a.assigned_open_count || 0,
     unread: a.unread_open_count || 0,
-    resp: '—',
   };
 }
 
@@ -136,22 +141,9 @@ function makeInitials(name) {
 }
 
 /* ─────────────────────────── Helpers ─────────────────────────── */
-function priorityOf(c) {
-  if (!c.agentId && c.waitMin > 20) return 'crit';
-  if (c.metaState === 'critical') return 'crit';
-  if (c.requeued >= 2) return 'crit';
-  if (!c.agentId && c.waitMin >= 5) return 'risk';
-  if (c.metaState === 'warn') return 'risk';
-  return 'norm';
-}
 const loadPct = (n, max = 15) => Math.min(100, Math.round(n / max * 100));
 const loadClass = p => p >= 75 ? 'load-high' : p >= 45 ? 'load-mid' : 'load-ok';
 function scoreColor(s) { return s >= 170 ? 'var(--danger)' : s >= 90 ? 'var(--warning)' : 'var(--success)'; }
-function fmtMeta(c) {
-  if (c.metaMinLeft == null) return null;
-  const h = Math.floor(c.metaMinLeft / 60), m = c.metaMinLeft % 60;
-  return h > 0 ? `${h}h ${m}min` : `${m} min`;
-}
 const isRemSoon = r => typeof r.apptMinutes === 'number' && r.apptMinutes <= 120 && r.apptMinutes >= 0;
 function fmtApptIn(min) {
   if (min <= 0) return ['pasada', true];
@@ -173,17 +165,16 @@ const SOURCE = {
   'Campaña':  ['src-campana', 'bullhorn'],
 };
 const INTENT = {
-  'agendar':     ['int-agendar', 'calendar-plus'],
-  'reagendar':   ['int-reagendar', 'calendar-sync'],
-  'cancelar':    ['int-cancelar', 'calendar-remove'],
-  'información': ['int-info', 'information-outline'],
+  'agendar':   ['int-agendar', 'calendar-plus'],
+  'reagendar': ['int-reagendar', 'calendar-sync'],
+  'cancelar':  ['int-cancelar', 'calendar-remove'],
 };
 const FAILURE = {
   location_header_missing_coordinates: ['Coord. faltantes',  'fl-location', 'map-marker-off-outline', 'El template espera coordenadas de ubicación pero no se enviaron. Requiere corregir el payload del recordatorio.'],
-  template_header_location_mismatch:   ['Header incorrecto', 'fl-template', 'file-document-alert-outline', 'El header del template está configurado como LOCATION pero se envió un tipo distinto (posiblemente UNKNOWN). PR #401 corregido.'],
+  template_header_location_mismatch:   ['Header incorrecto', 'fl-template', 'file-document-alert-outline', 'El header del template está configurado como LOCATION pero se envió un tipo distinto. PR #401 corregido.'],
   whatsapp_messages_table_missing:     ['Tabla ausente',     'fl-infra',    'database-alert-outline', 'El servicio de recordatorios no encontró la tabla whatsapp_messages al deduplicar. Error de infraestructura.'],
 };
-const failInfo = r => FAILURE[r] || [r, 'fl-unknown', 'help-circle-outline', r];
+const failInfo = r => FAILURE[r] || [r || 'Sin detalle', 'fl-unknown', 'help-circle-outline', r || 'Razón de fallo no disponible'];
 const Icon = ({ n, ...p }) => <i className={`mdi mdi-${n}`} {...p} />;
 
 /* ─────────────────────────── Assign dropdown ─────────────────────────── */
@@ -223,10 +214,13 @@ function OppCard({ conv, agents, prio, selected, onSelect, onAssign, onOpen }) {
   const [drop, setDrop] = useState(false);
   const agent = agents.find(a => a.id === conv.agentId);
   const waitCls = prio === 'crit' ? 'w-crit' : prio === 'risk' ? 'w-risk' : 'w-ok';
-  const [srcCls, srcIc] = SOURCE[conv.source] || ['int-info', 'help'];
-  const [intCls, intIc] = INTENT[conv.intent] || ['int-info', 'help'];
-  const [topLbl, topCls] = TOPIC[conv.topic] || [conv.topic, 'tp-faq'];
-  const metaFmt = fmtMeta(conv);
+
+  /* source/intent/topic — null-safe, no fabricated defaults */
+  const [srcCls, srcIc] = conv.source ? (SOURCE[conv.source] || ['int-info', 'information-outline']) : ['int-info', 'help-circle-outline'];
+  const srcLabel = conv.source || 'Sin origen';
+  const [intCls, intIc] = conv.intent ? (INTENT[conv.intent] || ['int-info', 'information-outline']) : ['int-info', 'help-circle-outline'];
+  const intLabel = conv.intent || 'Sin intención';
+  const [topLbl, topCls] = conv.topic ? (TOPIC[conv.topic] || [conv.topic, 'tp-faq']) : ['Sin topic', 'tp-unknown'];
 
   return (
     <div className={`ho-card ${prio} ${selected ? 'sel' : ''}`} onClick={() => onSelect(conv.id)}>
@@ -244,24 +238,30 @@ function OppCard({ conv, agents, prio, selected, onSelect, onAssign, onOpen }) {
         </div>
         {/* source + intent */}
         <div className="ho-badges">
-          <span className={`ho-badge ${srcCls}`}><Icon n={srcIc} />{conv.source}</span>
-          <span className={`ho-badge ${intCls}`}><Icon n={intIc} />{conv.intent}</span>
+          <span className={`ho-badge ${srcCls}`}><Icon n={srcIc} />{srcLabel}</span>
+          <span className={`ho-badge ${intCls}`}><Icon n={intIc} />{intLabel}</span>
         </div>
         {/* wait */}
         <div className="ho-wait">
           <span className={`ho-wait-badge ${waitCls}`}>{conv.waitMin}<small>min</small></span>
           <div className="ho-wait-sub">en cola</div>
         </div>
-        {/* topic */}
+        {/* topic + requeue */}
         <div style={{ minWidth: 0 }}>
           <span className={`ho-topic ${topCls}`}>{topLbl}</span>
-          {conv.requeued >= 1 && <div className="ho-requeue"><Icon n="backup-restore" />reencolado {conv.requeued}×</div>}
+          {/* requeue: only show if field exists and > 0 — never fabricate */}
+          {conv.requeued !== null && conv.requeued >= 1 && (
+            <div className="ho-requeue"><Icon n="backup-restore" />reencolado {conv.requeued}×</div>
+          )}
         </div>
-        {/* meta window */}
+        {/* meta window — text from backend, badge color from state */}
         <div className="ho-meta">
-          {conv.metaState === 'open' && <span className="ho-meta-open"><Icon n="check-circle" />Abierta</span>}
-          {conv.metaState === 'warn' && <span className="ho-meta-warn m-warn"><Icon n="timer-sand" />{metaFmt}</span>}
-          {conv.metaState === 'critical' && <span className="ho-meta-warn m-crit"><Icon n="timer-alert-outline" />{metaFmt || 'Cerrada'}</span>}
+          {conv.metaState === 'open' && (
+            <span className="ho-meta-open"><Icon n="check-circle" />{conv.metaLabel}</span>
+          )}
+          {conv.metaState === 'warn' && (
+            <span className="ho-meta-warn m-warn"><Icon n="timer-sand" />{conv.metaLabel}</span>
+          )}
           <div className="ho-meta-lbl">ventana Meta</div>
         </div>
         {/* agent */}
@@ -292,12 +292,15 @@ function OppCard({ conv, agents, prio, selected, onSelect, onAssign, onOpen }) {
           <button className="ho-btn ho-btn-ic" title="Abrir chat" onClick={() => onOpen(conv)}><Icon n="message-text-outline" /></button>
         </div>
       </div>
-      <div className="ho-reasons">
-        <span className="ho-reasons-lbl"><Icon n="information-outline" />Por qué</span>
-        {conv.reasons.map(([ic, txt, sev], i) => (
-          <span key={i} className={`ho-reason rs-${sev}`}><Icon n={ic} />{txt}</span>
-        ))}
-      </div>
+      {/* reasons from backend priority_reasons */}
+      {conv.reasons.length > 0 && (
+        <div className="ho-reasons">
+          <span className="ho-reasons-lbl"><Icon n="information-outline" />Por qué</span>
+          {conv.reasons.map(([ic, txt, sev], i) => (
+            <span key={i} className={`ho-reason rs-${sev}`}><Icon n={ic} />{txt}</span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -556,7 +559,7 @@ function App() {
     }
   }, []);
 
-  /* Realtime hooks for Codex PR #402 events */
+  /* Realtime hooks for PR #402 events */
   useEffect(() => {
     const handleWsEvent = (e) => {
       const ev = e.detail || {};
@@ -586,7 +589,6 @@ function App() {
   function assign(convId, agent) {
     const conv = convs.find(c => c.id === convId);
     const prev = conv && conv.agentId;
-    /* Optimistic update */
     setConvs(p => p.map(c => c.id === convId ? { ...c, agentId: agent.id } : c));
     setAgents(p => p.map(a => {
       if (a.id === agent.id) return { ...a, convs: a.convs + 1 };
@@ -608,11 +610,12 @@ function App() {
     }
   };
 
+  /* Filtering — prio uses backend priority_level via c.prio */
   const filtered = convs.filter(c => {
     if (fTopic !== 'all' && c.topic !== fTopic) return false;
     if (fSource !== 'all' && c.source !== fSource) return false;
     if (fIntent !== 'all' && c.intent !== fIntent) return false;
-    if (fPrio !== 'all' && priorityOf(c) !== fPrio) return false;
+    if (fPrio !== 'all' && c.prio !== fPrio) return false;
     if (fAgent !== 'all') {
       if (fAgent === 'none' && c.agentId !== null) return false;
       if (fAgent !== 'none' && String(c.agentId) !== fAgent) return false;
@@ -620,10 +623,11 @@ function App() {
     return true;
   });
 
+  /* Sections — classified by backend priority_level, sorted by priority_score */
   const byScore = (a, b) => b.score - a.score;
-  const crit = filtered.filter(c => priorityOf(c) === 'crit').sort(byScore);
-  const risk = filtered.filter(c => priorityOf(c) === 'risk').sort(byScore);
-  const norm = filtered.filter(c => priorityOf(c) === 'norm').sort(byScore);
+  const crit = filtered.filter(c => c.prio === 'crit').sort(byScore);
+  const risk = filtered.filter(c => c.prio === 'risk').sort(byScore);
+  const norm = filtered.filter(c => c.prio === 'norm').sort(byScore);
   const unassigned = convs.filter(c => !c.agentId).length;
 
   const filteredRem = failFilter ? reminders.filter(r => r.failureReason === failFilter) : reminders;
@@ -659,6 +663,7 @@ function App() {
         </div>
         <div className="ho-live"><span className="ho-pulse" />En vivo</div>
 
+        {/* KPIs — from backend priority_level via c.prio */}
         {!loading && !error && (
           <div className="ho-hd-pills">
             <span className="ho-hd-pill crit"><Icon n="fire" /><b>{crit.length}</b> críticas</span>
@@ -694,7 +699,7 @@ function App() {
           <FSelect value={fPrio} onChange={setFPrio} allLabel="Prioridad" options={[['crit', 'Crítico'], ['risk', 'En riesgo'], ['norm', 'Bajo control']]} />
           <FSelect value={fTopic} onChange={setFTopic} allLabel="Topic" options={[['captacion_agendar', 'Captación · agendar'], ['agenda_sin_disponibilidad', 'Agenda sin disponibilidad'], ['faq_escalada', 'FAQ escalada'], ['operacion_reagenda', 'Operación · reagenda']]} />
           <FSelect value={fSource} onChange={setFSource} allLabel="Origen" options={[['Ads', 'Ads'], ['Orgánico', 'Orgánico'], ['Retorno', 'Retorno'], ['Campaña', 'Campaña']]} />
-          <FSelect value={fIntent} onChange={setFIntent} allLabel="Intención" options={[['agendar', 'Agendar'], ['reagendar', 'Reagendar'], ['cancelar', 'Cancelar'], ['información', 'Información']]} />
+          <FSelect value={fIntent} onChange={setFIntent} allLabel="Intención" options={[['agendar', 'Agendar'], ['reagendar', 'Reagendar'], ['cancelar', 'Cancelar']]} />
           <FSelect value={fAgent} onChange={setFAgent} allLabel="Agente" options={[['none', 'Sin asignar'], ...agents.map(a => [String(a.id), a.name])]} />
           {hasFilters && <><div className="ho-fb-sep" /><button className="ho-fb-clear" onClick={clearFilters}><Icon n="close" />Limpiar</button></>}
           <span className="ho-fb-count"><b>{filtered.length}</b> de {convs.length} conversaciones</span>
