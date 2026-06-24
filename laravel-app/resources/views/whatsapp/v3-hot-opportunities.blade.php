@@ -53,6 +53,27 @@
   /* Hide duplicate brand inside the cockpit header when in layout shell */
   .ho-brand { display: none; }
   .ho-hd-divider { display: none; }
+
+  /* ── Bucket badges ── */
+  .ho-bucket { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 12px; letter-spacing: .3px; }
+  .bk-hot     { background: rgba(239,68,68,.13);   color: #ef4444; border: 1px solid rgba(239,68,68,.22); }
+  .bk-rescue  { background: rgba(245,158,11,.13);  color: #d97706; border: 1px solid rgba(245,158,11,.22); }
+  .bk-backlog { background: rgba(107,114,128,.1);  color: #6b7280; border: 1px solid rgba(107,114,128,.2); }
+  .bk-lost    { background: rgba(107,114,128,.07); color: #9ca3af; border: 1px solid rgba(107,114,128,.13); }
+
+  /* ── Tab variants ── */
+  .ho-tab-sep { width: 1px; background: var(--border-strong); margin: 0 4px; flex-shrink: 0; }
+  .ho-tab-hot.active    { border-bottom-color: #ef4444; color: #ef4444; }
+  .ho-tab-rescue.active { border-bottom-color: #d97706; color: #d97706; }
+  .ho-tab-backlog.active,.ho-tab-lost.active { border-bottom-color: #6b7280; color: #6b7280; }
+
+  /* ── Historical banner ── */
+  .ho-hist-banner { display: flex; align-items: center; gap: 8px; margin: 12px 16px 0; padding: 9px 14px; background: rgba(107,114,128,.07); border: 1px solid rgba(107,114,128,.18); border-radius: 8px; font-size: 13px; color: var(--fg-3); }
+  .ho-hist-banner .mdi { font-size: 16px; flex-shrink: 0; }
+
+  /* ── KPI pill variants ── */
+  .ho-hd-pill.exec { background: rgba(99,102,241,.15); color: var(--primary); }
+  .ho-hd-pill.debt { background: rgba(107,114,128,.12); color: #6b7280; }
 </style>
 @endpush
 
