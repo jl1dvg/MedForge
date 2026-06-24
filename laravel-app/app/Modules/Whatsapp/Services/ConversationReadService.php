@@ -548,6 +548,14 @@ class ConversationReadService
             return [];
         }
 
+        $userCols = Schema::getColumnListing('users');
+        $nameExpr = match (true) {
+            in_array('nombre', $userCols)     => DB::raw("COALESCE(NULLIF(TRIM(u.nombre),''), NULLIF(TRIM(u.username),''), CONCAT('Agente #', u.id)) AS display_name"),
+            in_array('first_name', $userCols) => DB::raw("COALESCE(NULLIF(TRIM(CONCAT(u.first_name,' ',COALESCE(u.last_name,''))),''), NULLIF(TRIM(u.username),''), CONCAT('Agente #', u.id)) AS display_name"),
+            in_array('name', $userCols)       => DB::raw("COALESCE(NULLIF(TRIM(u.name),''), CONCAT('Agente #', u.id)) AS display_name"),
+            default                           => DB::raw("CONCAT('Agente #', u.id) AS display_name"),
+        };
+
         $agents = DB::table('users as u')
             ->leftJoin('whatsapp_conversations as wc', function ($join): void {
                 $join->on('wc.assigned_user_id', '=', 'u.id')
@@ -555,19 +563,19 @@ class ConversationReadService
             })
             ->select([
                 'u.id',
-                'u.name',
+                $nameExpr,
                 DB::raw('COUNT(DISTINCT wc.id) AS assigned_open_count'),
                 DB::raw('SUM(CASE WHEN wc.unread_count > 0 THEN 1 ELSE 0 END) AS unread_open_count'),
                 DB::raw('"available" AS presence_status'),
             ])
             ->whereIn('u.id', $agentIds)
-            ->groupBy('u.id', 'u.name')
+            ->groupBy('u.id')
             ->orderByDesc(DB::raw('assigned_open_count'))
             ->limit(30)
             ->get();
 
         return $agents->map(function (object $a): array {
-            $name = trim((string) ($a->name ?? ''));
+            $name = trim((string) ($a->display_name ?? ''));
             if ($name === '') {
                 $name = 'Agente #' . $a->id;
             }
