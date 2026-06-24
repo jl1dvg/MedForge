@@ -550,9 +550,9 @@ class ConversationReadService
 
         $userCols = Schema::getColumnListing('users');
         $nameExpr = match (true) {
-            in_array('nombre', $userCols)     => DB::raw("COALESCE(NULLIF(TRIM(u.nombre),''), NULLIF(TRIM(u.username),''), CONCAT('Agente #', u.id)) AS display_name"),
-            in_array('first_name', $userCols) => DB::raw("COALESCE(NULLIF(TRIM(CONCAT(u.first_name,' ',COALESCE(u.last_name,''))),''), NULLIF(TRIM(u.username),''), CONCAT('Agente #', u.id)) AS display_name"),
-            in_array('name', $userCols)       => DB::raw("COALESCE(NULLIF(TRIM(u.name),''), CONCAT('Agente #', u.id)) AS display_name"),
+            in_array('nombre', $userCols)     => DB::raw("ANY_VALUE(COALESCE(NULLIF(TRIM(u.nombre),''), NULLIF(TRIM(u.username),''), CONCAT('Agente #', u.id))) AS display_name"),
+            in_array('first_name', $userCols) => DB::raw("ANY_VALUE(COALESCE(NULLIF(TRIM(CONCAT(u.first_name,' ',COALESCE(u.last_name,''))),''), NULLIF(TRIM(u.username),''), CONCAT('Agente #', u.id))) AS display_name"),
+            in_array('name', $userCols)       => DB::raw("ANY_VALUE(COALESCE(NULLIF(TRIM(u.name),''), CONCAT('Agente #', u.id))) AS display_name"),
             default                           => DB::raw("CONCAT('Agente #', u.id) AS display_name"),
         };
 
