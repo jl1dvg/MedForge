@@ -24,6 +24,7 @@ use App\Modules\Whatsapp\Services\FlowRuntimeShadowObserverService;
 use App\Modules\Whatsapp\Services\WhatsappAppointmentReminderService;
 use App\Modules\Whatsapp\Services\WhatsappDailyRescueReportService;
 use App\Modules\Whatsapp\Services\WhatsappHandoffAutoAssignService;
+use App\Modules\Whatsapp\Services\WhatsappOperationalBaselineService;
 use App\Modules\Whatsapp\Services\WhatsappRescueMetricsService;
 use App\Models\WhatsappConversation;
 use App\Models\WhatsappConversationAttribution;
@@ -690,6 +691,59 @@ Artisan::command('whatsapp:daily-rescue-report
 
     return 0;
 })->purpose('Genera el reporte diario de rescate operacional de WhatsApp');
+
+Artisan::command('whatsapp:operational-baseline
+    {--date= : Día del snapshot YYYY-MM-DD}
+    {--json : Imprime el payload completo en JSON}
+    {--persist : Guarda o actualiza el snapshot histórico}', function (): int {
+    /** @var WhatsappOperationalBaselineService $service */
+    $service = app(WhatsappOperationalBaselineService::class);
+
+    $dateOption = trim((string) $this->option('date'));
+    $date = $dateOption !== ''
+        ? \Illuminate\Support\Carbon::parse($dateOption)->startOfDay()
+        : now()->startOfDay();
+
+    $baseline = $service->baseline($date, now(), (bool) $this->option('persist'));
+
+    if ((bool) $this->option('json')) {
+        $this->line((string) json_encode($baseline, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+
+        return 0;
+    }
+
+    $this->line('Baseline operacional WhatsApp: ' . data_get($baseline, 'snapshot_date'));
+    $this->table(
+        ['Bucket', 'Total', 'Sin dueño', 'Asignadas', 'Autoasig.', '1ra resp.', 'Citas', 'Conv.', 'Edad prom.', 'Cola prom.'],
+        collect((array) ($baseline['buckets'] ?? []))
+            ->map(fn (array $bucket, string $name): array => [
+                $name,
+                (int) ($bucket['total_conversations'] ?? 0),
+                (int) ($bucket['unassigned'] ?? 0),
+                (int) ($bucket['assigned'] ?? 0),
+                (int) ($bucket['autoassigned'] ?? 0),
+                (int) ($bucket['with_first_response'] ?? 0),
+                (int) ($bucket['with_booking'] ?? 0),
+                ((float) ($bucket['conversion_rate'] ?? 0.0)) . '%',
+                ((float) ($bucket['age_average_minutes'] ?? 0.0)) . ' min',
+                ((float) ($bucket['queue_wait_average_minutes'] ?? 0.0)) . ' min',
+            ])
+            ->values()
+            ->all()
+    );
+
+    $this->table(
+        ['Métrica estratégica', 'Valor'],
+        [
+            ['bookings_after_operational_intervention', (int) data_get($baseline, 'bookings_after_operational_intervention.total', 0)],
+            ['reminder_confirmations', (int) data_get($baseline, 'reminders.confirmed', 0)],
+            ['reminder_failures', (int) data_get($baseline, 'reminders.failed', 0)],
+            ['persisted', (bool) $this->option('persist') ? 'sí' : 'no'],
+        ]
+    );
+
+    return 0;
+})->purpose('Genera la línea base operacional diaria de WhatsApp por buckets');
 
 Artisan::command('whatsapp:monitor-abandonment
     {--dry-run : Solo muestra conversaciones candidatas sin encolarlas}
