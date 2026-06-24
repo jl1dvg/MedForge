@@ -1,4 +1,7 @@
 /* eslint-disable */
+/* @jsxRuntime classic */
+/* @jsx React.createElement */
+/* @jsxFrag React.Fragment */
 const { useState, useEffect, useRef, useCallback } = React;
 
 const CFG = window.HOT_OPPS_CONFIG || { apiUrl: '/v2/whatsapp/api/hot-opportunities', chatUrl: '/v2/whatsapp/chat', pollIntervalMs: 30000 };
