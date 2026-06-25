@@ -15,15 +15,16 @@ return new class extends Migration
         Schema::create('whatsapp_operational_booking_attributions', function (Blueprint $table): void {
             $table->id();
             $table->unsignedBigInteger('booking_id')->unique();
-            $table->unsignedBigInteger('booking_conversation_id')->nullable()->index();
-            $table->unsignedBigInteger('attributed_conversation_id')->nullable()->index();
-            $table->unsignedBigInteger('handoff_id')->nullable()->index();
-            $table->unsignedBigInteger('event_id')->nullable()->index();
-            $table->string('event_type', 64)->index();
-            $table->string('attribution_method', 64)->index();
-            $table->string('confidence', 24)->index();
-            $table->timestamp('event_at')->nullable()->index();
-            $table->timestamp('booking_at')->nullable()->index();
+            // Explicit short index names — MySQL 64-char identifier limit
+            $table->unsignedBigInteger('booking_conversation_id')->nullable()->index('woba_booking_conv_id_idx');
+            $table->unsignedBigInteger('attributed_conversation_id')->nullable()->index('woba_attributed_conv_id_idx');
+            $table->unsignedBigInteger('handoff_id')->nullable()->index('woba_handoff_id_idx');
+            $table->unsignedBigInteger('event_id')->nullable()->index('woba_event_id_idx');
+            $table->string('event_type', 64)->index('woba_event_type_idx');
+            $table->string('attribution_method', 64)->index('woba_attribution_method_idx');
+            $table->string('confidence', 24)->index('woba_confidence_idx');
+            $table->timestamp('event_at')->nullable()->index('woba_event_at_idx');
+            $table->timestamp('booking_at')->nullable()->index('woba_booking_at_idx');
             $table->timestamps();
         });
     }
