@@ -27,6 +27,7 @@ use App\Modules\Whatsapp\Services\WhatsappHandoffAutoAssignService;
 use App\Modules\Whatsapp\Services\WhatsappOperationalAttributionService;
 use App\Modules\Whatsapp\Services\WhatsappOperationalBaselineService;
 use App\Modules\Whatsapp\Services\WhatsappOperationalDecisionService;
+use App\Modules\Whatsapp\Services\WhatsappOperationalQueueService;
 use App\Modules\Whatsapp\Services\WhatsappOperationalEventService;
 use App\Modules\Whatsapp\Services\WhatsappRescueMetricsService;
 use App\Models\WhatsappConversation;
@@ -921,6 +922,120 @@ Artisan::command('whatsapp:operational-decisions
 
     return 0;
 })->purpose('Evalúa conversaciones operacionales y produce decisiones recomendadas (solo lectura)');
+
+Artisan::command('whatsapp:operational-queues
+    {--date= : Fecha de evaluación YYYY-MM-DD (default: hoy)}
+    {--queue= : Cola a mostrar: supervisor|rescue|all (default: all)}
+    {--summary-only : Devuelve solo el bloque summary}
+    {--limit= : Limita la cantidad de items por cola}
+    {--json : Salida JSON}', function (): int {
+    /** @var WhatsappOperationalQueueService $service */
+    $service = app(WhatsappOperationalQueueService::class);
+
+    $dateOption = trim((string) ($this->option('date') ?? ''));
+    $asOf = $dateOption !== ''
+        ? \Illuminate\Support\Carbon::parse($dateOption)->endOfDay()
+        : now();
+
+    $queueOpt = strtolower(trim((string) ($this->option('queue') ?? 'all')));
+    $validQueues = ['supervisor', 'rescue', 'all'];
+    if (!in_array($queueOpt, $validQueues, true)) {
+        $this->error('Cola inválida: "' . $queueOpt . '". Valores válidos: ' . implode(', ', $validQueues));
+
+        return 1;
+    }
+
+    $limitRaw = $this->option('limit');
+    $limit    = $limitRaw !== null && $limitRaw !== '' ? max(1, (int) $limitRaw) : null;
+
+    $result = $service->queues($asOf, ['queue' => $queueOpt, 'limit' => $limit]);
+
+    if ((bool) $this->option('json')) {
+        if ((bool) $this->option('summary-only')) {
+            $this->line((string) json_encode([
+                'date'         => $result['date'],
+                'generated_at' => $result['generated_at'],
+                'summary'      => $result['summary'],
+            ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+
+            return 0;
+        }
+
+        $this->line((string) json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+
+        return 0;
+    }
+
+    // ── Table output ──────────────────────────────────────────────────────
+    $this->line('Colas Operacionales WhatsApp — ' . $result['date']);
+    $this->line('');
+
+    if ((bool) $this->option('summary-only') || $queueOpt === 'all') {
+        $summary = $result['summary'];
+        $this->line('── Summary ─────────────────────────────────────────────────');
+        $this->table(
+            ['Cola', 'Métrica', 'Valor'],
+            [
+                ['supervisor', 'total', (int) ($summary['supervisor_queue']['total'] ?? 0)],
+                ['supervisor', 'high_risk', (int) ($summary['supervisor_queue']['high_risk'] ?? 0)],
+                ['supervisor', 'over_sla', (int) ($summary['supervisor_queue']['over_sla'] ?? 0)],
+                ['rescue', 'total', (int) ($summary['rescue_queue']['total'] ?? 0)],
+                ['rescue', 'rescue_followup', (int) ($summary['rescue_queue']['rescue_followup'] ?? 0)],
+                ['rescue', 'send_template_or_review', (int) ($summary['rescue_queue']['send_template_or_review'] ?? 0)],
+                ['no_action', 'converted', (int) ($summary['no_action']['converted'] ?? 0)],
+                ['no_action', 'already_handled', (int) ($summary['no_action']['already_handled'] ?? 0)],
+                ['no_action', 'backlog', (int) ($summary['no_action']['backlog'] ?? 0)],
+                ['no_action', 'lost', (int) ($summary['no_action']['lost'] ?? 0)],
+            ]
+        );
+
+        if ((bool) $this->option('summary-only')) {
+            return 0;
+        }
+    }
+
+    if (in_array($queueOpt, ['supervisor', 'all'], true)) {
+        $items = $result['queues']['supervisor'] ?? $result['items'] ?? [];
+        if ($items !== []) {
+            $this->line('── Supervisor Queue ─────────────────────────────────────────');
+            $this->table(
+                ['conv_id', 'bucket', 'priority', 'risk', 'autoasign', 'supervisor', 'has_booking', 'reason'],
+                array_map(fn (array $item): array => [
+                    (int) ($item['conversation_id'] ?? 0),
+                    (string) ($item['bucket'] ?? ''),
+                    (string) ($item['priority'] ?? ''),
+                    (string) ($item['risk_level'] ?? ''),
+                    (bool) ($item['eligible_for_autoassign'] ?? false) ? 'sí' : 'no',
+                    (bool) ($item['eligible_for_supervisor_alert'] ?? false) ? 'sí' : 'no',
+                    (bool) ($item['has_attributed_booking'] ?? false) ? 'sí' : 'no',
+                    mb_strimwidth((string) ($item['reason'] ?? ''), 0, 55, '…'),
+                ], $items)
+            );
+        }
+    }
+
+    if (in_array($queueOpt, ['rescue', 'all'], true)) {
+        $items = $result['queues']['rescue'] ?? $result['items'] ?? [];
+        if ($items !== []) {
+            $this->line('── Rescue Queue ─────────────────────────────────────────────');
+            $this->table(
+                ['conv_id', 'bucket', 'action', 'priority', 'risk', 'rescue', 'has_booking', 'reason'],
+                array_map(fn (array $item): array => [
+                    (int) ($item['conversation_id'] ?? 0),
+                    (string) ($item['bucket'] ?? ''),
+                    (string) ($item['recommended_action'] ?? ''),
+                    (string) ($item['priority'] ?? ''),
+                    (string) ($item['risk_level'] ?? ''),
+                    (bool) ($item['eligible_for_rescue'] ?? false) ? 'sí' : 'no',
+                    (bool) ($item['has_attributed_booking'] ?? false) ? 'sí' : 'no',
+                    mb_strimwidth((string) ($item['reason'] ?? ''), 0, 55, '…'),
+                ], $items)
+            );
+        }
+    }
+
+    return 0;
+})->purpose('Colas operacionales de supervisor y rescate — solo lectura');
 
 Artisan::command('whatsapp:operational-attribution
     {--date= : Día a recalcular YYYY-MM-DD}
