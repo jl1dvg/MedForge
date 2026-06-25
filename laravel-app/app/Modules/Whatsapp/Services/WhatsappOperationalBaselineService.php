@@ -76,6 +76,15 @@ class WhatsappOperationalBaselineService
             'observed_manual_bookings' => $bookingObservability['observed_manual_bookings'],
             'inferred_attributed_appointments' => $bookingObservability['inferred_attributed_appointments'],
             'operational_interventions_without_observed_booking' => $bookingObservability['operational_interventions_without_observed_booking'],
+            'converted_conversations' => $bookingObservability['converted_conversations'],
+            'total_attributed_services' => $bookingObservability['total_attributed_services'],
+            'independent_attributed_services' => $bookingObservability['independent_attributed_services'],
+            'companion_services' => $bookingObservability['companion_services'],
+            'primary_clinical_appointments' => $bookingObservability['primary_clinical_appointments'],
+            'diagnostic_services' => $bookingObservability['diagnostic_services'],
+            'follow_up_reviews' => $bookingObservability['follow_up_reviews'],
+            'preop_or_anesthesia_services' => $bookingObservability['preop_or_anesthesia_services'],
+            'other_attributed_services' => $bookingObservability['other_attributed_services'],
             'booking_observability' => $bookingObservability,
             'reminders' => $reminders,
             'dashboard_ready' => [
@@ -394,33 +403,77 @@ class WhatsappOperationalBaselineService
 
     /**
      * @param array{total:int,by_event:array<string,int>} $bookingsAfterIntervention
-     * @return array{observed_bot_bookings:int,observed_manual_bookings:int,inferred_attributed_appointments:int,operational_interventions_without_observed_booking:int,attribution_source:string,observed_booking_scope:string,manual_booking_sync_required:bool}
+     * @return array<string,mixed>
      */
     private function bookingObservability(CarbonImmutable $from, CarbonImmutable $to, array $bookingsAfterIntervention): array
     {
         $appointments = app(WhatsappAttributedAppointmentSourceService::class)
             ->attributedAppointments($from, $to);
 
-        $bot = 0;
-        $manual = 0;
+        $bot          = 0;
+        $manual       = 0;
+        $total        = 0;
+        $independent  = 0;
+        $companion    = 0;
+        $primary      = 0;
+        $diagnostic   = 0;
+        $followUp     = 0;
+        $preop        = 0;
+        $other        = 0;
+        $convIds      = [];
+
         foreach ($appointments as $appointment) {
-            if (($appointment['booking_source'] ?? '') === 'bot_api') {
+            $total++;
+            $source = (string) ($appointment['booking_source'] ?? '');
+            if ($source === 'bot_api') {
                 $bot++;
-                continue;
+            } else {
+                $manual++;
             }
-            $manual++;
+
+            $convId = (int) ($appointment['conversation_id'] ?? 0);
+            if ($convId > 0) {
+                $convIds[$convId] = true;
+            }
+
+            if (($appointment['is_companion_service'] ?? false)) {
+                $companion++;
+            } else {
+                $independent++;
+            }
+            if (($appointment['is_primary_clinical_appointment'] ?? false)) {
+                $primary++;
+            }
+
+            $category = (string) ($appointment['service_category'] ?? 'other');
+            match ($category) {
+                'diagnostic'        => $diagnostic++,
+                'follow_up_review'  => $followUp++,
+                'preop_or_anesthesia' => $preop++,
+                'other'             => $other++,
+                default             => null,
+            };
         }
 
         $operationalInterventions = $this->operationalInterventionCount($from, $to);
 
         return [
-            'observed_bot_bookings' => $bot,
-            'observed_manual_bookings' => $manual,
-            'inferred_attributed_appointments' => $manual,
+            'observed_bot_bookings'                              => $bot,
+            'observed_manual_bookings'                           => $manual,
+            'inferred_attributed_appointments'                   => $manual,
             'operational_interventions_without_observed_booking' => max(0, $operationalInterventions - (int) $bookingsAfterIntervention['total']),
-            'attribution_source' => 'whatsapp_attributed_appointment_source',
-            'observed_booking_scope' => 'bot_api_and_report_inferred_manual_sigcenter',
-            'manual_booking_sync_required' => true,
+            'attribution_source'                                 => 'whatsapp_attributed_appointment_source',
+            'observed_booking_scope'                             => 'bot_api_and_report_inferred_manual_sigcenter',
+            'manual_booking_sync_required'                       => true,
+            'converted_conversations'                            => count($convIds),
+            'total_attributed_services'                          => $total,
+            'independent_attributed_services'                    => $independent,
+            'companion_services'                                 => $companion,
+            'primary_clinical_appointments'                      => $primary,
+            'diagnostic_services'                                => $diagnostic,
+            'follow_up_reviews'                                  => $followUp,
+            'preop_or_anesthesia_services'                       => $preop,
+            'other_attributed_services'                          => $other,
         ];
     }
 

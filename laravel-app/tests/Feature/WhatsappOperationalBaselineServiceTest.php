@@ -243,6 +243,48 @@ class WhatsappOperationalBaselineServiceTest extends TestCase
         Carbon::setTestNow();
     }
 
+    public function test_baseline_exposes_service_classification_metrics(): void
+    {
+        Carbon::setTestNow('2026-06-24 12:00:00');
+
+        $this->seedOpportunity(1, now()->subHours(2), 'captacion_agendar', latestInboundAt: now()->subHour());
+
+        // Ophthalmology consult — primary, independent
+        $this->seedManualAppointment(600, 'HC-1', now()->subHour());
+        // Optometry same HC same date → companion
+        $this->seedManualAppointmentWithProcedure(601, 'HC-1', now()->subMinutes(50),
+            now()->subHour()->copy()->addDay()->toDateString(), '08:30:00', 'CONSULTA OPTOMETRIA');
+
+        $baseline = (new WhatsappOperationalBaselineService())->baseline(
+            Carbon::parse('2026-06-24'),
+            now(),
+            false
+        );
+
+        $this->assertArrayHasKey('converted_conversations', $baseline);
+        $this->assertArrayHasKey('total_attributed_services', $baseline);
+        $this->assertArrayHasKey('companion_services', $baseline);
+        $this->assertArrayHasKey('independent_attributed_services', $baseline);
+        $this->assertArrayHasKey('primary_clinical_appointments', $baseline);
+        $this->assertArrayHasKey('diagnostic_services', $baseline);
+        $this->assertArrayHasKey('follow_up_reviews', $baseline);
+        $this->assertArrayHasKey('preop_or_anesthesia_services', $baseline);
+        $this->assertArrayHasKey('other_attributed_services', $baseline);
+
+        // Existing metrics must still exist
+        $this->assertArrayHasKey('observed_bot_bookings', $baseline);
+        $this->assertArrayHasKey('observed_manual_bookings', $baseline);
+        $this->assertArrayHasKey('inferred_attributed_appointments', $baseline);
+        $this->assertArrayHasKey('operational_interventions_without_observed_booking', $baseline);
+
+        // The booking_observability sub-key must also carry them
+        $obs = $baseline['booking_observability'];
+        $this->assertArrayHasKey('converted_conversations', $obs);
+        $this->assertArrayHasKey('companion_services', $obs);
+
+        Carbon::setTestNow();
+    }
+
     public function test_command_outputs_json_and_persists_snapshot(): void
     {
         Carbon::setTestNow('2026-06-24 12:00:00');
@@ -445,14 +487,19 @@ class WhatsappOperationalBaselineServiceTest extends TestCase
 
     private function seedManualAppointment(int $formId, string $hcNumber, Carbon $createdAt): void
     {
+        $this->seedManualAppointmentWithProcedure($formId, $hcNumber, $createdAt, $createdAt->copy()->addDay()->toDateString(), '09:30:00', 'Consulta oftalmológica');
+    }
+
+    private function seedManualAppointmentWithProcedure(int $formId, string $hcNumber, Carbon $createdAt, string $date, string $hora, string $procedure): void
+    {
         DB::table('procedimiento_proyectado')->insert([
             'form_id' => $formId,
             'hc_number' => $hcNumber,
-            'fecha' => $createdAt->copy()->addDay()->toDateString(),
-            'hora' => '09:30:00',
+            'fecha' => $date,
+            'hora' => $hora,
             'sede_departamento' => 'CIVE',
             'medico_nombre' => 'Dr. Manual',
-            'procedimiento_nombre' => 'Consulta',
+            'procedimiento_nombre' => $procedure,
             'sigcenter_present' => true,
             'created_at' => $createdAt,
             'updated_at' => $createdAt,

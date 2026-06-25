@@ -212,6 +212,109 @@ class WhatsappAttributedAppointmentSourceServiceTest extends TestCase
         $this->assertSame('bot_api', $records[0]['booking_source']);
     }
 
+    public function test_optometry_with_ophthalmology_same_hc_date_is_companion(): void
+    {
+        $firstHumanAt = Carbon::parse('2026-06-24 09:00:00');
+        $this->seedConversation(1, '593200', 'HC-200', 5, $firstHumanAt);
+        $this->seedAgentMessage(1, 5, $firstHumanAt);
+
+        // Ophthalmology consult
+        $this->seedManualAppointmentWithProcedure(201, 'HC-200', '2026-06-24 10:00:00', '2026-06-29', '09:00:00', 'CONSULTA OFTALMOLOGICA');
+        // Optometry same HC + same date
+        $this->seedManualAppointmentWithProcedure(202, 'HC-200', '2026-06-24 10:05:00', '2026-06-29', '08:30:00', 'CONSULTA OPTOMETRIA');
+
+        $records = app(WhatsappAttributedAppointmentSourceService::class)
+            ->attributedAppointments(Carbon::parse('2026-06-24'), Carbon::parse('2026-06-25'));
+
+        $byForm = [];
+        foreach ($records as $record) {
+            $byForm[(int) $record['form_id']] = $record;
+        }
+
+        $this->assertSame('ophthalmology_consult', $byForm[201]['service_category']);
+        $this->assertSame('independent_service', $byForm[201]['service_counting_role']);
+        $this->assertFalse($byForm[201]['is_companion_service']);
+        $this->assertTrue($byForm[201]['is_primary_clinical_appointment']);
+
+        $this->assertSame('optometry', $byForm[202]['service_category']);
+        $this->assertSame('companion_service', $byForm[202]['service_counting_role']);
+        $this->assertTrue($byForm[202]['is_companion_service']);
+        $this->assertFalse($byForm[202]['is_independent_service']);
+        $this->assertFalse($byForm[202]['is_primary_clinical_appointment']);
+    }
+
+    public function test_optometry_alone_is_independent_and_primary(): void
+    {
+        $firstHumanAt = Carbon::parse('2026-06-24 09:00:00');
+        $this->seedConversation(1, '593201', 'HC-201', 5, $firstHumanAt);
+        $this->seedAgentMessage(1, 5, $firstHumanAt);
+
+        $this->seedManualAppointmentWithProcedure(301, 'HC-201', '2026-06-24 10:00:00', '2026-06-29', '09:00:00', 'EXAMEN OPTOMETRICO');
+
+        $records = app(WhatsappAttributedAppointmentSourceService::class)
+            ->attributedAppointments(Carbon::parse('2026-06-24'), Carbon::parse('2026-06-25'));
+
+        $this->assertCount(1, $records);
+        $this->assertSame('optometry', $records[0]['service_category']);
+        $this->assertSame('independent_service', $records[0]['service_counting_role']);
+        $this->assertFalse($records[0]['is_companion_service']);
+        $this->assertTrue($records[0]['is_independent_service']);
+        $this->assertTrue($records[0]['is_primary_clinical_appointment']);
+    }
+
+    public function test_diagnostic_service_is_classified_correctly(): void
+    {
+        $firstHumanAt = Carbon::parse('2026-06-24 09:00:00');
+        $this->seedConversation(1, '593202', 'HC-202', 5, $firstHumanAt);
+        $this->seedAgentMessage(1, 5, $firstHumanAt);
+
+        $this->seedManualAppointmentWithProcedure(401, 'HC-202', '2026-06-24 10:00:00', '2026-06-29', '10:00:00', 'OCT RETINA');
+
+        $records = app(WhatsappAttributedAppointmentSourceService::class)
+            ->attributedAppointments(Carbon::parse('2026-06-24'), Carbon::parse('2026-06-25'));
+
+        $this->assertCount(1, $records);
+        $this->assertSame('diagnostic', $records[0]['service_category']);
+        $this->assertSame('independent_service', $records[0]['service_counting_role']);
+        $this->assertFalse($records[0]['is_primary_clinical_appointment']);
+        $this->assertTrue($records[0]['is_independent_service']);
+    }
+
+    public function test_anesthesia_is_preop_category(): void
+    {
+        $firstHumanAt = Carbon::parse('2026-06-24 09:00:00');
+        $this->seedConversation(1, '593203', 'HC-203', 5, $firstHumanAt);
+        $this->seedAgentMessage(1, 5, $firstHumanAt);
+
+        $this->seedManualAppointmentWithProcedure(501, 'HC-203', '2026-06-24 10:00:00', '2026-06-29', '07:00:00', 'ANESTESIOLOGIA GENERAL');
+
+        $records = app(WhatsappAttributedAppointmentSourceService::class)
+            ->attributedAppointments(Carbon::parse('2026-06-24'), Carbon::parse('2026-06-25'));
+
+        $this->assertCount(1, $records);
+        $this->assertSame('preop_or_anesthesia', $records[0]['service_category']);
+        $this->assertSame('independent_service', $records[0]['service_counting_role']);
+        $this->assertFalse($records[0]['is_primary_clinical_appointment']);
+        $this->assertTrue($records[0]['is_independent_service']);
+    }
+
+    public function test_revision_de_examenes_is_follow_up_review(): void
+    {
+        $firstHumanAt = Carbon::parse('2026-06-24 09:00:00');
+        $this->seedConversation(1, '593204', 'HC-204', 5, $firstHumanAt);
+        $this->seedAgentMessage(1, 5, $firstHumanAt);
+
+        $this->seedManualAppointmentWithProcedure(601, 'HC-204', '2026-06-24 10:00:00', '2026-06-29', '11:00:00', 'REVISION DE EXAMENES');
+
+        $records = app(WhatsappAttributedAppointmentSourceService::class)
+            ->attributedAppointments(Carbon::parse('2026-06-24'), Carbon::parse('2026-06-25'));
+
+        $this->assertCount(1, $records);
+        $this->assertSame('follow_up_review', $records[0]['service_category']);
+        $this->assertSame('independent_service', $records[0]['service_counting_role']);
+        $this->assertTrue($records[0]['is_primary_clinical_appointment']);
+    }
+
     private function seedConversation(int $id, string $waNumber, string $hc, int $agentId, Carbon $createdAt): void
     {
         DB::table('whatsapp_conversations')->insert([
@@ -252,11 +355,16 @@ class WhatsappAttributedAppointmentSourceServiceTest extends TestCase
 
     private function seedManualAppointment(int $formId, string $hc, string $createdAt, string $date, string $time): void
     {
+        $this->seedManualAppointmentWithProcedure($formId, $hc, $createdAt, $date, $time, 'Consulta oftalmológica');
+    }
+
+    private function seedManualAppointmentWithProcedure(int $formId, string $hc, string $createdAt, string $date, string $time, string $procedure): void
+    {
         DB::table('procedimiento_proyectado')->insert([
             'form_id' => $formId,
             'hc_number' => $hc,
-            'procedimiento_proyectado' => 'Consulta oftalmológica',
-            'procedimiento_nombre' => 'Consulta oftalmológica',
+            'procedimiento_proyectado' => $procedure,
+            'procedimiento_nombre' => $procedure,
             'medico_nombre' => 'Dra. Humana',
             'doctor' => 'Dra. Humana',
             'sede_departamento' => 'Villa Club',

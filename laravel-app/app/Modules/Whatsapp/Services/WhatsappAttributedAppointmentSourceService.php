@@ -22,7 +22,7 @@ class WhatsappAttributedAppointmentSourceService
         $records = array_merge($bot, $manual);
         usort($records, static fn (array $a, array $b): int => strcmp((string) ($b['booking_created_at'] ?? ''), (string) ($a['booking_created_at'] ?? '')));
 
-        return $records;
+        return $this->applyServiceClassification($records);
     }
 
     /**
@@ -736,6 +736,88 @@ class WhatsappAttributedAppointmentSourceService
             }
         }
         return $names;
+    }
+
+    /**
+     * @param array<int,array<string,mixed>> $records
+     * @return array<int,array<string,mixed>>
+     */
+    private function applyServiceClassification(array $records): array
+    {
+        $records = array_map(function (array $r): array {
+            $r['service_category'] = $this->classifyServiceCategory((string) ($r['procedure'] ?? ''));
+            return $r;
+        }, $records);
+
+        $ophthalmologyByHcDate = [];
+        foreach ($records as $r) {
+            if (($r['service_category'] ?? '') === 'ophthalmology_consult') {
+                $hc = (string) ($r['patient_hc_number'] ?? '');
+                $date = (string) ($r['appointment_date'] ?? '');
+                if ($hc !== '' && $date !== '') {
+                    $ophthalmologyByHcDate[$hc . '|' . $date] = true;
+                }
+            }
+        }
+
+        return array_map(function (array $r) use ($ophthalmologyByHcDate): array {
+            $category = (string) ($r['service_category'] ?? 'other');
+            $hc = (string) ($r['patient_hc_number'] ?? '');
+            $date = (string) ($r['appointment_date'] ?? '');
+            $isCompanion = $category === 'optometry'
+                && $hc !== ''
+                && $date !== ''
+                && isset($ophthalmologyByHcDate[$hc . '|' . $date]);
+
+            $r['service_counting_role']          = $isCompanion ? 'companion_service' : 'independent_service';
+            $r['is_companion_service']           = $isCompanion;
+            $r['is_independent_service']         = !$isCompanion;
+            $r['is_primary_clinical_appointment'] = match ($category) {
+                'ophthalmology_consult' => true,
+                'optometry'             => !$isCompanion,
+                'follow_up_review'      => true,
+                default                 => false,
+            };
+
+            return $r;
+        }, $records);
+    }
+
+    private function classifyServiceCategory(string $procedure): string
+    {
+        $n = $this->normalizeText($procedure);
+
+        foreach (['anestesiolog', 'anestesia', 'preop', 'pre operatorio', 'pre-op'] as $needle) {
+            if (str_contains($n, $needle)) {
+                return 'preop_or_anesthesia';
+            }
+        }
+
+        foreach (['optometri', 'examen optometrico'] as $needle) {
+            if (str_contains($n, $needle)) {
+                return 'optometry';
+            }
+        }
+
+        foreach (['tomografia', 'oct', 'campimetria', 'campo visual', 'biometria', 'ecografia', 'retinografia', 'paquimetria', 'topografia', 'microscopia', 'imagenes', 'imagen'] as $needle) {
+            if (str_contains($n, $needle)) {
+                return 'diagnostic';
+            }
+        }
+
+        foreach (['revision de examenes', 'revision examenes'] as $needle) {
+            if (str_contains($n, $needle)) {
+                return 'follow_up_review';
+            }
+        }
+
+        foreach (['oftalmolog', 'consulta', 'control', 'evaluacion', 'valoracion'] as $needle) {
+            if (str_contains($n, $needle)) {
+                return 'ophthalmology_consult';
+            }
+        }
+
+        return 'other';
     }
 
     /**
