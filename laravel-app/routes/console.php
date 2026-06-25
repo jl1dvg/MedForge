@@ -26,6 +26,7 @@ use App\Modules\Whatsapp\Services\WhatsappDailyRescueReportService;
 use App\Modules\Whatsapp\Services\WhatsappHandoffAutoAssignService;
 use App\Modules\Whatsapp\Services\WhatsappOperationalAttributionService;
 use App\Modules\Whatsapp\Services\WhatsappOperationalBaselineService;
+use App\Modules\Whatsapp\Services\WhatsappOperationalDecisionService;
 use App\Modules\Whatsapp\Services\WhatsappOperationalEventService;
 use App\Modules\Whatsapp\Services\WhatsappRescueMetricsService;
 use App\Models\WhatsappConversation;
@@ -791,6 +792,51 @@ Artisan::command('whatsapp:operational-baseline
 
     return 0;
 })->purpose('Genera la línea base operacional diaria de WhatsApp por buckets');
+
+Artisan::command('whatsapp:operational-decisions
+    {--date= : Fecha de evaluación YYYY-MM-DD (default: hoy)}
+    {--json : Imprime el resultado completo en JSON}', function (): int {
+    /** @var WhatsappOperationalDecisionService $service */
+    $service = app(WhatsappOperationalDecisionService::class);
+
+    $dateOption = trim((string) $this->option('date'));
+    $asOf = $dateOption !== ''
+        ? \Illuminate\Support\Carbon::parse($dateOption)->endOfDay()
+        : now();
+
+    $result = $service->evaluate($asOf);
+
+    if ((bool) $this->option('json')) {
+        $this->line((string) json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+
+        return 0;
+    }
+
+    $summary = $result['summary'];
+    $this->line('Decision Engine Operacional WhatsApp — ' . $result['date']);
+    $this->line('');
+
+    $this->table(
+        ['Acción recomendada', 'Total'],
+        collect((array) ($summary['by_recommended_action'] ?? []))
+            ->map(fn (int $count, string $action): array => [$action, $count])
+            ->values()
+            ->all()
+    );
+
+    $this->table(
+        ['Métrica', 'Valor'],
+        [
+            ['total_evaluated', (int) ($summary['total_evaluated'] ?? 0)],
+            ['eligible_for_autoassign', (int) ($summary['eligible_for_autoassign'] ?? 0)],
+            ['eligible_for_rescue', (int) ($summary['eligible_for_rescue'] ?? 0)],
+            ['eligible_for_supervisor_alert', (int) ($summary['eligible_for_supervisor_alert'] ?? 0)],
+            ['already_converted', (int) ($summary['already_converted'] ?? 0)],
+        ]
+    );
+
+    return 0;
+})->purpose('Evalúa conversaciones operacionales y produce decisiones recomendadas (solo lectura)');
 
 Artisan::command('whatsapp:operational-attribution
     {--date= : Día a recalcular YYYY-MM-DD}
