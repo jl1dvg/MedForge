@@ -151,6 +151,151 @@ class WhatsappOperationalDecisionCommandTest extends TestCase
         $this->assertSame(0, $payload['summary']['total_evaluated']);
     }
 
+    public function test_summary_only_omits_decisions_key(): void
+    {
+        Carbon::setTestNow('2026-06-25 10:00:00');
+        $this->seedConversation(1, now()->subHour(), 'captacion_agendar');
+
+        Artisan::call('whatsapp:operational-decisions', ['--summary-only' => true, '--json' => true]);
+        $payload = json_decode(Artisan::output(), true);
+
+        $this->assertArrayHasKey('summary', $payload);
+        $this->assertArrayNotHasKey('decisions', $payload);
+        $this->assertArrayHasKey('by_recommended_action', $payload['summary']);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_filter_by_action_returns_only_matching_decisions(): void
+    {
+        Carbon::setTestNow('2026-06-25 10:00:00');
+        // HOT_OPEN unassigned → assign_now
+        $this->seedConversation(1, now()->subHour(), 'captacion_agendar');
+        // RESCUE → rescue_followup
+        $this->seedConversation(2, now()->subDays(3), 'captacion_agendar');
+        $this->seedInbound(1, now()->subMinutes(30));
+
+        Artisan::call('whatsapp:operational-decisions', ['--action' => 'assign_now', '--json' => true]);
+        $payload = json_decode(Artisan::output(), true);
+
+        $this->assertNotEmpty($payload['decisions']);
+        foreach ($payload['decisions'] as $d) {
+            $this->assertSame('assign_now', $d['recommended_action']);
+        }
+
+        Carbon::setTestNow();
+    }
+
+    public function test_filter_by_bucket_returns_only_matching_decisions(): void
+    {
+        Carbon::setTestNow('2026-06-25 10:00:00');
+        $this->seedConversation(1, now()->subHour(), 'captacion_agendar');
+        $this->seedInbound(1, now()->subMinutes(20));
+        // backlog
+        $this->seedConversation(2, now()->subDays(12), 'captacion_agendar');
+
+        Artisan::call('whatsapp:operational-decisions', ['--bucket' => 'hot_open', '--json' => true]);
+        $payload = json_decode(Artisan::output(), true);
+
+        $this->assertNotEmpty($payload['decisions']);
+        foreach ($payload['decisions'] as $d) {
+            $this->assertSame('hot_open', $d['bucket']);
+        }
+
+        Carbon::setTestNow();
+    }
+
+    public function test_filter_by_priority_returns_only_matching_decisions(): void
+    {
+        Carbon::setTestNow('2026-06-25 10:00:00');
+        $this->seedConversation(1, now()->subHour(), 'captacion_agendar');
+        $this->seedInbound(1, now()->subMinutes(20));
+
+        Artisan::call('whatsapp:operational-decisions', ['--priority' => 'high', '--json' => true]);
+        $payload = json_decode(Artisan::output(), true);
+
+        foreach ($payload['decisions'] as $d) {
+            $this->assertSame('high', $d['priority']);
+        }
+
+        Carbon::setTestNow();
+    }
+
+    public function test_filter_by_risk_returns_only_matching_decisions(): void
+    {
+        Carbon::setTestNow('2026-06-25 10:00:00');
+        // HOT_OPEN unassigned, window open → risk=medium
+        $this->seedConversation(1, now()->subHour(), 'captacion_agendar');
+        $this->seedInbound(1, now()->subMinutes(20));
+        // RESCUE 5+ days → risk=high
+        $this->seedConversation(2, now()->subDays(6), 'captacion_agendar');
+
+        Artisan::call('whatsapp:operational-decisions', ['--risk' => 'high', '--json' => true]);
+        $payload = json_decode(Artisan::output(), true);
+
+        $this->assertNotEmpty($payload['decisions']);
+        foreach ($payload['decisions'] as $d) {
+            $this->assertSame('high', $d['risk_level']);
+        }
+
+        Carbon::setTestNow();
+    }
+
+    public function test_limit_caps_decisions_but_summary_reflects_full_filtered_set(): void
+    {
+        Carbon::setTestNow('2026-06-25 10:00:00');
+        // Three HOT_OPEN unassigned → all assign_now
+        foreach ([1, 2, 3] as $i) {
+            $this->seedConversation($i, now()->subHour(), 'captacion_agendar');
+            $this->seedInbound($i, now()->subMinutes(10 + $i));
+        }
+
+        Artisan::call('whatsapp:operational-decisions', ['--limit' => '2', '--json' => true]);
+        $payload = json_decode(Artisan::output(), true);
+
+        $this->assertCount(2, $payload['decisions']);
+        // summary must reflect all 3 (full filtered set before limit)
+        $this->assertSame(3, $payload['summary']['total_evaluated']);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_combined_filters_apply_and(): void
+    {
+        Carbon::setTestNow('2026-06-25 10:00:00');
+        // HOT_OPEN unassigned → assign_now, hot_open
+        $this->seedConversation(1, now()->subHour(), 'captacion_agendar');
+        $this->seedInbound(1, now()->subMinutes(20));
+        // RESCUE → rescue_followup, rescue
+        $this->seedConversation(2, now()->subDays(3), 'captacion_agendar');
+
+        Artisan::call('whatsapp:operational-decisions', [
+            '--bucket' => 'rescue',
+            '--action' => 'assign_now',
+            '--json'   => true,
+        ]);
+        $payload = json_decode(Artisan::output(), true);
+
+        // assign_now is never issued for rescue bucket → 0 results
+        $this->assertSame(0, $payload['summary']['total_evaluated']);
+        $this->assertEmpty($payload['decisions']);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_table_output_runs_without_error(): void
+    {
+        Carbon::setTestNow('2026-06-25 10:00:00');
+        $this->seedConversation(1, now()->subHour(), 'captacion_agendar');
+        $this->seedInbound(1, now()->subMinutes(20));
+
+        $exitCode = Artisan::call('whatsapp:operational-decisions', ['--action' => 'assign_now']);
+
+        $this->assertSame(0, $exitCode);
+
+        Carbon::setTestNow();
+    }
+
     private function seedConversation(int $id, Carbon $queuedAt, string $topic): void
     {
         DB::table('whatsapp_conversations')->insert([
@@ -175,6 +320,18 @@ class WhatsappOperationalDecisionCommandTest extends TestCase
             'queued_at' => $queuedAt,
             'created_at' => $queuedAt,
             'updated_at' => $queuedAt,
+        ]);
+    }
+
+    private function seedInbound(int $conversationId, Carbon $at): void
+    {
+        DB::table('whatsapp_messages')->insert([
+            'conversation_id' => $conversationId,
+            'direction' => 'inbound',
+            'sender_type' => null,
+            'message_timestamp' => $at,
+            'created_at' => $at,
+            'updated_at' => $at,
         ]);
     }
 }

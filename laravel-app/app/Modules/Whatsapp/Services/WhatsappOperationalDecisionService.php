@@ -243,6 +243,17 @@ class WhatsappOperationalDecisionService
     }
 
     /**
+     * Public alias so commands can re-summarize a filtered subset of decisions.
+     *
+     * @param array<int,array<string,mixed>> $decisions
+     * @return array<string,mixed>
+     */
+    public function summarizeDecisions(array $decisions): array
+    {
+        return $this->summarize($decisions);
+    }
+
+    /**
      * @param array<int,array<string,mixed>> $decisions
      * @return array<string,mixed>
      */

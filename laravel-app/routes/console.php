@@ -795,7 +795,13 @@ Artisan::command('whatsapp:operational-baseline
 
 Artisan::command('whatsapp:operational-decisions
     {--date= : Fecha de evaluación YYYY-MM-DD (default: hoy)}
-    {--json : Imprime el resultado completo en JSON}', function (): int {
+    {--summary-only : Devuelve solo el bloque summary, sin decisiones individuales}
+    {--action= : Filtra por recommended_action}
+    {--bucket= : Filtra por bucket (hot_open|hot_needs_template|rescue|backlog|lost)}
+    {--priority= : Filtra por priority (high|medium|normal|low)}
+    {--risk= : Filtra por risk_level (high|medium|low|closed)}
+    {--limit= : Limita la cantidad de decisiones devueltas}
+    {--json : Imprime el resultado en JSON}', function (): int {
     /** @var WhatsappOperationalDecisionService $service */
     $service = app(WhatsappOperationalDecisionService::class);
 
@@ -806,33 +812,111 @@ Artisan::command('whatsapp:operational-decisions
 
     $result = $service->evaluate($asOf);
 
+    // ── Filtering ──────────────────────────────────────────────────────────
+    $filterAction   = trim((string) ($this->option('action') ?? ''));
+    $filterBucket   = trim((string) ($this->option('bucket') ?? ''));
+    $filterPriority = trim((string) ($this->option('priority') ?? ''));
+    $filterRisk     = trim((string) ($this->option('risk') ?? ''));
+    $limitRaw       = $this->option('limit');
+    $limit          = $limitRaw !== null && $limitRaw !== '' ? max(1, (int) $limitRaw) : null;
+    $summaryOnly    = (bool) $this->option('summary-only');
+
+    $decisions = $result['decisions'];
+
+    if ($filterAction !== '') {
+        $decisions = array_values(array_filter($decisions,
+            fn (array $d): bool => ($d['recommended_action'] ?? '') === $filterAction));
+    }
+    if ($filterBucket !== '') {
+        $decisions = array_values(array_filter($decisions,
+            fn (array $d): bool => ($d['bucket'] ?? '') === $filterBucket));
+    }
+    if ($filterPriority !== '') {
+        $decisions = array_values(array_filter($decisions,
+            fn (array $d): bool => ($d['priority'] ?? '') === $filterPriority));
+    }
+    if ($filterRisk !== '') {
+        $decisions = array_values(array_filter($decisions,
+            fn (array $d): bool => ($d['risk_level'] ?? '') === $filterRisk));
+    }
+
+    // summary reflects the full filtered set (before limit)
+    $filteredSummary = $service->summarizeDecisions($decisions);
+    $filteredSummary['filter_applied'] = array_filter([
+        'action'   => $filterAction ?: null,
+        'bucket'   => $filterBucket ?: null,
+        'priority' => $filterPriority ?: null,
+        'risk'     => $filterRisk ?: null,
+        'limit'    => $limit,
+    ]);
+
+    // apply limit after summary
+    if ($limit !== null) {
+        $decisions = array_slice($decisions, 0, $limit);
+    }
+
+    // ── Output ─────────────────────────────────────────────────────────────
     if ((bool) $this->option('json')) {
-        $this->line((string) json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+        if ($summaryOnly) {
+            $this->line((string) json_encode([
+                'date'         => $result['date'],
+                'generated_at' => $result['generated_at'],
+                'summary'      => $filteredSummary,
+            ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+
+            return 0;
+        }
+
+        $this->line((string) json_encode([
+            'date'         => $result['date'],
+            'generated_at' => $result['generated_at'],
+            'summary'      => $filteredSummary,
+            'decisions'    => $decisions,
+        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
 
         return 0;
     }
 
-    $summary = $result['summary'];
     $this->line('Decision Engine Operacional WhatsApp — ' . $result['date']);
     $this->line('');
 
     $this->table(
-        ['Acción recomendada', 'Total'],
-        collect((array) ($summary['by_recommended_action'] ?? []))
-            ->map(fn (int $count, string $action): array => [$action, $count])
-            ->values()
-            ->all()
-    );
-
-    $this->table(
         ['Métrica', 'Valor'],
         [
-            ['total_evaluated', (int) ($summary['total_evaluated'] ?? 0)],
-            ['eligible_for_autoassign', (int) ($summary['eligible_for_autoassign'] ?? 0)],
-            ['eligible_for_rescue', (int) ($summary['eligible_for_rescue'] ?? 0)],
-            ['eligible_for_supervisor_alert', (int) ($summary['eligible_for_supervisor_alert'] ?? 0)],
-            ['already_converted', (int) ($summary['already_converted'] ?? 0)],
+            ['total_evaluated (filtrado)', (int) ($filteredSummary['total_evaluated'] ?? 0)],
+            ['eligible_for_autoassign', (int) ($filteredSummary['eligible_for_autoassign'] ?? 0)],
+            ['eligible_for_rescue', (int) ($filteredSummary['eligible_for_rescue'] ?? 0)],
+            ['eligible_for_supervisor_alert', (int) ($filteredSummary['eligible_for_supervisor_alert'] ?? 0)],
+            ['already_converted', (int) ($filteredSummary['already_converted'] ?? 0)],
         ]
+    );
+
+    if ($summaryOnly) {
+        $this->table(
+            ['Acción recomendada', 'Total'],
+            collect((array) ($filteredSummary['by_recommended_action'] ?? []))
+                ->map(fn (int $count, string $action): array => [$action, $count])
+                ->values()
+                ->all()
+        );
+
+        return 0;
+    }
+
+    $this->table(
+        ['conv_id', 'bucket', 'action', 'priority', 'risk', 'opportunity', 'autoassign', 'rescue', 'supervisor', 'reason'],
+        array_map(fn (array $d): array => [
+            (int) ($d['conversation_id'] ?? 0),
+            (string) ($d['bucket'] ?? ''),
+            (string) ($d['recommended_action'] ?? ''),
+            (string) ($d['priority'] ?? ''),
+            (string) ($d['risk_level'] ?? ''),
+            (string) ($d['opportunity_level'] ?? ''),
+            (bool) ($d['eligible_for_autoassign'] ?? false) ? 'sí' : 'no',
+            (bool) ($d['eligible_for_rescue'] ?? false) ? 'sí' : 'no',
+            (bool) ($d['eligible_for_supervisor_alert'] ?? false) ? 'sí' : 'no',
+            mb_strimwidth((string) ($d['reason'] ?? ''), 0, 60, '…'),
+        ], $decisions)
     );
 
     return 0;
