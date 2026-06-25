@@ -14,16 +14,63 @@ class WhatsappOperationalQueueServiceTest extends TestCase
     private function makeDecisions(): array
     {
         return [
-            $this->decision(1, 'hot_open', WhatsappOperationalDecisionService::ACTION_SUPERVISOR_REVIEW, 'high', 'high'),
-            $this->decision(2, 'hot_open', WhatsappOperationalDecisionService::ACTION_SUPERVISOR_REVIEW, 'high', 'high'),
-            $this->decision(3, 'rescue', WhatsappOperationalDecisionService::ACTION_RESCUE_FOLLOWUP, 'medium', 'medium'),
-            $this->decision(4, 'rescue', WhatsappOperationalDecisionService::ACTION_RESCUE_FOLLOWUP, 'medium', 'high'),
-            $this->decision(5, 'hot_needs_template', WhatsappOperationalDecisionService::ACTION_SEND_TEMPLATE, 'medium', 'medium'),
-            $this->decision(6, 'backlog', WhatsappOperationalDecisionService::ACTION_HOLD_BACKLOG, 'low', 'low'),
-            $this->decision(7, 'lost', WhatsappOperationalDecisionService::ACTION_NO_ACTION_LOST, 'low', 'closed'),
-            $this->decision(8, 'hot_open', WhatsappOperationalDecisionService::ACTION_NO_ACTION_CONVERTED, 'low', 'low'),
-            $this->decision(9, 'hot_open', WhatsappOperationalDecisionService::ACTION_ALREADY_HANDLED, 'normal', 'low'),
+            $this->decision(1,  'hot_open',          WhatsappOperationalDecisionService::ACTION_ASSIGN_NOW,          'high',   'medium'),
+            $this->decision(2,  'hot_open',           WhatsappOperationalDecisionService::ACTION_ASSIGN_NOW,          'medium', 'medium'),
+            $this->decision(3,  'hot_open',           WhatsappOperationalDecisionService::ACTION_SUPERVISOR_REVIEW,   'high',   'high'),
+            $this->decision(4,  'hot_open',           WhatsappOperationalDecisionService::ACTION_SUPERVISOR_REVIEW,   'high',   'high'),
+            $this->decision(5,  'rescue',             WhatsappOperationalDecisionService::ACTION_RESCUE_FOLLOWUP,     'medium', 'medium'),
+            $this->decision(6,  'rescue',             WhatsappOperationalDecisionService::ACTION_RESCUE_FOLLOWUP,     'medium', 'high'),
+            $this->decision(7,  'hot_needs_template', WhatsappOperationalDecisionService::ACTION_SEND_TEMPLATE,       'medium', 'medium'),
+            $this->decision(8,  'backlog',            WhatsappOperationalDecisionService::ACTION_HOLD_BACKLOG,        'low',    'low'),
+            $this->decision(9,  'lost',               WhatsappOperationalDecisionService::ACTION_NO_ACTION_LOST,      'low',    'closed'),
+            $this->decision(10, 'hot_open',           WhatsappOperationalDecisionService::ACTION_NO_ACTION_CONVERTED, 'low',    'low'),
+            $this->decision(11, 'hot_open',           WhatsappOperationalDecisionService::ACTION_ALREADY_HANDLED,     'normal', 'low'),
         ];
+    }
+
+    public function test_builds_assignment_queue_from_assign_now_decisions(): void
+    {
+        $service   = new WhatsappOperationalQueueService();
+        $decisions = $this->makeDecisions();
+
+        $queue = $service->buildAssignmentQueue($decisions);
+
+        $this->assertCount(2, $queue);
+        foreach ($queue as $item) {
+            $this->assertSame(WhatsappOperationalDecisionService::ACTION_ASSIGN_NOW, $item['recommended_action']);
+            $this->assertArrayHasKey('eligible_for_autoassign', $item);
+            $this->assertArrayHasKey('assigned_user_id', $item);
+            $this->assertArrayHasKey('waiting_minutes', $item);
+            $this->assertArrayHasKey('last_human_response_at', $item);
+            $this->assertArrayHasKey('last_patient_message_at', $item);
+            $this->assertArrayHasKey('has_primary_clinical_appointment', $item);
+        }
+    }
+
+    public function test_assignment_queue_excludes_supervisor_review(): void
+    {
+        $service   = new WhatsappOperationalQueueService();
+        $decisions = $this->makeDecisions();
+
+        $queue      = $service->buildAssignmentQueue($decisions);
+        $convIds    = array_column($queue, 'conversation_id');
+
+        foreach ($service->buildSupervisorQueue($decisions) as $item) {
+            $this->assertNotContains($item['conversation_id'], $convIds);
+        }
+    }
+
+    public function test_assignment_queue_excludes_rescue_followup(): void
+    {
+        $service   = new WhatsappOperationalQueueService();
+        $decisions = $this->makeDecisions();
+
+        $queue   = $service->buildAssignmentQueue($decisions);
+        $convIds = array_column($queue, 'conversation_id');
+
+        foreach ($service->buildRescueQueue($decisions) as $item) {
+            $this->assertNotContains($item['conversation_id'], $convIds);
+        }
     }
 
     public function test_builds_supervisor_queue_from_supervisor_review_decisions(): void
@@ -69,15 +116,17 @@ class WhatsappOperationalQueueServiceTest extends TestCase
         $service   = new WhatsappOperationalQueueService();
         $decisions = $this->makeDecisions();
 
+        $assignment = $service->buildAssignmentQueue($decisions);
         $supervisor = $service->buildSupervisorQueue($decisions);
         $rescue     = $service->buildRescueQueue($decisions);
         $allConvIds = array_merge(
+            array_column($assignment, 'conversation_id'),
             array_column($supervisor, 'conversation_id'),
             array_column($rescue, 'conversation_id')
         );
 
-        $this->assertNotContains(8, $allConvIds, 'no_action_converted must not appear in active queues');
-        $this->assertNotContains(9, $allConvIds, 'already_handled must not appear in active queues');
+        $this->assertNotContains(10, $allConvIds, 'no_action_converted must not appear in active queues');
+        $this->assertNotContains(11, $allConvIds, 'already_handled must not appear in active queues');
     }
 
     public function test_summary_counts_all_queues_and_no_action(): void
@@ -92,6 +141,8 @@ class WhatsappOperationalQueueServiceTest extends TestCase
         $result = $this->callQueuesWithFakeDecisions($decisions);
         $summary = $result['summary'];
 
+        $this->assertArrayHasKey('assignment_queue', $summary);
+        $this->assertSame(2, $summary['assignment_queue']['total']);
         $this->assertSame(2, $summary['supervisor_queue']['total']);
         $this->assertSame(3, $summary['rescue_queue']['total']);
         $this->assertSame(2, $summary['rescue_queue']['rescue_followup']);
@@ -100,7 +151,7 @@ class WhatsappOperationalQueueServiceTest extends TestCase
         $this->assertSame(1, $summary['no_action']['already_handled']);
         $this->assertSame(1, $summary['no_action']['backlog']);
         $this->assertSame(1, $summary['no_action']['lost']);
-        $this->assertSame(9, $summary['total_decisions']);
+        $this->assertSame(11, $summary['total_decisions']);
     }
 
     public function test_limit_does_not_alter_summary(): void
@@ -181,31 +232,34 @@ class WhatsappOperationalQueueServiceTest extends TestCase
      */
     private function callQueuesWithFakeDecisions(array $decisions, string $queue = 'all', ?int $limit = null): array
     {
-        // We build the queue result structure manually, mirroring what queues() does internally
         $service = new WhatsappOperationalQueueService();
 
+        $assignmentItems = $service->buildAssignmentQueue($decisions);
         $supervisorItems = $service->buildSupervisorQueue($decisions);
         $rescueItems     = $service->buildRescueQueue($decisions);
 
-        // Access private buildSummary via reflection
         $ref    = new \ReflectionClass($service);
         $method = $ref->getMethod('buildSummary');
         $method->setAccessible(true);
-        $fullSummary = $method->invoke($service, $decisions, $supervisorItems, $rescueItems);
+        $fullSummary = $method->invoke($service, $decisions, $assignmentItems, $supervisorItems, $rescueItems);
 
+        $assignmentSummaryMethod = $ref->getMethod('assignmentSummary');
+        $assignmentSummaryMethod->setAccessible(true);
         $supervisorSummaryMethod = $ref->getMethod('supervisorSummary');
         $supervisorSummaryMethod->setAccessible(true);
         $rescueSummaryMethod = $ref->getMethod('rescueSummary');
         $rescueSummaryMethod->setAccessible(true);
 
-        [$returnedSupervisor, $returnedRescue] = match ($queue) {
-            'supervisor' => [$supervisorItems, []],
-            'rescue'     => [[], $rescueItems],
-            default      => [$supervisorItems, $rescueItems],
+        [$returnedAssignment, $returnedSupervisor, $returnedRescue] = match ($queue) {
+            'assignment' => [$assignmentItems, [], []],
+            'supervisor' => [[], $supervisorItems, []],
+            'rescue'     => [[], [], $rescueItems],
+            default      => [$assignmentItems, $supervisorItems, $rescueItems],
         };
 
-        $allItems = array_merge($returnedSupervisor, $returnedRescue);
+        $allItems = array_merge($returnedAssignment, $returnedSupervisor, $returnedRescue);
         if ($limit !== null) {
+            $returnedAssignment = array_slice($returnedAssignment, 0, $limit);
             $returnedSupervisor = array_slice($returnedSupervisor, 0, $limit);
             $returnedRescue     = array_slice($returnedRescue, 0, $limit);
             $allItems           = array_slice($allItems, 0, $limit);
@@ -216,6 +270,13 @@ class WhatsappOperationalQueueServiceTest extends TestCase
             'generated_at' => now()->format('Y-m-d H:i:s'),
         ];
 
+        if ($queue === 'assignment') {
+            return $payload + [
+                'queue'   => 'assignment',
+                'summary' => $assignmentSummaryMethod->invoke($service, $assignmentItems),
+                'items'   => $returnedAssignment,
+            ];
+        }
         if ($queue === 'supervisor') {
             return $payload + [
                 'queue'   => 'supervisor',
@@ -233,7 +294,11 @@ class WhatsappOperationalQueueServiceTest extends TestCase
 
         return $payload + [
             'summary' => $fullSummary,
-            'queues'  => ['supervisor' => $returnedSupervisor, 'rescue' => $returnedRescue],
+            'queues'  => [
+                'assignment' => $returnedAssignment,
+                'supervisor' => $returnedSupervisor,
+                'rescue'     => $returnedRescue,
+            ],
             'items'   => $allItems,
         ];
     }
@@ -241,8 +306,33 @@ class WhatsappOperationalQueueServiceTest extends TestCase
     /**
      * @return array<string,mixed>
      */
+    public function test_queue_assignment_returns_only_assignment_items(): void
+    {
+        $service   = app(WhatsappOperationalQueueService::class);
+        $decisions = $this->makeDecisions();
+        $result    = $this->callQueuesWithFakeDecisions($decisions, queue: 'assignment');
+
+        $this->assertSame('assignment', $result['queue']);
+        foreach ($result['items'] as $item) {
+            $this->assertSame(WhatsappOperationalDecisionService::ACTION_ASSIGN_NOW, $item['recommended_action']);
+        }
+    }
+
+    public function test_queue_all_returns_assignment_supervisor_and_rescue(): void
+    {
+        $service   = app(WhatsappOperationalQueueService::class);
+        $decisions = $this->makeDecisions();
+        $result    = $this->callQueuesWithFakeDecisions($decisions, queue: 'all');
+
+        $this->assertArrayHasKey('queues', $result);
+        $this->assertArrayHasKey('assignment', $result['queues']);
+        $this->assertArrayHasKey('supervisor', $result['queues']);
+        $this->assertArrayHasKey('rescue', $result['queues']);
+    }
+
     private function decision(int $convId, string $bucket, string $action, string $priority, string $risk): array
     {
+        $isAssignment = $action === WhatsappOperationalDecisionService::ACTION_ASSIGN_NOW;
         $isSupervisor = $action === WhatsappOperationalDecisionService::ACTION_SUPERVISOR_REVIEW;
         $isRescue     = in_array($action, [
             WhatsappOperationalDecisionService::ACTION_RESCUE_FOLLOWUP,
@@ -256,7 +346,7 @@ class WhatsappOperationalQueueServiceTest extends TestCase
             'priority'                         => $priority,
             'risk_level'                       => $risk,
             'opportunity_level'                => 'high',
-            'eligible_for_autoassign'          => false,
+            'eligible_for_autoassign'          => $isAssignment,
             'eligible_for_rescue'              => $isRescue,
             'eligible_for_supervisor_alert'    => $isSupervisor,
             'has_attributed_booking'           => false,

@@ -171,7 +171,9 @@ class WhatsappOperationalQueueAuditCommandTest extends TestCase
         $payload = json_decode(Artisan::output(), true);
 
         $queues = $payload['queues'];
-        $sumOfParts = (int) $queues['supervisor_total']
+        $this->assertArrayHasKey('assignment_total', $queues);
+        $sumOfParts = (int) $queues['assignment_total']
+            + (int) $queues['supervisor_total']
             + (int) $queues['rescue_total']
             + (int) $queues['no_action_total'];
 

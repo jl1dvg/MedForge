@@ -938,7 +938,7 @@ Artisan::command('whatsapp:operational-queues
         : now();
 
     $queueOpt = strtolower(trim((string) ($this->option('queue') ?? 'all')));
-    $validQueues = ['supervisor', 'rescue', 'all'];
+    $validQueues = ['assignment', 'supervisor', 'rescue', 'all'];
     if (!in_array($queueOpt, $validQueues, true)) {
         $this->error('Cola inválida: "' . $queueOpt . '". Valores válidos: ' . implode(', ', $validQueues));
 
@@ -976,6 +976,9 @@ Artisan::command('whatsapp:operational-queues
         $this->table(
             ['Cola', 'Métrica', 'Valor'],
             [
+                ['assignment', 'total', (int) ($summary['assignment_queue']['total'] ?? 0)],
+                ['assignment', 'high_risk', (int) ($summary['assignment_queue']['high_risk'] ?? 0)],
+                ['assignment', 'eligible_for_autoassign', (int) ($summary['assignment_queue']['eligible_for_autoassign'] ?? 0)],
                 ['supervisor', 'total', (int) ($summary['supervisor_queue']['total'] ?? 0)],
                 ['supervisor', 'high_risk', (int) ($summary['supervisor_queue']['high_risk'] ?? 0)],
                 ['supervisor', 'over_sla', (int) ($summary['supervisor_queue']['over_sla'] ?? 0)],
@@ -991,6 +994,25 @@ Artisan::command('whatsapp:operational-queues
 
         if ((bool) $this->option('summary-only')) {
             return 0;
+        }
+    }
+
+    if (in_array($queueOpt, ['assignment', 'all'], true)) {
+        $items = $result['queues']['assignment'] ?? $result['items'] ?? [];
+        if ($items !== []) {
+            $this->line('── Assignment Queue ─────────────────────────────────────────');
+            $this->table(
+                ['conv_id', 'bucket', 'priority', 'risk', 'autoassign', 'has_booking', 'reason'],
+                array_map(fn (array $item): array => [
+                    (int) ($item['conversation_id'] ?? 0),
+                    (string) ($item['bucket'] ?? ''),
+                    (string) ($item['priority'] ?? ''),
+                    (string) ($item['risk_level'] ?? ''),
+                    (bool) ($item['eligible_for_autoassign'] ?? false) ? 'sí' : 'no',
+                    (bool) ($item['has_attributed_booking'] ?? false) ? 'sí' : 'no',
+                    mb_strimwidth((string) ($item['reason'] ?? ''), 0, 55, '…'),
+                ], $items)
+            );
         }
     }
 
@@ -1064,6 +1086,7 @@ Artisan::command('whatsapp:operational-queue-audit
     }
 
     // ── Queue Service — classify each decision into its queue bucket ───────
+    $assignmentItems = $queueService->buildAssignmentQueue($decisions);
     $supervisorItems = $queueService->buildSupervisorQueue($decisions);
     $rescueItems     = $queueService->buildRescueQueue($decisions);
 
@@ -1075,6 +1098,7 @@ Artisan::command('whatsapp:operational-queue-audit
         WhatsappOperationalDecisionService::ACTION_NO_ACTION_LOST,
     ];
 
+    $assignmentConvIds = array_column($assignmentItems, 'conversation_id');
     $supervisorConvIds = array_column($supervisorItems, 'conversation_id');
     $rescueConvIds     = array_column($rescueItems, 'conversation_id');
 
@@ -1086,11 +1110,13 @@ Artisan::command('whatsapp:operational-queue-audit
     }
 
     $allAccountedConvIds = array_unique(array_merge(
+        $assignmentConvIds,
         $supervisorConvIds,
         $rescueConvIds,
         $noActionConvIds
     ));
 
+    $assignmentTotal  = count($assignmentItems);
     $supervisorTotal  = count($supervisorItems);
     $rescueTotal      = count($rescueItems);
     $noActionTotal    = count($noActionConvIds);
@@ -1130,7 +1156,8 @@ Artisan::command('whatsapp:operational-queue-audit
             'by_action' => $decisionByAction,
         ],
         'queues' => [
-            'total_accounted' => $totalAccounted,
+            'total_accounted'  => $totalAccounted,
+            'assignment_total' => $assignmentTotal,
             'supervisor_total' => $supervisorTotal,
             'rescue_total'     => $rescueTotal,
             'no_action_total'  => $noActionTotal,
@@ -1158,6 +1185,7 @@ Artisan::command('whatsapp:operational-queue-audit
         [
             ['decision_engine', 'total', count($decisions)],
             ['queues', 'total_accounted', $totalAccounted],
+            ['queues', 'assignment_total', $assignmentTotal],
             ['queues', 'supervisor_total', $supervisorTotal],
             ['queues', 'rescue_total', $rescueTotal],
             ['queues', 'no_action_total', $noActionTotal],

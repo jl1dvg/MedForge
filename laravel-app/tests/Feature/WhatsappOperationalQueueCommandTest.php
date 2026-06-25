@@ -189,13 +189,72 @@ class WhatsappOperationalQueueCommandTest extends TestCase
         $this->assertArrayHasKey('generated_at', $payload);
         $this->assertArrayHasKey('summary', $payload);
         $this->assertArrayHasKey('queues', $payload);
+        $this->assertArrayHasKey('assignment', $payload['queues']);
         $this->assertArrayHasKey('supervisor', $payload['queues']);
         $this->assertArrayHasKey('rescue', $payload['queues']);
 
         Carbon::setTestNow();
     }
 
+    public function test_queue_assignment_json_returns_only_assign_now(): void
+    {
+        Carbon::setTestNow('2026-06-25 10:00:00');
+        // unassigned HOT_OPEN with inbound → assign_now
+        $this->seedConversation(1, now()->subHour(), 'captacion_agendar');
+        $this->seedInbound(1, now()->subMinutes(30));
+
+        Artisan::call('whatsapp:operational-queues', [
+            '--queue' => 'assignment',
+            '--json'  => true,
+        ]);
+        $payload = json_decode(Artisan::output(), true);
+
+        $this->assertSame('assignment', $payload['queue']);
+        $this->assertIsArray($payload['items']);
+        $this->assertArrayHasKey('assignment_queue', $payload['summary']);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_summary_includes_assignment_queue_key(): void
+    {
+        Carbon::setTestNow('2026-06-25 10:00:00');
+        $this->seedConversation(1, now()->subHour(), 'captacion_agendar', agentId: 9);
+
+        Artisan::call('whatsapp:operational-queues', ['--summary-only' => true, '--json' => true]);
+        $payload = json_decode(Artisan::output(), true);
+
+        $this->assertArrayHasKey('assignment_queue', $payload['summary']);
+        $this->assertArrayHasKey('supervisor_queue', $payload['summary']);
+        $this->assertArrayHasKey('rescue_queue', $payload['summary']);
+        $this->assertArrayHasKey('no_action', $payload['summary']);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_invalid_queue_assignment_variant_still_valid(): void
+    {
+        $exitCode = Artisan::call('whatsapp:operational-queues', [
+            '--queue' => 'assignment',
+            '--json'  => true,
+        ]);
+
+        $this->assertSame(0, $exitCode);
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────────
+
+    private function seedInbound(int $conversationId, Carbon $at): void
+    {
+        DB::table('whatsapp_messages')->insert([
+            'conversation_id'   => $conversationId,
+            'direction'         => 'inbound',
+            'sender_type'       => null,
+            'message_timestamp' => $at,
+            'created_at'        => $at,
+            'updated_at'        => $at,
+        ]);
+    }
 
     private function seedConversation(int $id, Carbon $queuedAt, string $topic, ?int $agentId = null): void
     {
