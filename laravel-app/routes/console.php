@@ -3141,6 +3141,10 @@ Artisan::command('cron:legacy-task {slug : Slug de la tarea en cron_schedule}', 
     $role         = strtolower((string) (getenv('SERVER_ROLE') ?: ''));
     $isScraper    = $role === 'scraper'    || $role === '';
     $isProduction = $role === 'production' || $role === '';
+    $handoffAutoAssignScheduled = filter_var(
+        getenv('WHATSAPP_LARAVEL_HANDOFF_AUTO_ASSIGN_SCHEDULED') ?: 'false',
+        FILTER_VALIDATE_BOOLEAN
+    );
 
     // ── STAGING / SCRAPER ─────────────────────────────────────────────────────
     // Toda la extracción de fuentes externas corre aquí para no saturar producción.
@@ -3170,10 +3174,12 @@ Artisan::command('cron:legacy-task {slug : Slug de la tarea en cron_schedule}', 
             ->withoutOverlapping()
             ->runInBackground();
 
-        // Autoasignación staging: límite conservador para validar cola sin saturar agentes.
-        Schedule::command('whatsapp:handoff-auto-assign --limit=50 --max-age-hours=72')
-            ->everyTenMinutes()
-            ->withoutOverlapping();
+        if ($handoffAutoAssignScheduled) {
+            // Autoasignación staging: límite conservador para validar cola sin saturar agentes.
+            Schedule::command('whatsapp:handoff-auto-assign --limit=50 --max-age-hours=72')
+                ->everyTenMinutes()
+                ->withoutOverlapping();
+        }
     }
 
     // ── PRODUCCIÓN ────────────────────────────────────────────────────────────
@@ -3190,10 +3196,12 @@ Artisan::command('cron:legacy-task {slug : Slug de la tarea en cron_schedule}', 
         // Cierre de handoffs WhatsApp zombies (sin actividad en 7+ días)
         Schedule::command('whatsapp:close-zombie-handoffs --days=7')->dailyAt('02:00');
 
-        // Autoasignación de oportunidades calientes WhatsApp sin dueño.
-        Schedule::command('whatsapp:handoff-auto-assign --limit=100 --max-age-hours=72')
-            ->everyFiveMinutes()
-            ->withoutOverlapping();
+        if ($handoffAutoAssignScheduled) {
+            // Autoasignación de oportunidades calientes WhatsApp sin dueño.
+            Schedule::command('whatsapp:handoff-auto-assign --limit=100 --max-age-hours=72')
+                ->everyFiveMinutes()
+                ->withoutOverlapping();
+        }
     }
 })();
 
