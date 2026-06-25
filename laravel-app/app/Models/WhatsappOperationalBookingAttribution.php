@@ -10,6 +10,7 @@ class WhatsappOperationalBookingAttribution extends Model
 
     protected $casts = [
         'booking_id' => 'int',
+        'form_id' => 'int',
         'booking_conversation_id' => 'int',
         'attributed_conversation_id' => 'int',
         'handoff_id' => 'int',
@@ -19,7 +20,10 @@ class WhatsappOperationalBookingAttribution extends Model
     ];
 
     protected $fillable = [
+        'booking_source',
+        'observed_booking_key',
         'booking_id',
+        'form_id',
         'booking_conversation_id',
         'attributed_conversation_id',
         'handoff_id',

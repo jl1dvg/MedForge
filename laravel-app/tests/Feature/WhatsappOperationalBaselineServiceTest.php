@@ -18,7 +18,10 @@ class WhatsappOperationalBaselineServiceTest extends TestCase
 
         Schema::dropIfExists('whatsapp_operational_snapshots');
         Schema::dropIfExists('whatsapp_operational_booking_attributions');
+        Schema::dropIfExists('whatsapp_operational_events');
         Schema::dropIfExists('whatsapp_appointment_reminders');
+        Schema::dropIfExists('procedimiento_proyectado');
+        Schema::dropIfExists('patient_data');
         Schema::dropIfExists('whatsapp_sigcenter_bookings');
         Schema::dropIfExists('whatsapp_handoff_events');
         Schema::dropIfExists('whatsapp_handoffs');
@@ -55,6 +58,8 @@ class WhatsappOperationalBaselineServiceTest extends TestCase
             $table->id();
             $table->unsignedBigInteger('conversation_id');
             $table->string('direction', 16);
+            $table->string('sender_type', 32)->nullable();
+            $table->unsignedBigInteger('sender_id')->nullable();
             $table->longText('body')->nullable();
             $table->timestamp('message_timestamp')->nullable();
             $table->timestamps();
@@ -82,6 +87,30 @@ class WhatsappOperationalBaselineServiceTest extends TestCase
             $table->timestamp('created_at')->useCurrent();
         });
 
+        Schema::create('whatsapp_operational_events', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('conversation_id')->index();
+            $table->unsignedBigInteger('handoff_id')->nullable()->index();
+            $table->unsignedBigInteger('booking_id')->nullable();
+            $table->unsignedBigInteger('reminder_id')->nullable();
+            $table->unsignedBigInteger('message_id')->nullable();
+            $table->string('event_type', 96)->index();
+            $table->string('event_group', 48);
+            $table->dateTime('event_at')->index();
+            $table->string('actor_type', 32)->default('system');
+            $table->unsignedBigInteger('actor_user_id')->nullable();
+            $table->string('producer', 96);
+            $table->string('bucket', 48)->nullable();
+            $table->string('topic', 96)->nullable();
+            $table->decimal('priority_score', 8, 2)->nullable();
+            $table->string('wa_number', 32)->nullable()->index();
+            $table->string('patient_hc_number', 64)->nullable()->index();
+            $table->string('reason', 191)->nullable();
+            $table->json('payload')->nullable();
+            $table->string('idempotency_key', 191)->unique();
+            $table->timestamps();
+        });
+
         Schema::create('whatsapp_sigcenter_bookings', function (Blueprint $table): void {
             $table->id();
             $table->unsignedBigInteger('conversation_id')->nullable();
@@ -89,6 +118,19 @@ class WhatsappOperationalBaselineServiceTest extends TestCase
             $table->string('status', 32)->default('created');
             $table->string('patient_hc_number', 64)->nullable();
             $table->timestamp('booked_at')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('procedimiento_proyectado', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('form_id')->unique();
+            $table->string('hc_number', 64)->index();
+            $table->date('fecha');
+            $table->time('hora')->nullable();
+            $table->string('sede_departamento', 191)->nullable();
+            $table->string('medico_nombre', 191)->nullable();
+            $table->string('procedimiento_nombre', 191)->nullable();
+            $table->boolean('sigcenter_present')->default(true);
             $table->timestamps();
         });
 
@@ -114,7 +156,10 @@ class WhatsappOperationalBaselineServiceTest extends TestCase
 
         Schema::create('whatsapp_operational_booking_attributions', function (Blueprint $table): void {
             $table->id();
-            $table->unsignedBigInteger('booking_id')->unique();
+            $table->string('booking_source', 48)->default('bot_api');
+            $table->string('observed_booking_key', 191)->unique();
+            $table->unsignedBigInteger('booking_id')->nullable()->index();
+            $table->unsignedBigInteger('form_id')->nullable()->index();
             $table->unsignedBigInteger('booking_conversation_id')->nullable();
             $table->unsignedBigInteger('attributed_conversation_id')->nullable();
             $table->unsignedBigInteger('handoff_id')->nullable();
@@ -162,8 +207,10 @@ class WhatsappOperationalBaselineServiceTest extends TestCase
 
         $this->seedEvent(3, 'auto_assigned', now()->subDays(2)->addHour());
         $this->seedEvent(3, 'requeued', now()->subDays(2)->addMinutes(10));
-        $this->seedBookingAttribution(1, 1, 3, 3, 1, 'auto_assigned', now()->subDays(2)->addHour(), now()->subHour());
+        $this->seedBookingAttribution('bot_api', 'whatsapp_sigcenter_bookings:1', 1, null, 3, 3, 1, 'auto_assigned', now()->subDays(2)->addHour(), now()->subHour());
         $this->seedOutbound(3, now()->subDays(2)->addHours(2));
+        $this->seedOutbound(3, now()->subHours(2));
+        $this->seedManualAppointment(500, 'HC-3', now()->subHour());
         $this->seedReminder(3, 'responded', now()->subHours(2), 'confirmar');
         $this->seedReminder(4, 'failed', now()->subHours(3), null, 'Meta rejected template');
 
@@ -184,6 +231,10 @@ class WhatsappOperationalBaselineServiceTest extends TestCase
         $this->assertSame(1, $baseline['buckets']['lost']['total_conversations']);
         $this->assertSame(1, $baseline['bookings_after_operational_intervention']['total']);
         $this->assertSame(1, $baseline['bookings_after_operational_intervention']['by_event']['auto_assigned']);
+        $this->assertSame(1, $baseline['observed_bot_bookings']);
+        $this->assertSame(1, $baseline['observed_manual_bookings']);
+        $this->assertSame(1, $baseline['inferred_attributed_appointments']);
+        $this->assertSame(0, $baseline['operational_interventions_without_observed_booking']);
         $this->assertSame(1, $baseline['buckets']['rescue']['conversion_after_autoassign']);
         $this->assertSame(1, $baseline['buckets']['rescue']['conversion_after_requeue']);
         $this->assertSame(1, $baseline['reminders']['confirmed']);
@@ -257,6 +308,8 @@ class WhatsappOperationalBaselineServiceTest extends TestCase
         DB::table('whatsapp_messages')->insert([
             'conversation_id' => $id,
             'direction' => 'inbound',
+            'sender_type' => null,
+            'sender_id' => null,
             'body' => 'Necesito agendar',
             'message_timestamp' => $latestInboundAt ?? $queuedAt,
             'created_at' => $latestInboundAt ?? $queuedAt,
@@ -297,6 +350,29 @@ class WhatsappOperationalBaselineServiceTest extends TestCase
             'event_type' => $type,
             'created_at' => $createdAt,
         ]);
+
+        $handoff = DB::table('whatsapp_handoffs')->where('id', $handoffId)->first();
+        $conversation = $handoff !== null
+            ? DB::table('whatsapp_conversations')->where('id', $handoff->conversation_id)->first()
+            : null;
+        if ($handoff !== null && $conversation !== null) {
+            $canonicalType = $type === 'requeued' ? 'handoff_requeued' : $type;
+            DB::table('whatsapp_operational_events')->insert([
+                'conversation_id' => (int) $handoff->conversation_id,
+                'handoff_id' => $handoffId,
+                'event_type' => $canonicalType,
+                'event_group' => $canonicalType === 'auto_assigned' ? 'assignment' : 'handoff',
+                'event_at' => $createdAt,
+                'actor_type' => 'system',
+                'producer' => 'test',
+                'topic' => $handoff->topic,
+                'wa_number' => $conversation->wa_number,
+                'patient_hc_number' => $conversation->patient_hc_number,
+                'idempotency_key' => 'baseline-event:' . $handoffId . ':' . $canonicalType,
+                'created_at' => $createdAt,
+                'updated_at' => $createdAt,
+            ]);
+        }
     }
 
     private function seedOutbound(int $conversationId, Carbon $at): void
@@ -304,6 +380,8 @@ class WhatsappOperationalBaselineServiceTest extends TestCase
         DB::table('whatsapp_messages')->insert([
             'conversation_id' => $conversationId,
             'direction' => 'outbound',
+            'sender_type' => 'agent',
+            'sender_id' => 9,
             'body' => 'Le ayudo a agendar',
             'message_timestamp' => $at,
             'created_at' => $at,
@@ -335,8 +413,10 @@ class WhatsappOperationalBaselineServiceTest extends TestCase
     }
 
     private function seedBookingAttribution(
-        int $id,
-        int $bookingId,
+        string $source,
+        string $observedKey,
+        ?int $bookingId,
+        ?int $formId,
         int $conversationId,
         int $handoffId,
         int $eventId,
@@ -345,8 +425,10 @@ class WhatsappOperationalBaselineServiceTest extends TestCase
         Carbon $bookingAt,
     ): void {
         DB::table('whatsapp_operational_booking_attributions')->insert([
-            'id' => $id,
+            'booking_source' => $source,
+            'observed_booking_key' => $observedKey,
             'booking_id' => $bookingId,
+            'form_id' => $formId,
             'booking_conversation_id' => $conversationId,
             'attributed_conversation_id' => $conversationId,
             'handoff_id' => $handoffId,
@@ -358,6 +440,22 @@ class WhatsappOperationalBaselineServiceTest extends TestCase
             'booking_at' => $bookingAt,
             'created_at' => now(),
             'updated_at' => now(),
+        ]);
+    }
+
+    private function seedManualAppointment(int $formId, string $hcNumber, Carbon $createdAt): void
+    {
+        DB::table('procedimiento_proyectado')->insert([
+            'form_id' => $formId,
+            'hc_number' => $hcNumber,
+            'fecha' => $createdAt->copy()->addDay()->toDateString(),
+            'hora' => '09:30:00',
+            'sede_departamento' => 'CIVE',
+            'medico_nombre' => 'Dr. Manual',
+            'procedimiento_nombre' => 'Consulta',
+            'sigcenter_present' => true,
+            'created_at' => $createdAt,
+            'updated_at' => $createdAt,
         ]);
     }
 }

@@ -49,14 +49,17 @@ class WhatsappOperationalAttributionService
             }
 
             $exists = DB::table('whatsapp_operational_booking_attributions')
-                ->where('booking_id', (int) $booking->booking_id)
+                ->where('observed_booking_key', (string) $booking->observed_booking_key)
                 ->exists();
 
             DB::table('whatsapp_operational_booking_attributions')->updateOrInsert(
-                ['booking_id' => (int) $booking->booking_id],
+                ['observed_booking_key' => (string) $booking->observed_booking_key],
                 [
-                    'booking_conversation_id' => $booking->booking_conversation_id !== null
-                        ? (int) $booking->booking_conversation_id
+                    'booking_source' => (string) $booking->booking_source,
+                    'booking_id' => $booking->booking_id !== null ? (int) $booking->booking_id : null,
+                    'form_id' => $booking->form_id !== null ? (int) $booking->form_id : null,
+                    'booking_conversation_id' => $booking->conversation_id !== null
+                        ? (int) $booking->conversation_id
                         : null,
                     'attributed_conversation_id' => $match->conversation_id !== null
                         ? (int) $match->conversation_id
@@ -84,36 +87,31 @@ class WhatsappOperationalAttributionService
      */
     private function bookingRows(CarbonImmutable $from, CarbonImmutable $to): array
     {
-        return DB::table('whatsapp_sigcenter_bookings as b')
-            ->leftJoin('whatsapp_conversations as c', 'c.id', '=', 'b.conversation_id')
-            ->select([
-                'b.id as booking_id',
-                'b.conversation_id as booking_conversation_id',
-                DB::raw('COALESCE(b.wa_number, c.wa_number) AS booking_wa_number'),
-                DB::raw('COALESCE(b.patient_hc_number, c.patient_hc_number) AS booking_patient_hc_number'),
-                DB::raw('COALESCE(b.booked_at, b.created_at) AS booking_at'),
-            ])
-            ->whereIn('b.status', ['created', 'confirmed'])
-            ->whereRaw('COALESCE(b.booked_at, b.created_at) >= ?', [$from->format('Y-m-d H:i:s')])
-            ->whereRaw('COALESCE(b.booked_at, b.created_at) < ?', [$to->format('Y-m-d H:i:s')])
-            ->orderBy('b.id')
-            ->get()
-            ->all();
+        return array_map(static fn (array $record): object => (object) [
+            'booking_source' => (string) ($record['booking_source'] ?? 'unknown'),
+            'observed_booking_key' => (string) ($record['observed_booking_key'] ?? ''),
+            'booking_id' => $record['booking_id'] ?? null,
+            'form_id' => $record['form_id'] ?? null,
+            'conversation_id' => $record['conversation_id'] ?? null,
+            'booking_wa_number' => (string) ($record['wa_number'] ?? ''),
+            'booking_patient_hc_number' => (string) ($record['patient_hc_number'] ?? ''),
+            'booking_at' => (string) ($record['booking_created_at'] ?? ''),
+        ], app(WhatsappAttributedAppointmentSourceService::class)->attributedAppointments($from, $to));
     }
 
     private function bestAttributionForBooking(object $booking): ?object
     {
         $bookingAt = CarbonImmutable::parse((string) $booking->booking_at);
-        $conversationId = $booking->booking_conversation_id !== null ? (int) $booking->booking_conversation_id : null;
+        $conversationId = $booking->conversation_id !== null ? (int) $booking->conversation_id : null;
         $waNumber = trim((string) ($booking->booking_wa_number ?? ''));
         $patientHcNumber = trim((string) ($booking->booking_patient_hc_number ?? ''));
 
         if ($conversationId !== null) {
             $match = $this->eventQuery()
-                ->where('h.conversation_id', $conversationId)
-                ->where('e.created_at', '>=', $bookingAt->subDays(7)->format('Y-m-d H:i:s'))
-                ->where('e.created_at', '<', $bookingAt->format('Y-m-d H:i:s'))
-                ->orderByDesc('e.created_at')
+                ->where('e.conversation_id', $conversationId)
+                ->where('e.event_at', '>=', $bookingAt->subDays(7)->format('Y-m-d H:i:s'))
+                ->where('e.event_at', '<', $bookingAt->format('Y-m-d H:i:s'))
+                ->orderByDesc('e.event_at')
                 ->first();
 
             if ($match !== null) {
@@ -126,10 +124,10 @@ class WhatsappOperationalAttributionService
 
         if ($waNumber !== '') {
             $match = $this->eventQuery()
-                ->where('c.wa_number', $waNumber)
-                ->where('e.created_at', '>=', $bookingAt->subHours(72)->format('Y-m-d H:i:s'))
-                ->where('e.created_at', '<', $bookingAt->format('Y-m-d H:i:s'))
-                ->orderByDesc('e.created_at')
+                ->where(DB::raw('COALESCE(e.wa_number, c.wa_number)'), $waNumber)
+                ->where('e.event_at', '>=', $bookingAt->subHours(72)->format('Y-m-d H:i:s'))
+                ->where('e.event_at', '<', $bookingAt->format('Y-m-d H:i:s'))
+                ->orderByDesc('e.event_at')
                 ->first();
 
             if ($match !== null) {
@@ -142,10 +140,10 @@ class WhatsappOperationalAttributionService
 
         if ($patientHcNumber !== '') {
             $match = $this->eventQuery()
-                ->where('c.patient_hc_number', $patientHcNumber)
-                ->where('e.created_at', '>=', $bookingAt->subHours(72)->format('Y-m-d H:i:s'))
-                ->where('e.created_at', '<', $bookingAt->format('Y-m-d H:i:s'))
-                ->orderByDesc('e.created_at')
+                ->where(DB::raw('COALESCE(e.patient_hc_number, c.patient_hc_number)'), $patientHcNumber)
+                ->where('e.event_at', '>=', $bookingAt->subHours(72)->format('Y-m-d H:i:s'))
+                ->where('e.event_at', '<', $bookingAt->format('Y-m-d H:i:s'))
+                ->orderByDesc('e.event_at')
                 ->first();
 
             if ($match !== null) {
@@ -161,17 +159,17 @@ class WhatsappOperationalAttributionService
 
     private function eventQuery(): Builder
     {
-        return DB::table('whatsapp_handoff_events as e')
-            ->join('whatsapp_handoffs as h', 'h.id', '=', 'e.handoff_id')
-            ->leftJoin('whatsapp_conversations as c', 'c.id', '=', 'h.conversation_id')
+        return DB::table('whatsapp_operational_events as e')
+            ->leftJoin('whatsapp_handoffs as h', 'h.id', '=', 'e.handoff_id')
+            ->leftJoin('whatsapp_conversations as c', 'c.id', '=', 'e.conversation_id')
             ->select([
                 'e.id as event_id',
                 'e.handoff_id',
                 'e.event_type',
-                'e.created_at as event_at',
-                'h.conversation_id',
+                'e.event_at',
+                'e.conversation_id',
             ])
-            ->whereIn('e.event_type', array_keys(self::EVENT_TYPE_MAP));
+            ->whereIn('e.event_type', array_values(self::EVENT_TYPE_MAP));
     }
 
     private function canonicalEventType(string $rawEventType): string
@@ -182,9 +180,7 @@ class WhatsappOperationalAttributionService
     private function hasRequiredTables(): bool
     {
         return Schema::hasTable('whatsapp_operational_booking_attributions')
-            && Schema::hasTable('whatsapp_sigcenter_bookings')
-            && Schema::hasTable('whatsapp_handoff_events')
-            && Schema::hasTable('whatsapp_handoffs')
+            && Schema::hasTable('whatsapp_operational_events')
             && Schema::hasTable('whatsapp_conversations');
     }
 }

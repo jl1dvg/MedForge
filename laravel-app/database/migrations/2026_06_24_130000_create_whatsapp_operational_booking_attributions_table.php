@@ -14,7 +14,10 @@ return new class extends Migration
 
         Schema::create('whatsapp_operational_booking_attributions', function (Blueprint $table): void {
             $table->id();
-            $table->unsignedBigInteger('booking_id')->unique();
+            $table->string('booking_source', 48)->default('bot_api')->index('woba_booking_source_idx');
+            $table->string('observed_booking_key', 191)->unique('woba_observed_booking_key_uniq');
+            $table->unsignedBigInteger('booking_id')->nullable()->index('woba_booking_id_idx');
+            $table->unsignedBigInteger('form_id')->nullable()->index('woba_form_id_idx');
             // Explicit short index names — MySQL 64-char identifier limit
             $table->unsignedBigInteger('booking_conversation_id')->nullable()->index('woba_booking_conv_id_idx');
             $table->unsignedBigInteger('attributed_conversation_id')->nullable()->index('woba_attributed_conv_id_idx');

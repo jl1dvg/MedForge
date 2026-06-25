@@ -64,6 +64,7 @@ class WhatsappOperationalBaselineService
         }
 
         $bookingsAfterIntervention = $this->bookingsAfterOperationalIntervention($date, $periodTo);
+        $bookingObservability = $this->bookingObservability($date, $periodTo, $bookingsAfterIntervention);
         $reminders = $this->reminderMetrics($date, $periodTo);
 
         $payload = [
@@ -71,6 +72,11 @@ class WhatsappOperationalBaselineService
             'generated_at' => $asOfAt->format('Y-m-d H:i:s'),
             'buckets' => $buckets,
             'bookings_after_operational_intervention' => $bookingsAfterIntervention,
+            'observed_bot_bookings' => $bookingObservability['observed_bot_bookings'],
+            'observed_manual_bookings' => $bookingObservability['observed_manual_bookings'],
+            'inferred_attributed_appointments' => $bookingObservability['inferred_attributed_appointments'],
+            'operational_interventions_without_observed_booking' => $bookingObservability['operational_interventions_without_observed_booking'],
+            'booking_observability' => $bookingObservability,
             'reminders' => $reminders,
             'dashboard_ready' => [
                 'bucket_order' => self::BUCKETS,
@@ -361,25 +367,75 @@ class WhatsappOperationalBaselineService
         }
 
         $rows = DB::table('whatsapp_operational_booking_attributions')
-            ->select(['booking_id', 'event_type'])
+            ->select(['booking_id', 'observed_booking_key', 'event_type'])
             ->whereIn('event_type', self::OPERATIONAL_BOOKING_EVENTS)
             ->where('booking_at', '>=', $from->format('Y-m-d H:i:s'))
             ->where('booking_at', '<', $to->format('Y-m-d H:i:s'))
-            ->orderBy('booking_id')
+            ->orderBy('observed_booking_key')
             ->get();
 
-        $bookingIds = [];
+        $bookingKeys = [];
         foreach ($rows as $row) {
-            $bookingIds[(int) $row->booking_id] = true;
+            $key = trim((string) ($row->observed_booking_key ?? ''));
+            if ($key === '') {
+                $key = 'booking_id:' . (int) ($row->booking_id ?? 0);
+            }
+            $bookingKeys[$key] = true;
             $eventType = (string) ($row->event_type ?? '');
             if ($eventType !== '' && array_key_exists($eventType, $result['by_event'])) {
                 $result['by_event'][$eventType]++;
             }
         }
 
-        $result['total'] = count($bookingIds);
+        $result['total'] = count($bookingKeys);
 
         return $result;
+    }
+
+    /**
+     * @param array{total:int,by_event:array<string,int>} $bookingsAfterIntervention
+     * @return array{observed_bot_bookings:int,observed_manual_bookings:int,inferred_attributed_appointments:int,operational_interventions_without_observed_booking:int,attribution_source:string,observed_booking_scope:string,manual_booking_sync_required:bool}
+     */
+    private function bookingObservability(CarbonImmutable $from, CarbonImmutable $to, array $bookingsAfterIntervention): array
+    {
+        $appointments = app(WhatsappAttributedAppointmentSourceService::class)
+            ->attributedAppointments($from, $to);
+
+        $bot = 0;
+        $manual = 0;
+        foreach ($appointments as $appointment) {
+            if (($appointment['booking_source'] ?? '') === 'bot_api') {
+                $bot++;
+                continue;
+            }
+            $manual++;
+        }
+
+        $operationalInterventions = $this->operationalInterventionCount($from, $to);
+
+        return [
+            'observed_bot_bookings' => $bot,
+            'observed_manual_bookings' => $manual,
+            'inferred_attributed_appointments' => $manual,
+            'operational_interventions_without_observed_booking' => max(0, $operationalInterventions - (int) $bookingsAfterIntervention['total']),
+            'attribution_source' => 'whatsapp_attributed_appointment_source',
+            'observed_booking_scope' => 'bot_api_and_report_inferred_manual_sigcenter',
+            'manual_booking_sync_required' => true,
+        ];
+    }
+
+    private function operationalInterventionCount(CarbonImmutable $from, CarbonImmutable $to): int
+    {
+        if (!Schema::hasTable('whatsapp_operational_events')) {
+            return 0;
+        }
+
+        return (int) DB::table('whatsapp_operational_events')
+            ->whereIn('event_type', self::OPERATIONAL_BOOKING_EVENTS)
+            ->where('event_at', '>=', $from->format('Y-m-d H:i:s'))
+            ->where('event_at', '<', $to->format('Y-m-d H:i:s'))
+            ->distinct()
+            ->count('conversation_id');
     }
 
     /**
