@@ -34,6 +34,7 @@ class FlowRuntimeExecutionService
         private readonly FlowAiAgentPreviewService  $aiAgentPreviewService = new FlowAiAgentPreviewService(),
         private readonly WhatsappAppointmentReminderService $appointmentReminderService = new WhatsappAppointmentReminderService(),
         private readonly WhatsappAuditService       $auditService = new WhatsappAuditService(),
+        private readonly WhatsappOperationalEventService $operationalEvents = new WhatsappOperationalEventService(),
     )
     {
     }
@@ -889,6 +890,11 @@ class FlowRuntimeExecutionService
 
                 $slowOperations = ['list_times', 'list_days', 'book_appointment', 'cancel_appointment', 'list_doctors_by_name'];
                 $currentOperation = $this->normalizeSigcenterOperation((string)($action['operation'] ?? ''));
+                if ($this->isAvailabilityOperation($currentOperation)) {
+                    $this->recordOperationalFlowEvent($conversation, 'availability_requested', [
+                        'operation' => $currentOperation,
+                    ], reason: $currentOperation);
+                }
                 if (in_array($currentOperation, $slowOperations, true)) {
                     $waitingMessages = [
                         'book_appointment'    => '📋 Confirmando tu cita...',
@@ -901,6 +907,12 @@ class FlowRuntimeExecutionService
                         'type' => 'text',
                         'body' => $waitingMessages[$currentOperation] ?? '🔍 Consultando disponibilidad...',
                     ], $context);
+                }
+
+                if ($currentOperation === 'book_appointment') {
+                    $this->recordOperationalFlowEvent($conversation, 'booking_attempted', [
+                        'operation' => $currentOperation,
+                    ], reason: 'sigcenter_booking_attempt');
                 }
 
                 $preview = $this->sigcenterAgendaService->execute($action, $context, [
@@ -929,6 +941,13 @@ class FlowRuntimeExecutionService
                     if (is_string($preview['handoff_priority'] ?? null) && trim($preview['handoff_priority']) !== '') {
                         $context['handoff_priority'] = trim(strtolower($preview['handoff_priority']));
                     }
+                }
+
+                if ($this->isAvailabilityOperation($currentOperation) && $this->previewHasEmptyAvailability($preview)) {
+                    $this->recordOperationalFlowEvent($conversation, 'availability_empty', [
+                        'operation' => $currentOperation,
+                        'preview_ok' => (bool) ($preview['ok'] ?? false),
+                    ], reason: $currentOperation);
                 }
 
                 if (($preview['operation'] ?? null) === 'list_procedimientos') {
@@ -964,6 +983,10 @@ class FlowRuntimeExecutionService
                         $messagesSent++;
                         $context['state'] = 'agenda_confirmar_cita';
                     } else {
+                        $this->recordOperationalFlowEvent($conversation, 'booking_failed', [
+                            'operation' => $currentOperation,
+                            'error' => (string) ($preview['error'] ?? ''),
+                        ], reason: 'sigcenter_booking_failed');
                         $this->sendFlowMessage($conversation, $this->bookingFailureMessage((string)($preview['error'] ?? '')), $context);
                         $messagesSent++;
                     }
@@ -1135,7 +1158,7 @@ class FlowRuntimeExecutionService
         $fechaInicio = $this->parseDateTime($payload['fecha_inicio'] ?? $context['fecha_inicio'] ?? null);
         $now = now();
 
-        DB::table('whatsapp_sigcenter_bookings')->insert([
+        $bookingId = DB::table('whatsapp_sigcenter_bookings')->insertGetId([
             'conversation_id' => $conversation->id,
             'wa_number' => (string)$conversation->wa_number,
             'inbound_message_id' => $inboundMessage->wa_message_id,
@@ -1157,6 +1180,15 @@ class FlowRuntimeExecutionService
             'created_at' => $now,
             'updated_at' => $now,
         ]);
+
+        if ($success) {
+            $this->operationalEvents->recordBookingCreated((int) $bookingId);
+        } else {
+            $this->recordOperationalFlowEvent($conversation, 'booking_failed', [
+                'booking_id' => (int) $bookingId,
+                'error' => $this->scalarOrNull($preview['error'] ?? null),
+            ], reason: 'sigcenter_booking_failed');
+        }
 
         return $context;
     }
@@ -2920,6 +2952,69 @@ class FlowRuntimeExecutionService
             'crear cita',
             'acepto',
         ], true);
+    }
+
+    private function isAvailabilityOperation(string $operation): bool
+    {
+        return in_array($operation, [
+            'list_specialties',
+            'list_sedes',
+            'list_doctors',
+            'list_doctors_by_name',
+            'list_days',
+            'list_times',
+            'list_procedimientos',
+        ], true);
+    }
+
+    /**
+     * @param array<string,mixed> $preview
+     */
+    private function previewHasEmptyAvailability(array $preview): bool
+    {
+        if (empty($preview['ok'])) {
+            return false;
+        }
+
+        $data = $preview['data'] ?? null;
+        if (is_array($data)) {
+            return count($data) === 0;
+        }
+
+        return $data === null && !empty($preview['ready']);
+    }
+
+    /**
+     * @param array<string,mixed> $payload
+     */
+    private function recordOperationalFlowEvent(
+        WhatsappConversation $conversation,
+        string $eventType,
+        array $payload,
+        ?string $reason = null,
+    ): void {
+        try {
+            if (!Schema::hasTable('whatsapp_operational_events')) {
+                return;
+            }
+
+            $this->operationalEvents->recordForConversation($conversation, $eventType, 'flow_runtime_execution', [
+                'event_at' => now(),
+                'actor_type' => 'bot',
+                'reason' => $reason,
+                'payload' => $payload,
+                'idempotency_key' => sha1(implode('|', [
+                    'flow_runtime_execution',
+                    (string) $conversation->id,
+                    $eventType,
+                    $reason ?? '',
+                    now()->format('Y-m-d H:i'),
+                    json_encode($payload, JSON_UNESCAPED_UNICODE),
+                ])),
+            ]);
+        } catch (\Throwable) {
+            // Event recording must not alter the patient-facing flow.
+        }
     }
 
     /**

@@ -375,6 +375,8 @@ class WhatsappAppointmentReminderService
                     ]),
                 ])->save();
 
+                $this->recordReminderOperationalEvent($reminder, 'reminder_sent', 'sent');
+
                 $sent++;
                 $rows[] = [
                     'form_id' => $formId,
@@ -390,6 +392,10 @@ class WhatsappAppointmentReminderService
                     'failed_at' => now(),
                     'notes' => mb_substr($e->getMessage(), 0, 2000),
                 ])->save();
+
+                $this->recordReminderOperationalEvent($reminder, 'reminder_failed', 'dispatch_failed', [
+                    'error' => $e->getMessage(),
+                ]);
 
                 $failed++;
                 $rows[] = [
@@ -496,6 +502,8 @@ class WhatsappAppointmentReminderService
                 'responded_at' => now(),
             ])->save();
 
+            $this->recordReminderOperationalEvent($reminder, 'reminder_confirmed', 'patient_confirmed');
+
             $this->dispatchService->sendSystemText(
                 $conversation,
                 '✅ Gracias por confirmar tu asistencia. Si necesitas algo más, escribe AYUDA o MENU.'
@@ -515,6 +523,8 @@ class WhatsappAppointmentReminderService
                 'response_value' => 'agente',
                 'responded_at' => now(),
             ])->save();
+
+            $this->recordReminderOperationalEvent($reminder, 'reminder_agent_requested', 'patient_requested_agent');
 
             $payload = is_array($reminder->payload) ? $reminder->payload : [];
             $note = sprintf(
@@ -547,6 +557,49 @@ class WhatsappAppointmentReminderService
         }
 
         return null;
+    }
+
+    /**
+     * @param array<string,mixed> $extraPayload
+     */
+    private function recordReminderOperationalEvent(
+        WhatsappAppointmentReminder $reminder,
+        string $eventType,
+        string $reason,
+        array $extraPayload = [],
+    ): void {
+        try {
+            if (!Schema::hasTable('whatsapp_operational_events') || (int) ($reminder->conversation_id ?? 0) <= 0) {
+                return;
+            }
+
+            app(WhatsappOperationalEventService::class)->record([
+                'conversation_id' => (int) $reminder->conversation_id,
+                'reminder_id' => (int) $reminder->id,
+                'event_type' => $eventType,
+                'event_at' => match ($eventType) {
+                    'reminder_sent' => $reminder->sent_at ?? now(),
+                    'reminder_failed' => $reminder->failed_at ?? now(),
+                    default => $reminder->responded_at ?? now(),
+                },
+                'actor_type' => $eventType === 'reminder_confirmed' || $eventType === 'reminder_agent_requested'
+                    ? 'patient'
+                    : 'system',
+                'producer' => 'whatsapp_appointment_reminder_service',
+                'wa_number' => $reminder->wa_number,
+                'patient_hc_number' => $reminder->hc_number,
+                'reason' => $reason,
+                'payload' => array_merge([
+                    'source_type' => $reminder->source_type,
+                    'reminder_window' => $reminder->reminder_window,
+                    'template_code' => $reminder->template_code,
+                    'status' => $reminder->status,
+                ], $extraPayload),
+                'idempotency_key' => "{$eventType}:reminder:{$reminder->id}",
+            ]);
+        } catch (\Throwable) {
+            // Operational events are observability; reminder delivery must remain the source behavior.
+        }
     }
 
     private function classifySourceType(string $procedimiento): ?string

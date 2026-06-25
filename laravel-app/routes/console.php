@@ -22,6 +22,7 @@ use App\Modules\Whatsapp\Services\ConversationOpsService;
 use App\Modules\Whatsapp\Services\FlowRuntimeShadowCompareService;
 use App\Modules\Whatsapp\Services\FlowRuntimeShadowObserverService;
 use App\Modules\Whatsapp\Services\WhatsappAppointmentReminderService;
+use App\Modules\Whatsapp\Services\WhatsappOperationalEventService;
 use App\Models\WhatsappConversation;
 use App\Models\WhatsappConversationAttribution;
 use App\Models\WhatsappMessage;
@@ -278,6 +279,51 @@ Artisan::command('whatsapp:attribution-backfill
     $this->info('Backfill de atribución completado.');
     return $errors > 0 ? 1 : 0;
 })->purpose('Reconstruye atribución histórica de conversaciones WhatsApp para el dashboard analítico');
+
+Artisan::command('whatsapp:operational-events-backfill
+    {--from= : Fecha inicial YYYY-MM-DD}
+    {--to= : Fecha final YYYY-MM-DD}
+    {--dry-run : Muestra lo que se insertaría sin escribir}', function (): int {
+    /** @var WhatsappOperationalEventService $service */
+    $service = app(WhatsappOperationalEventService::class);
+
+    $from = trim((string) ($this->option('from') ?? ''));
+    $to = trim((string) ($this->option('to') ?? ''));
+    $dryRun = (bool) $this->option('dry-run');
+
+    $summary = $service->backfillLegacyHandoffEvents(
+        $from !== '' ? $from : null,
+        $to !== '' ? $to : null,
+        $dryRun
+    );
+
+    $this->table(
+        ['Métrica', 'Valor'],
+        [
+            ['Modo', $dryRun ? 'dry-run' : 'write'],
+            ['Desde', $from !== '' ? $from : 'sin filtro'],
+            ['Hasta', $to !== '' ? $to : 'sin filtro'],
+            ['Eventos procesados', (string) ($summary['processed'] ?? 0)],
+            ['Eventos creados', (string) ($summary['created'] ?? 0)],
+            ['Eventos omitidos/idempotentes', (string) ($summary['skipped'] ?? 0)],
+            ['Eventos sin conversation_id', (string) ($summary['missing_conversation'] ?? 0)],
+        ]
+    );
+
+    $mappings = $summary['mappings'] ?? [];
+    if (is_array($mappings) && $mappings !== []) {
+        $this->newLine();
+        $this->table(
+            ['Mapeo', 'Total'],
+            collect($mappings)
+                ->map(fn ($count, $mapping): array => [(string) $mapping, (string) $count])
+                ->values()
+                ->all()
+        );
+    }
+
+    return 0;
+})->purpose('Backfill canónico de eventos operacionales WhatsApp desde whatsapp_handoff_events');
 
 Artisan::command('whatsapp:flowmaker-shadow
     {wa_number : Número WhatsApp para simular}
