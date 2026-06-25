@@ -1037,6 +1037,156 @@ Artisan::command('whatsapp:operational-queues
     return 0;
 })->purpose('Colas operacionales de supervisor y rescate — solo lectura');
 
+Artisan::command('whatsapp:operational-queue-audit
+    {--date= : Fecha de evaluación YYYY-MM-DD (default: hoy)}
+    {--json : Salida JSON}', function (): int {
+    /** @var WhatsappOperationalDecisionService $decisionService */
+    $decisionService = app(WhatsappOperationalDecisionService::class);
+    /** @var WhatsappOperationalQueueService $queueService */
+    $queueService = app(WhatsappOperationalQueueService::class);
+
+    $dateOption = trim((string) ($this->option('date') ?? ''));
+    $asOf = $dateOption !== ''
+        ? \Illuminate\Support\Carbon::parse($dateOption)->endOfDay()
+        : now()->endOfDay();
+
+    // ── Decision Engine ───────────────────────────────────────────────────
+    $evalResult  = $decisionService->evaluate($asOf);
+    $decisions   = $evalResult['decisions'];
+    $decisionDate = $evalResult['date'];
+
+    $decisionByAction = [];
+    $decisionConvIds  = [];
+    foreach ($decisions as $d) {
+        $action = (string) ($d['recommended_action'] ?? 'unknown');
+        $decisionByAction[$action] = ($decisionByAction[$action] ?? 0) + 1;
+        $decisionConvIds[] = (int) ($d['conversation_id'] ?? 0);
+    }
+
+    // ── Queue Service — classify each decision into its queue bucket ───────
+    $supervisorItems = $queueService->buildSupervisorQueue($decisions);
+    $rescueItems     = $queueService->buildRescueQueue($decisions);
+
+    // Actions that go into no_action bucket in queues
+    $noActionActions = [
+        WhatsappOperationalDecisionService::ACTION_NO_ACTION_CONVERTED,
+        WhatsappOperationalDecisionService::ACTION_ALREADY_HANDLED,
+        WhatsappOperationalDecisionService::ACTION_HOLD_BACKLOG,
+        WhatsappOperationalDecisionService::ACTION_NO_ACTION_LOST,
+    ];
+
+    $supervisorConvIds = array_column($supervisorItems, 'conversation_id');
+    $rescueConvIds     = array_column($rescueItems, 'conversation_id');
+
+    $noActionConvIds = [];
+    foreach ($decisions as $d) {
+        if (in_array($d['recommended_action'] ?? '', $noActionActions, true)) {
+            $noActionConvIds[] = (int) ($d['conversation_id'] ?? 0);
+        }
+    }
+
+    $allAccountedConvIds = array_unique(array_merge(
+        $supervisorConvIds,
+        $rescueConvIds,
+        $noActionConvIds
+    ));
+
+    $supervisorTotal  = count($supervisorItems);
+    $rescueTotal      = count($rescueItems);
+    $noActionTotal    = count($noActionConvIds);
+    $totalAccounted   = count($allAccountedConvIds);
+
+    // ── Diff ──────────────────────────────────────────────────────────────
+    $unaccountedConvIds = array_values(array_diff($decisionConvIds, $allAccountedConvIds));
+    $diffCount = count($unaccountedConvIds);
+
+    // Group unaccounted by action
+    $unaccountedByAction = [];
+    foreach ($decisions as $d) {
+        $convId = (int) ($d['conversation_id'] ?? 0);
+        if (in_array($convId, $unaccountedConvIds, true)) {
+            $action = (string) ($d['recommended_action'] ?? 'unknown');
+            $unaccountedByAction[$action] = ($unaccountedByAction[$action] ?? 0) + 1;
+        }
+    }
+
+    // Build explanation strings
+    $explanations = [];
+    if ($diffCount === 0) {
+        $explanations[] = 'All decisions are accounted for in supervisor, rescue, or no_action buckets.';
+    } else {
+        foreach ($unaccountedByAction as $action => $count) {
+            $explanations[] = "Action '{$action}': {$count} conversation(s) not mapped to any queue bucket.";
+        }
+        $explanations[] = "Total unaccounted: {$diffCount} conversation(s). "
+            . 'These decisions exist in the Decision Engine but are not classified into supervisor, rescue, or no_action queues.';
+    }
+
+    $payload = [
+        'date'            => $decisionDate,
+        'generated_at'    => now()->format('Y-m-d H:i:s'),
+        'decision_engine' => [
+            'total'     => count($decisions),
+            'by_action' => $decisionByAction,
+        ],
+        'queues' => [
+            'total_accounted' => $totalAccounted,
+            'supervisor_total' => $supervisorTotal,
+            'rescue_total'     => $rescueTotal,
+            'no_action_total'  => $noActionTotal,
+        ],
+        'diff' => [
+            'count'            => $diffCount,
+            'by_action'        => $unaccountedByAction,
+            'conversation_ids' => $unaccountedConvIds,
+            'explanation'      => $explanations,
+        ],
+    ];
+
+    if ((bool) $this->option('json')) {
+        $this->line((string) json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+
+        return 0;
+    }
+
+    // ── Table output ──────────────────────────────────────────────────────
+    $this->line('Queue Consistency Audit — ' . $decisionDate);
+    $this->line('');
+
+    $this->table(
+        ['Sección', 'Métrica', 'Valor'],
+        [
+            ['decision_engine', 'total', count($decisions)],
+            ['queues', 'total_accounted', $totalAccounted],
+            ['queues', 'supervisor_total', $supervisorTotal],
+            ['queues', 'rescue_total', $rescueTotal],
+            ['queues', 'no_action_total', $noActionTotal],
+            ['diff', 'count', $diffCount],
+        ]
+    );
+
+    if ($diffCount > 0) {
+        $this->line('── Unaccounted by action ─────────────────────────────────────');
+        $this->table(
+            ['Action', 'Count'],
+            array_map(
+                fn (string $action, int $count): array => [$action, $count],
+                array_keys($unaccountedByAction),
+                array_values($unaccountedByAction)
+            )
+        );
+
+        $this->line('── Explanation ──────────────────────────────────────────────');
+        foreach ($explanations as $line) {
+            $this->line('  • ' . $line);
+        }
+    } else {
+        $this->line('✓ No discrepancy found — all decisions accounted for.');
+    }
+
+    return 0;
+})->purpose('Audita consistencia entre Decision Engine y Operational Queues — solo lectura');
+
 Artisan::command('whatsapp:operational-attribution
     {--date= : Día a recalcular YYYY-MM-DD}
     {--from= : Inicio explícito YYYY-MM-DD HH:MM:SS}
