@@ -803,6 +803,356 @@ Artisan::command('whatsapp:operational-attribution
     return 0;
 })->purpose('Calcula atribuciones persistentes entre eventos operacionales y citas WhatsApp');
 
+Artisan::command('whatsapp:attribution-audit
+    {--from= : Inicio del período YYYY-MM-DD}
+    {--to= : Fin del período YYYY-MM-DD}
+    {--json : Salida JSON completa}', function (): int {
+
+    // ── Event types that qualify as operational interventions (mirrors service) ──
+    $validEventTypes = [
+        'requested', 'handoff_created', 'requeued', 'handoff_requeued',
+        'auto_assigned', 'assigned', 'agent_taken',
+        'first_response_after_assignment', 'abandonment_escalated',
+        'template_rescue', 'template_rescue_sent',
+        'reminder_rescue', 'reminder_rescue_sent', 'supervisor_alerted',
+    ];
+
+    $fromOption = trim((string) $this->option('from'));
+    $toOption   = trim((string) $this->option('to'));
+    $from = $fromOption !== '' ? \Illuminate\Support\Carbon::parse($fromOption)->startOfDay() : now()->startOfDay();
+    $to   = $toOption   !== '' ? \Illuminate\Support\Carbon::parse($toOption)->endOfDay()     : $from->copy()->endOfDay();
+
+    $this->line("Auditoría de atribución operacional");
+    $this->line("Período: {$from->format('Y-m-d H:i:s')} → {$to->format('Y-m-d H:i:s')}");
+    $this->line(str_repeat('─', 80));
+
+    // ── Fetch bookings in range ──
+    $bookings = \Illuminate\Support\Facades\DB::table('whatsapp_sigcenter_bookings as b')
+        ->leftJoin('whatsapp_conversations as c', 'c.id', '=', 'b.conversation_id')
+        ->select([
+            'b.id as booking_id',
+            'b.conversation_id as booking_conversation_id',
+            'b.status as booking_status',
+            \Illuminate\Support\Facades\DB::raw('COALESCE(b.wa_number, c.wa_number) AS booking_wa_number'),
+            \Illuminate\Support\Facades\DB::raw('COALESCE(b.patient_hc_number, c.patient_hc_number) AS booking_patient_hc_number'),
+            \Illuminate\Support\Facades\DB::raw('COALESCE(b.booked_at, b.created_at) AS booking_at'),
+            'c.display_name as conv_display_name',
+            'c.needs_human as conv_needs_human',
+        ])
+        ->whereIn('b.status', ['created', 'confirmed'])
+        ->whereRaw('COALESCE(b.booked_at, b.created_at) >= ?', [$from->format('Y-m-d H:i:s')])
+        ->whereRaw('COALESCE(b.booked_at, b.created_at) < ?', [$to->format('Y-m-d H:i:s')])
+        ->orderBy('b.id')
+        ->get();
+
+    if ($bookings->isEmpty()) {
+        $this->warn("No se encontraron citas en el período.");
+        return 0;
+    }
+
+    $this->line("Citas encontradas: {$bookings->count()}");
+    $this->newLine();
+
+    $auditRows = [];
+    $causas    = [];
+
+    foreach ($bookings as $booking) {
+        $bookingAt     = \Carbon\CarbonImmutable::parse((string) $booking->booking_at);
+        $conversationId = $booking->booking_conversation_id !== null ? (int) $booking->booking_conversation_id : null;
+        $waNumber       = trim((string) ($booking->booking_wa_number ?? ''));
+        $hcNumber       = trim((string) ($booking->booking_patient_hc_number ?? ''));
+
+        // ── Diagnose each of the 3 attribution strategies ──
+        $strategies = [];
+
+        // 1. Same conversation (7-day window)
+        if ($conversationId !== null) {
+            $allConvEvents = \Illuminate\Support\Facades\DB::table('whatsapp_handoff_events as e')
+                ->join('whatsapp_handoffs as h', 'h.id', '=', 'e.handoff_id')
+                ->where('h.conversation_id', $conversationId)
+                ->whereIn('e.event_type', $validEventTypes)
+                ->select(['e.id', 'e.event_type', 'e.created_at', 'h.id as handoff_id'])
+                ->orderByDesc('e.created_at')
+                ->get();
+
+            if ($allConvEvents->isEmpty()) {
+                $strategies['same_conversation_7d'] = [
+                    'result'  => 'NO_EVENTS',
+                    'reason'  => 'No hay eventos operacionales en ningún handoff de esta conversación',
+                    'count'   => 0,
+                    'closest' => null,
+                ];
+            } else {
+                $inWindow = $allConvEvents->filter(function ($e) use ($bookingAt) {
+                    $eAt = \Carbon\CarbonImmutable::parse((string) $e->created_at);
+                    return $eAt >= $bookingAt->subDays(7) && $eAt < $bookingAt;
+                });
+                $afterBooking = $allConvEvents->filter(function ($e) use ($bookingAt) {
+                    return \Carbon\CarbonImmutable::parse((string) $e->created_at) >= $bookingAt;
+                });
+                $closest = $allConvEvents->first();
+                $closestAt = $closest ? \Carbon\CarbonImmutable::parse((string) $closest->created_at) : null;
+                $diffMin   = $closestAt ? (int) $closestAt->diffInMinutes($bookingAt) : null;
+                $diffSign  = $closestAt && $closestAt < $bookingAt ? '-' : '+';
+
+                if ($inWindow->isNotEmpty()) {
+                    $strategies['same_conversation_7d'] = [
+                        'result'  => 'FOUND',
+                        'reason'  => "Encontró {$inWindow->count()} evento(s) dentro de la ventana de 7 días",
+                        'count'   => $inWindow->count(),
+                        'closest' => $closest ? (array) $closest : null,
+                    ];
+                } elseif ($afterBooking->isNotEmpty() && $inWindow->isEmpty()) {
+                    $strategies['same_conversation_7d'] = [
+                        'result'  => 'EVENTS_AFTER_BOOKING',
+                        'reason'  => "Hay {$afterBooking->count()} evento(s) pero todos POSTERIORES a la cita (evento posterior no atribuye)",
+                        'count'   => $allConvEvents->count(),
+                        'closest' => $closest ? (array) $closest : null,
+                        'diff'    => "{$diffSign}{$diffMin} min desde la cita",
+                    ];
+                } else {
+                    $strategies['same_conversation_7d'] = [
+                        'result'  => 'OUTSIDE_WINDOW',
+                        'reason'  => "Hay {$allConvEvents->count()} evento(s) pero fuera de la ventana de 7 días previos",
+                        'count'   => $allConvEvents->count(),
+                        'closest' => $closest ? (array) $closest : null,
+                        'diff'    => "{$diffSign}{$diffMin} min desde la cita",
+                    ];
+                }
+            }
+        } else {
+            $strategies['same_conversation_7d'] = [
+                'result' => 'NO_CONVERSATION',
+                'reason' => 'booking.conversation_id es NULL — cita sin conversación vinculada',
+                'count'  => 0,
+                'closest' => null,
+            ];
+        }
+
+        // 2. Same wa_number (72h window)
+        if ($waNumber !== '') {
+            $allWaEvents = \Illuminate\Support\Facades\DB::table('whatsapp_handoff_events as e')
+                ->join('whatsapp_handoffs as h', 'h.id', '=', 'e.handoff_id')
+                ->leftJoin('whatsapp_conversations as c', 'c.id', '=', 'h.conversation_id')
+                ->where('c.wa_number', $waNumber)
+                ->whereIn('e.event_type', $validEventTypes)
+                ->select(['e.id', 'e.event_type', 'e.created_at', 'h.conversation_id'])
+                ->orderByDesc('e.created_at')
+                ->get();
+
+            if ($allWaEvents->isEmpty()) {
+                $strategies['same_wa_number_72h'] = [
+                    'result' => 'NO_EVENTS',
+                    'reason' => "No hay eventos operacionales para wa_number={$waNumber} en ningún período",
+                    'count'  => 0,
+                    'closest' => null,
+                ];
+            } else {
+                $inWindow = $allWaEvents->filter(function ($e) use ($bookingAt) {
+                    $eAt = \Carbon\CarbonImmutable::parse((string) $e->created_at);
+                    return $eAt >= $bookingAt->subHours(72) && $eAt < $bookingAt;
+                });
+                $closest  = $allWaEvents->first();
+                $closestAt = $closest ? \Carbon\CarbonImmutable::parse((string) $closest->created_at) : null;
+                $diffMin   = $closestAt ? (int) $closestAt->diffInMinutes($bookingAt) : null;
+                $diffSign  = $closestAt && $closestAt < $bookingAt ? '-' : '+';
+
+                if ($inWindow->isNotEmpty()) {
+                    $strategies['same_wa_number_72h'] = [
+                        'result' => 'FOUND',
+                        'reason' => "Encontró {$inWindow->count()} evento(s) dentro de 72h",
+                        'count'  => $inWindow->count(),
+                        'closest' => $closest ? (array) $closest : null,
+                    ];
+                } else {
+                    $strategies['same_wa_number_72h'] = [
+                        'result' => 'OUTSIDE_WINDOW',
+                        'reason' => "Hay {$allWaEvents->count()} evento(s) pero fuera de 72h previas. Evento más cercano: {$diffSign}{$diffMin} min",
+                        'count'  => $allWaEvents->count(),
+                        'closest' => $closest ? (array) $closest : null,
+                        'diff'   => "{$diffSign}{$diffMin} min desde la cita",
+                    ];
+                }
+            }
+        } else {
+            $strategies['same_wa_number_72h'] = [
+                'result' => 'NO_WA_NUMBER',
+                'reason' => 'wa_number vacío o NULL en booking y conversación',
+                'count'  => 0,
+                'closest' => null,
+            ];
+        }
+
+        // 3. Same HC number (72h window)
+        if ($hcNumber !== '') {
+            $allHcEvents = \Illuminate\Support\Facades\DB::table('whatsapp_handoff_events as e')
+                ->join('whatsapp_handoffs as h', 'h.id', '=', 'e.handoff_id')
+                ->leftJoin('whatsapp_conversations as c', 'c.id', '=', 'h.conversation_id')
+                ->where('c.patient_hc_number', $hcNumber)
+                ->whereIn('e.event_type', $validEventTypes)
+                ->select(['e.id', 'e.event_type', 'e.created_at', 'h.conversation_id'])
+                ->orderByDesc('e.created_at')
+                ->get();
+
+            if ($allHcEvents->isEmpty()) {
+                $strategies['same_patient_hc_number_72h'] = [
+                    'result' => 'NO_EVENTS',
+                    'reason' => "No hay eventos operacionales para hc_number={$hcNumber}",
+                    'count'  => 0,
+                    'closest' => null,
+                ];
+            } else {
+                $inWindow = $allHcEvents->filter(function ($e) use ($bookingAt) {
+                    $eAt = \Carbon\CarbonImmutable::parse((string) $e->created_at);
+                    return $eAt >= $bookingAt->subHours(72) && $eAt < $bookingAt;
+                });
+                $closest  = $allHcEvents->first();
+                $closestAt = $closest ? \Carbon\CarbonImmutable::parse((string) $closest->created_at) : null;
+                $diffMin   = $closestAt ? (int) $closestAt->diffInMinutes($bookingAt) : null;
+                $diffSign  = $closestAt && $closestAt < $bookingAt ? '-' : '+';
+
+                if ($inWindow->isNotEmpty()) {
+                    $strategies['same_patient_hc_number_72h'] = [
+                        'result' => 'FOUND',
+                        'reason' => "Encontró {$inWindow->count()} evento(s) dentro de 72h",
+                        'count'  => $inWindow->count(),
+                        'closest' => $closest ? (array) $closest : null,
+                    ];
+                } else {
+                    $strategies['same_patient_hc_number_72h'] = [
+                        'result' => 'OUTSIDE_WINDOW',
+                        'reason' => "Hay {$allHcEvents->count()} evento(s) pero fuera de 72h. Evento más cercano: {$diffSign}{$diffMin} min",
+                        'count'  => $allHcEvents->count(),
+                        'closest' => $closest ? (array) $closest : null,
+                        'diff'   => "{$diffSign}{$diffMin} min",
+                    ];
+                }
+            }
+        } else {
+            $strategies['same_patient_hc_number_72h'] = [
+                'result' => 'NO_HC_NUMBER',
+                'reason' => 'patient_hc_number vacío o NULL en booking y conversación',
+                'count'  => 0,
+                'closest' => null,
+            ];
+        }
+
+        // ── Determine final verdict ──
+        $attributed = collect($strategies)->contains(fn ($s) => $s['result'] === 'FOUND');
+        $verdict    = $attributed ? 'ATRIBUIDA' : 'NO ATRIBUIDA';
+
+        // Determine primary rejection cause
+        $cause = 'SIN_CAUSA';
+        if (!$attributed) {
+            $results = collect($strategies)->pluck('result');
+            if ($results->contains('EVENTS_AFTER_BOOKING')) {
+                $cause = 'EVENTOS_POSTERIORES_A_CITA';
+            } elseif ($results->contains('OUTSIDE_WINDOW')) {
+                $cause = 'FUERA_DE_VENTANA';
+            } elseif ($results->contains('NO_EVENTS') && !$results->contains('NO_CONVERSATION') && !$results->contains('NO_WA_NUMBER') && !$results->contains('NO_HC_NUMBER')) {
+                $cause = 'SIN_EVENTOS_OPERACIONALES';
+            } elseif ($results->every(fn ($r) => in_array($r, ['NO_CONVERSATION', 'NO_WA_NUMBER', 'NO_HC_NUMBER', 'NO_EVENTS']))) {
+                $cause = 'SIN_IDENTIDAD_VINCULADA';
+            } else {
+                $cause = 'SIN_EVENTOS_EN_VENTANA';
+            }
+        }
+        $causas[] = $cause;
+
+        $auditRows[] = [
+            'booking_id'      => $booking->booking_id,
+            'status'          => $booking->booking_status,
+            'conversation_id' => $conversationId,
+            'conv_name'       => $booking->conv_display_name ?? '—',
+            'wa_number'       => $waNumber ?: '—',
+            'hc_number'       => $hcNumber ?: '—',
+            'booking_at'      => $bookingAt->format('Y-m-d H:i:s'),
+            'verdict'         => $verdict,
+            'cause'           => $cause,
+            'strategies'      => $strategies,
+        ];
+
+        // ── Print per-booking report ──
+        $this->line("┌─ Booking #{$booking->booking_id} ─── {$verdict} ─── Causa: {$cause}");
+        $this->line("│  Estado:    {$booking->booking_status}");
+        $this->line("│  Cita:      {$bookingAt->format('Y-m-d H:i:s')}");
+        $this->line("│  Conv:      " . ($conversationId ? "#{$conversationId} ({$booking->conv_display_name})" : 'NULL — sin conversación vinculada'));
+        $this->line("│  WA:        " . ($waNumber ?: 'NULL'));
+        $this->line("│  HC:        " . ($hcNumber ?: 'NULL'));
+        $this->newLine();
+
+        foreach ($strategies as $strategy => $info) {
+            $icon = match ($info['result']) {
+                'FOUND'                => '✓',
+                'NO_EVENTS'            => '✗',
+                'NO_CONVERSATION'      => '○',
+                'NO_WA_NUMBER'         => '○',
+                'NO_HC_NUMBER'         => '○',
+                'OUTSIDE_WINDOW'       => '⊘',
+                'EVENTS_AFTER_BOOKING' => '⚠',
+                default                => '?',
+            };
+            $this->line("│  [{$icon}] {$strategy}");
+            $this->line("│      → {$info['reason']}");
+            if (!empty($info['closest'])) {
+                $ev = $info['closest'];
+                $this->line("│      Evento más cercano: #{$ev['id']} tipo={$ev['event_type']} at={$ev['created_at']}");
+            }
+        }
+        $this->line("└" . str_repeat('─', 79));
+        $this->newLine();
+    }
+
+    // ── Summary ──
+    $this->line("═══ RESUMEN ═══════════════════════════════════════════════════════════════════");
+    $this->table(
+        ['Causa de no atribución', 'Citas'],
+        collect($causas)->countBy()->map(fn ($n, $k) => [$k, $n])->values()->all()
+    );
+
+    // Dominant cause
+    $dominant = collect($causas)->countBy()->sortDesc()->keys()->first();
+    $this->newLine();
+    $this->line("Principal causa: {$dominant}");
+
+    // Recommendation
+    $this->newLine();
+    $this->line("─── Recomendación mínima ───────────────────────────────────────────────────────");
+    match ($dominant) {
+        'EVENTOS_POSTERIORES_A_CITA' => $this->line(
+            "Las citas se registran ANTES de que el evento operacional ocurra.\n" .
+            "Modificación mínima: permitir también eventos POSTERIORES a la cita\n" .
+            "dentro de una ventana corta (ej. +2h) para capturar confirmaciones\n" .
+            "que llegan después del booking."
+        ),
+        'FUERA_DE_VENTANA' => $this->line(
+            "Hay eventos operacionales pero más de 7 días / 72h antes de la cita.\n" .
+            "Modificación mínima: ampliar ventana de same_conversation a 14d\n" .
+            "y same_wa / same_hc a 7d (168h), aceptando menor confianza."
+        ),
+        'SIN_EVENTOS_OPERACIONALES' => $this->line(
+            "Las conversaciones vinculadas no tienen ningún evento operacional registrado.\n" .
+            "Modificación mínima: revisar si el scraper/bot está emitiendo eventos\n" .
+            "handoff_created / auto_assigned correctamente."
+        ),
+        'SIN_IDENTIDAD_VINCULADA' => $this->line(
+            "Las citas no tienen conversation_id, wa_number ni hc_number usables.\n" .
+            "Modificación mínima: asegurar que el proceso de booking\n" .
+            "persista wa_number y patient_hc_number en whatsapp_sigcenter_bookings."
+        ),
+        default => $this->line(
+            "Revisar los detalles por cita para determinar la acción correcta."
+        ),
+    };
+
+    if ((bool) $this->option('json')) {
+        $this->newLine();
+        $this->line((string) json_encode(['bookings' => $auditRows, 'dominant_cause' => $dominant], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+    }
+
+    return 0;
+})->purpose('Auditoría diagnóstica: explica por qué cada cita no pudo atribuirse a un evento operacional');
+
 Artisan::command('whatsapp:monitor-abandonment
     {--dry-run : Solo muestra conversaciones candidatas sin encolarlas}
     {--limit=100 : Máximo de conversaciones a revisar/encolar}
