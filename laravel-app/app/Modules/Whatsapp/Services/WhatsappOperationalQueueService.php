@@ -39,6 +39,16 @@ class WhatsappOperationalQueueService
         $queue       = strtolower(trim((string) ($options['queue'] ?? 'all')));
         $limit       = isset($options['limit']) && $options['limit'] > 0 ? (int) $options['limit'] : null;
 
+        // Category filter: captacion | operacion | ambiguo | all (default)
+        $category = strtolower(trim((string) ($options['category'] ?? 'all')));
+        if ($category !== '' && $category !== 'all') {
+            $allowedTopics = WhatsappOperationalDecisionService::categoryTopics($category);
+            $decisions = array_values(array_filter(
+                $decisions,
+                fn (array $d): bool => in_array($d['topic'] ?? '', $allowedTopics, true)
+            ));
+        }
+
         $assignmentItems = $this->buildAssignmentQueue($decisions);
         $supervisorItems = $this->buildSupervisorQueue($decisions);
         $rescueItems     = $this->buildRescueQueue($decisions);
@@ -298,6 +308,10 @@ class WhatsappOperationalQueueService
         return [
             'conversation_id'               => (int) ($d['conversation_id'] ?? 0),
             'bucket'                        => (string) ($d['bucket'] ?? ''),
+            'topic'                         => (string) ($d['topic'] ?? ''),
+            'topic_label'                   => (string) ($d['topic_label'] ?? 'No clasificado'),
+            'category'                      => (string) ($d['category'] ?? ''),
+            'category_label'                => (string) ($d['category_label'] ?? ''),
             'recommended_action'            => (string) ($d['recommended_action'] ?? ''),
             'priority'                      => (string) ($d['priority'] ?? ''),
             'risk_level'                    => (string) ($d['risk_level'] ?? ''),
@@ -305,6 +319,7 @@ class WhatsappOperationalQueueService
             'eligible_for_autoassign'       => (bool) ($d['eligible_for_autoassign'] ?? false),
             'eligible_for_rescue'           => (bool) ($d['eligible_for_rescue'] ?? false),
             'eligible_for_supervisor_alert' => (bool) ($d['eligible_for_supervisor_alert'] ?? false),
+            'latest_inbound_at'             => $d['latest_inbound_at'] ?? null,
             // TODO: populate assigned_user_id from whatsapp_conversations join
             'assigned_user_id'              => null,
             // TODO: populate assigned_user_name from users table join
@@ -330,11 +345,16 @@ class WhatsappOperationalQueueService
         return [
             'conversation_id'              => (int) ($d['conversation_id'] ?? 0),
             'bucket'                       => (string) ($d['bucket'] ?? ''),
+            'topic'                        => (string) ($d['topic'] ?? ''),
+            'topic_label'                  => (string) ($d['topic_label'] ?? 'No clasificado'),
+            'category'                     => (string) ($d['category'] ?? ''),
+            'category_label'               => (string) ($d['category_label'] ?? ''),
             'recommended_action'           => (string) ($d['recommended_action'] ?? ''),
             'priority'                     => (string) ($d['priority'] ?? ''),
             'risk_level'                   => (string) ($d['risk_level'] ?? ''),
             'opportunity_level'            => (string) ($d['opportunity_level'] ?? ''),
             'eligible_for_supervisor_alert' => (bool) ($d['eligible_for_supervisor_alert'] ?? false),
+            'latest_inbound_at'            => $d['latest_inbound_at'] ?? null,
             // TODO: populate assigned_user_id from whatsapp_conversations join
             'assigned_user_id'             => null,
             // TODO: populate assigned_user_name from users table join
@@ -362,11 +382,16 @@ class WhatsappOperationalQueueService
         return [
             'conversation_id'               => (int) ($d['conversation_id'] ?? 0),
             'bucket'                        => (string) ($d['bucket'] ?? ''),
+            'topic'                         => (string) ($d['topic'] ?? ''),
+            'topic_label'                   => (string) ($d['topic_label'] ?? 'No clasificado'),
+            'category'                      => (string) ($d['category'] ?? ''),
+            'category_label'                => (string) ($d['category_label'] ?? ''),
             'recommended_action'            => (string) ($d['recommended_action'] ?? ''),
             'priority'                      => (string) ($d['priority'] ?? ''),
             'risk_level'                    => (string) ($d['risk_level'] ?? ''),
             'opportunity_level'             => (string) ($d['opportunity_level'] ?? ''),
             'eligible_for_rescue'           => (bool) ($d['eligible_for_rescue'] ?? false),
+            'latest_inbound_at'             => $d['latest_inbound_at'] ?? null,
             // TODO: populate waiting_minutes from queued_at → now diff via conversation rows
             'waiting_minutes'               => null,
             // TODO: populate last_patient_message_at from whatsapp_messages (inbound latest)

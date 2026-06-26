@@ -78,9 +78,17 @@ class WhatsappOperationalDecisionService
         $hasPrimary            = (bool) ($attribution['has_primary'] ?? false);
         $hasIndependent        = (bool) ($attribution['has_independent'] ?? false);
 
+        $topic    = (string) ($row->topic ?? '');
+        $category = self::topicCategory($topic);
+
         $base = [
             'conversation_id'                  => $convId,
             'bucket'                           => $bucket,
+            'topic'                            => $topic,
+            'topic_label'                      => self::topicLabel($topic),
+            'category'                         => $category,
+            'category_label'                   => self::categoryLabel($category),
+            'latest_inbound_at'                => ($row->latest_inbound_at ?? null),
             'has_attributed_booking'           => $hasAttributedBooking,
             'has_primary_clinical_appointment' => $hasPrimary,
             'has_independent_attributed_service' => $hasIndependent,
@@ -534,5 +542,50 @@ class WhatsappOperationalDecisionService
         }
 
         return CarbonImmutable::parse((string) $value);
+    }
+
+    // ── Topic / category helpers ──────────────────────────────────────────────
+
+    private const TOPIC_CATEGORY_MAP = [
+        'captacion_agendar'           => 'captacion',
+        'agenda_sin_disponibilidad'   => 'captacion',
+        'operacion_cita_vigente'      => 'operacion',
+        'operacion_reagenda'          => 'operacion',
+        'faq_escalada'                => 'ambiguo',
+    ];
+
+    private const TOPIC_LABEL_MAP = [
+        'captacion_agendar'           => 'Nuevo paciente — agendar',
+        'agenda_sin_disponibilidad'   => 'Sin disponibilidad — requiere alternativa',
+        'operacion_cita_vigente'      => 'Paciente con cita próxima',
+        'operacion_reagenda'          => 'Solicita cambio de cita',
+        'faq_escalada'                => 'Consulta escalada',
+    ];
+
+    private const CATEGORY_LABEL_MAP = [
+        'captacion' => 'Captación',
+        'operacion' => 'Operación',
+        'ambiguo'   => 'FAQ / Ambiguo',
+    ];
+
+    public static function topicCategory(string $topic): string
+    {
+        return self::TOPIC_CATEGORY_MAP[$topic] ?? 'ambiguo';
+    }
+
+    public static function topicLabel(string $topic): string
+    {
+        return self::TOPIC_LABEL_MAP[$topic] ?? 'No clasificado';
+    }
+
+    public static function categoryLabel(string $category): string
+    {
+        return self::CATEGORY_LABEL_MAP[$category] ?? 'No clasificado';
+    }
+
+    /** @return string[] */
+    public static function categoryTopics(string $category): array
+    {
+        return array_keys(array_filter(self::TOPIC_CATEGORY_MAP, fn (string $c) => $c === $category));
     }
 }

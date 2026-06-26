@@ -8,7 +8,8 @@ use Illuminate\Http\Request;
 
 class OperationalQueuesController
 {
-    private const VALID_QUEUES = ['assignment', 'supervisor', 'rescue', 'all'];
+    private const VALID_QUEUES      = ['assignment', 'supervisor', 'rescue', 'all'];
+    private const VALID_CATEGORIES  = ['captacion', 'operacion', 'ambiguo', 'all'];
 
     public function __construct(
         private readonly WhatsappOperationalQueueService $queueService
@@ -64,12 +65,25 @@ class OperationalQueuesController
             $limit = $limitInt;
         }
 
+        // ── Validate category ─────────────────────────────────────────────
+        $categoryParam = strtolower(trim((string) $request->query('category', 'all')));
+        if (!in_array($categoryParam, self::VALID_CATEGORIES, true)) {
+            return response()->json([
+                'ok'      => false,
+                'message' => 'Invalid category value.',
+                'errors'  => [
+                    'category' => ['Valores válidos: ' . implode(', ', self::VALID_CATEGORIES)],
+                ],
+            ], 422);
+        }
+
         // ── Build queue payload ───────────────────────────────────────────
         $summaryOnly = filter_var($request->query('summary_only', '0'), FILTER_VALIDATE_BOOLEAN);
 
         $result = $this->queueService->queues($asOf, [
-            'queue' => $queueParam,
-            'limit' => $limit,
+            'queue'    => $queueParam,
+            'limit'    => $limit,
+            'category' => $categoryParam,
         ]);
 
         // ── Build response ────────────────────────────────────────────────
@@ -91,6 +105,7 @@ class OperationalQueuesController
         $meta = [
             'read_only' => true,
             'queue'     => $queueParam,
+            'category'  => $categoryParam,
         ];
         if ($limit !== null) {
             $meta['limit'] = $limit;
