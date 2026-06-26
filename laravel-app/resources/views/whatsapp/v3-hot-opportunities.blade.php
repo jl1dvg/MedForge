@@ -119,10 +119,9 @@
   });
 })();
 window.HOT_OPPS_CONFIG = {
-  apiUrl:         @json($apiUrl),
-  chatUrl:        @json($chatUrl),
-  pollIntervalMs: 0,
+  apiUrl:  @json($apiUrl),
+  chatUrl: @json($chatUrl),
 };
 </script>
-<script src="/js/whatsapp-hot-opps/app.js?v=3a-3"></script>
+<script src="/js/whatsapp-hot-opps/app.js?v=3a-4"></script>
 @endpush

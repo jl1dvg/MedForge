@@ -5,9 +5,8 @@
 const { useState, useEffect, useRef, useCallback } = React;
 
 const CFG = window.HOT_OPPS_CONFIG || {
-  apiUrl:          '/v2/whatsapp/api/operational-queues',
-  chatUrl:         '/v2/whatsapp/chat',
-  pollIntervalMs:  0,
+  apiUrl:  '/v2/whatsapp/api/operational-queues',
+  chatUrl: '/v2/whatsapp/chat',
 };
 
 /* ─── Icons ─────────────────────────────────────────────────────────────── */
