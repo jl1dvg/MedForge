@@ -243,60 +243,70 @@ function App() {
   const [summary, setSummary] = useState(null);
   const [items,   setItems]   = useState([]);
   const [toasts,  setToasts]  = useState([]);
+  const abortRef = useRef(null);
 
-  function addToast(msg, type = 'error') {
+  function addToast(msg, type) {
     const id = Date.now();
-    setToasts(t => [...t, { id, msg, type }]);
-    setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 5000);
+    setToasts(function(t) { return [...t, { id: id, msg: msg, type: type || 'error' }]; });
+    setTimeout(function() { setToasts(function(t) { return t.filter(function(x) { return x.id !== id; }); }); }, 5000);
   }
 
-  const fetchData = useCallback(async (queue, dateVal) => {
+  // loadData is defined OUTSIDE useCallback intentionally — deps array only has
+  // [date, tab] (stable primitives), so the effect never re-runs on re-render.
+  // AbortController cancels the in-flight request when date/tab changes.
+  useEffect(function() {
+    if (abortRef.current) { abortRef.current.abort(); }
+    var ctrl = new AbortController();
+    abortRef.current = ctrl;
+
     setLoading(true);
     setError(null);
-    try {
-      const params = new URLSearchParams({ date: dateVal, queue });
-      const resp = await fetch(`${CFG.apiUrl}?${params}`, {
-        headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
-      });
 
-      // Session expired → redirect
-      if (resp.redirected || resp.status === 302 || resp.headers.get('content-type')?.includes('text/html')) {
+    var params = new URLSearchParams({ date: date, queue: tab });
+    fetch(CFG.apiUrl + '?' + params.toString(), {
+      signal: ctrl.signal,
+      headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+    })
+    .then(function(resp) {
+      if (ctrl.signal.aborted) return;
+
+      // Session expired → HTML redirect
+      var ct = resp.headers.get('content-type') || '';
+      if (resp.redirected || resp.status === 302 || ct.indexOf('text/html') !== -1) {
         setError('Sesión expirada. Por favor recarga la página e inicia sesión.');
         setLoading(false);
         return;
       }
 
-      const json = await resp.json();
+      return resp.json().then(function(json) {
+        if (ctrl.signal.aborted) return;
+        if (!resp.ok || !json.ok) {
+          setError(json.message || ('Error ' + resp.status));
+          setLoading(false);
+          return;
+        }
 
-      if (!resp.ok || !json.ok) {
-        setError(json.message || `Error ${resp.status}`);
+        var data = json.data || {};
+        setSummary(data.summary || null);
+
+        if (tab === 'all') {
+          var queues = data.queues || {};
+          setItems((queues.assignment || []).concat(queues.supervisor || []).concat(queues.rescue || []));
+        } else {
+          setItems(data.items || []);
+        }
         setLoading(false);
-        return;
-      }
-
-      const data = json.data || {};
-      setSummary(data.summary || null);
-
-      // Normalize items from different queue shapes
-      if (queue === 'all') {
-        const queues = data.queues || {};
-        setItems([
-          ...(queues.assignment || []),
-          ...(queues.supervisor || []),
-          ...(queues.rescue     || []),
-        ]);
-      } else {
-        setItems(data.items || []);
-      }
-    } catch (e) {
+      });
+    })
+    .catch(function(e) {
+      if (e.name === 'AbortError') return;
       setError('Error de red: ' + e.message);
       addToast('Error cargando datos: ' + e.message);
-    } finally {
       setLoading(false);
-    }
-  }, []);
+    });
 
-  useEffect(() => { fetchData(tab, date); }, [tab, date, fetchData]);
+    return function() { ctrl.abort(); };
+  }, [date, tab]); // ONLY stable primitives — no function references
 
   // Filtered items per tab for display
   const displayItems = tab === 'all' ? items : items.filter(i => {
