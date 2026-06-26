@@ -41,6 +41,15 @@ class ReportPdfServicePackageFileSelectionTest extends TestCase
         $this->assertSame($files, $selected);
     }
 
+    public function test_angiografia_con_fluoresceina_is_detected_as_retinal_angiography(): void
+    {
+        $service = new ReportPdfService();
+        $method = new ReflectionMethod($service, 'isAngiografiaRetinal');
+        $method->setAccessible(true);
+
+        $this->assertTrue($method->invoke($service, 'Angiografía con fluoresceína'));
+    }
+
     /**
      * @param array<int, array<string, mixed>> $files
      * @return array<int, array<string, mixed>>

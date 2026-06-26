@@ -2699,7 +2699,11 @@ class ReportPdfService
             return true;
         }
 
-        return str_contains($texto, 'angiografia retinal');
+        return str_contains($texto, 'angiografia retinal')
+            || str_contains($texto, 'angiografia con fluoresceina')
+            || str_contains($texto, 'angiografia fluoresceinica')
+            || str_contains($texto, 'fluorescein angiography')
+            || str_contains($texto, 'angiografia');
     }
 
     private function isRetinografiaOAutofluorescenciaZeiss(?string $tipoExamen): bool
