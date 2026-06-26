@@ -286,9 +286,9 @@ function App() {
   const [toasts, setToasts] = useState([]);
   const abortRef = useRef(null);
   function addToast(msg, type) {
-    const id = Date.now();
+    var id = Date.now();
     setToasts(function(t) {
-      return [...t, { id, msg, type: type || "error" }];
+      return t.concat([{ id, msg, type: type || "error" }]);
     });
     setTimeout(function() {
       setToasts(function(t) {
@@ -298,7 +298,7 @@ function App() {
       });
     }, 5e3);
   }
-  useEffect(function() {
+  const loadQueueData = useCallback(function(dateVal, queueVal) {
     if (abortRef.current) {
       abortRef.current.abort();
     }
@@ -306,7 +306,7 @@ function App() {
     abortRef.current = ctrl;
     setLoading(true);
     setError(null);
-    var params = new URLSearchParams({ date, queue: tab });
+    var params = new URLSearchParams({ date: dateVal, queue: queueVal });
     fetch(CFG.apiUrl + "?" + params.toString(), {
       signal: ctrl.signal,
       headers: { "Accept": "application/json", "X-Requested-With": "XMLHttpRequest" }
@@ -315,7 +315,7 @@ function App() {
       var ct = resp.headers.get("content-type") || "";
       if (resp.redirected || resp.status === 302 || ct.indexOf("text/html") !== -1) {
         setError("Sesi\xF3n expirada. Por favor recarga la p\xE1gina e inicia sesi\xF3n.");
-        setLoading(false);
+        if (!ctrl.signal.aborted) setLoading(false);
         return;
       }
       return resp.json().then(function(json) {
@@ -327,28 +327,35 @@ function App() {
         }
         var data = json.data || {};
         setSummary(data.summary || null);
-        if (tab === "all") {
+        if (queueVal === "all") {
           var queues = data.queues || {};
           setItems((queues.assignment || []).concat(queues.supervisor || []).concat(queues.rescue || []));
         } else {
           setItems(data.items || []);
         }
-        setLoading(false);
+        if (!ctrl.signal.aborted) setLoading(false);
       });
     }).catch(function(e) {
       if (e.name === "AbortError") return;
       setError("Error de red: " + e.message);
       addToast("Error cargando datos: " + e.message);
-      setLoading(false);
+      if (!ctrl.signal.aborted) setLoading(false);
     });
+  }, []);
+  useEffect(function() {
+    loadQueueData(date, tab);
+  }, [date, tab, loadQueueData]);
+  useEffect(function() {
     return function() {
-      ctrl.abort();
+      if (abortRef.current) {
+        abortRef.current.abort();
+      }
     };
-  }, [date, tab]);
-  const displayItems = tab === "all" ? items : items.filter((i) => {
+  }, []);
+  var displayItems = tab === "all" ? items : items.filter(function(i) {
     if (tab === "assignment") return i.recommended_action === "assign_now";
     if (tab === "supervisor") return i.recommended_action === "supervisor_review";
-    if (tab === "rescue") return ["rescue_followup", "send_template_or_review"].includes(i.recommended_action);
+    if (tab === "rescue") return i.recommended_action === "rescue_followup" || i.recommended_action === "send_template_or_review";
     return true;
   });
   return React.createElement(
@@ -371,10 +378,10 @@ function App() {
         summary && React.createElement(
           "span",
           { className: "ho-hd-pill" },
-          `${summary.total_decisions ?? "\u2014"} decisiones`
+          (summary.total_decisions != null ? summary.total_decisions : "\u2014") + " decisiones"
         )
       ),
-      /* Date picker */
+      /* Date picker + manual refresh button */
       React.createElement(
         "div",
         { style: { display: "flex", alignItems: "center", gap: 8 } },
@@ -382,7 +389,9 @@ function App() {
         React.createElement("input", {
           type: "date",
           value: date,
-          onChange: (e) => setDate(e.target.value),
+          onChange: function(e) {
+            setDate(e.target.value);
+          },
           style: {
             border: "1px solid var(--border)",
             borderRadius: 6,
@@ -394,7 +403,10 @@ function App() {
         }),
         React.createElement("button", {
           className: "ho-btn",
-          onClick: () => fetchData(tab, date),
+          title: "Actualizar",
+          onClick: function() {
+            loadQueueData(date, tab);
+          },
           disabled: loading
         }, loading ? React.createElement(Icon, { n: "loading", cls: "mdi-spin" }) : React.createElement(Icon, { n: "refresh" }))
       )
@@ -405,18 +417,20 @@ function App() {
     React.createElement(
       "div",
       { className: "ho-tabs" },
-      QUEUE_TABS.map(
-        (t) => React.createElement(
+      QUEUE_TABS.map(function(t) {
+        return React.createElement(
           "button",
           {
             key: t.key,
-            className: `ho-tab ${tab === t.key ? "active" : ""}`,
-            onClick: () => setTab(t.key)
+            className: "ho-tab" + (tab === t.key ? " active" : ""),
+            onClick: function() {
+              setTab(t.key);
+            }
           },
           React.createElement(Icon, { n: t.icon }),
           " ",
           t.label,
-          tab === t.key && !loading && React.createElement("span", {
+          tab === t.key && !loading ? React.createElement("span", {
             style: {
               marginLeft: 6,
               background: "var(--primary)",
@@ -426,9 +440,9 @@ function App() {
               padding: "1px 6px",
               fontWeight: 700
             }
-          }, displayItems.length)
-        )
-      )
+          }, displayItems.length) : null
+        );
+      })
     ),
     /* ── Content ── */
     React.createElement(
@@ -450,7 +464,7 @@ function App() {
       ) : React.createElement(
         React.Fragment,
         null,
-        tab === "supervisor" && (summary?.supervisor_queue?.total ?? 0) === 0 && !loading ? React.createElement(
+        tab === "supervisor" && summary && (summary.supervisor_queue || {}).total === 0 && !loading ? React.createElement(
           "div",
           { className: "ho-empty" },
           React.createElement(Icon, { n: "shield-check-outline" }),
@@ -459,7 +473,9 @@ function App() {
         React.createElement(ItemsTable, {
           items: displayItems,
           loading,
-          emptyMsg: `No hay conversaciones en cola "${QUEUE_TABS.find((t2) => t2.key === tab)?.label || tab}".`
+          emptyMsg: 'No hay conversaciones en cola "' + (QUEUE_TABS.filter(function(t2) {
+            return t2.key === tab;
+          })[0] || { label: tab }).label + '".'
         })
       )
     )

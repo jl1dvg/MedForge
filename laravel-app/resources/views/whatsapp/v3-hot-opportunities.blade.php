@@ -117,5 +117,5 @@ window.HOT_OPPS_CONFIG = {
   pollIntervalMs: 0,
 };
 </script>
-<script src="/js/whatsapp-hot-opps/app.js"></script>
+<script src="/js/whatsapp-hot-opps/app.js?v={{ filemtime(public_path('js/whatsapp-hot-opps/app.js')) }}"></script>
 @endpush

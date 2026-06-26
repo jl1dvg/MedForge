@@ -246,15 +246,15 @@ function App() {
   const abortRef = useRef(null);
 
   function addToast(msg, type) {
-    const id = Date.now();
-    setToasts(function(t) { return [...t, { id: id, msg: msg, type: type || 'error' }]; });
+    var id = Date.now();
+    setToasts(function(t) { return t.concat([{ id: id, msg: msg, type: type || 'error' }]); });
     setTimeout(function() { setToasts(function(t) { return t.filter(function(x) { return x.id !== id; }); }); }, 5000);
   }
 
-  // loadData is defined OUTSIDE useCallback intentionally — deps array only has
-  // [date, tab] (stable primitives), so the effect never re-runs on re-render.
-  // AbortController cancels the in-flight request when date/tab changes.
-  useEffect(function() {
+  // loadQueueData is stable (useCallback with empty deps).
+  // It receives date and queue as parameters so it never closes over mutable state.
+  // AbortController cancels the in-flight request when called again.
+  const loadQueueData = useCallback(function(dateVal, queueVal) {
     if (abortRef.current) { abortRef.current.abort(); }
     var ctrl = new AbortController();
     abortRef.current = ctrl;
@@ -262,22 +262,19 @@ function App() {
     setLoading(true);
     setError(null);
 
-    var params = new URLSearchParams({ date: date, queue: tab });
+    var params = new URLSearchParams({ date: dateVal, queue: queueVal });
     fetch(CFG.apiUrl + '?' + params.toString(), {
       signal: ctrl.signal,
-      headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+      headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
     })
     .then(function(resp) {
       if (ctrl.signal.aborted) return;
-
-      // Session expired → HTML redirect
       var ct = resp.headers.get('content-type') || '';
       if (resp.redirected || resp.status === 302 || ct.indexOf('text/html') !== -1) {
         setError('Sesión expirada. Por favor recarga la página e inicia sesión.');
-        setLoading(false);
+        if (!ctrl.signal.aborted) setLoading(false);
         return;
       }
-
       return resp.json().then(function(json) {
         if (ctrl.signal.aborted) return;
         if (!resp.ok || !json.ok) {
@@ -285,39 +282,48 @@ function App() {
           setLoading(false);
           return;
         }
-
         var data = json.data || {};
         setSummary(data.summary || null);
-
-        if (tab === 'all') {
+        if (queueVal === 'all') {
           var queues = data.queues || {};
           setItems((queues.assignment || []).concat(queues.supervisor || []).concat(queues.rescue || []));
         } else {
           setItems(data.items || []);
         }
-        setLoading(false);
+        if (!ctrl.signal.aborted) setLoading(false);
       });
     })
     .catch(function(e) {
       if (e.name === 'AbortError') return;
       setError('Error de red: ' + e.message);
       addToast('Error cargando datos: ' + e.message);
-      setLoading(false);
+      if (!ctrl.signal.aborted) setLoading(false);
     });
+  }, []); // stable — no external deps; date/queue come as params
 
-    return function() { ctrl.abort(); };
-  }, [date, tab]); // ONLY stable primitives — no function references
+  // Fire on mount and whenever date or tab changes. loadQueueData is stable so
+  // it never causes an extra re-run.
+  useEffect(function() {
+    loadQueueData(date, tab);
+  }, [date, tab, loadQueueData]);
+
+  // Cleanup in-flight request on unmount
+  useEffect(function() {
+    return function() {
+      if (abortRef.current) { abortRef.current.abort(); }
+    };
+  }, []);
 
   // Filtered items per tab for display
-  const displayItems = tab === 'all' ? items : items.filter(i => {
+  var displayItems = tab === 'all' ? items : items.filter(function(i) {
     if (tab === 'assignment') return i.recommended_action === 'assign_now';
     if (tab === 'supervisor') return i.recommended_action === 'supervisor_review';
-    if (tab === 'rescue')     return ['rescue_followup','send_template_or_review'].includes(i.recommended_action);
+    if (tab === 'rescue')     return i.recommended_action === 'rescue_followup' || i.recommended_action === 'send_template_or_review';
     return true;
   });
 
   return React.createElement(React.Fragment, null,
-    React.createElement(ToastContainer, { toasts }),
+    React.createElement(ToastContainer, { toasts: toasts }),
 
     /* ── Header ── */
     React.createElement('div', { className:'ho-hd' },
@@ -327,15 +333,15 @@ function App() {
         ),
         React.createElement('span', { className:'ho-hd-title'}, 'Colas operacionales'),
         summary && React.createElement('span', { className:'ho-hd-pill' },
-          `${summary.total_decisions ?? '—'} decisiones`
-        ),
+          (summary.total_decisions != null ? summary.total_decisions : '—') + ' decisiones'
+        )
       ),
-      /* Date picker */
+      /* Date picker + manual refresh button */
       React.createElement('div', { style:{display:'flex', alignItems:'center', gap:8}},
         React.createElement(Icon, {n:'calendar-outline', cls:''}),
         React.createElement('input', {
           type:'date', value:date,
-          onChange: e => setDate(e.target.value),
+          onChange: function(e) { setDate(e.target.value); },
           style:{
             border:'1px solid var(--border)', borderRadius:6, padding:'5px 10px',
             fontSize:13, color:'var(--fg-1)', background:'#fff',
@@ -343,33 +349,34 @@ function App() {
         }),
         React.createElement('button', {
           className:'ho-btn',
-          onClick: () => fetchData(tab, date),
+          title: 'Actualizar',
+          onClick: function() { loadQueueData(date, tab); },
           disabled: loading,
         }, loading ? React.createElement(Icon,{n:'loading',cls:'mdi-spin'}) : React.createElement(Icon,{n:'refresh'}))
       )
     ),
 
     /* ── KPI Strip ── */
-    React.createElement(SummaryStrip, { summary, loading }),
+    React.createElement(SummaryStrip, { summary: summary, loading: loading }),
 
     /* ── Tabs ── */
     React.createElement('div', { className:'ho-tabs' },
-      QUEUE_TABS.map(t =>
-        React.createElement('button', {
+      QUEUE_TABS.map(function(t) {
+        return React.createElement('button', {
           key: t.key,
-          className: `ho-tab ${tab === t.key ? 'active' : ''}`,
-          onClick: () => setTab(t.key),
+          className: 'ho-tab' + (tab === t.key ? ' active' : ''),
+          onClick: function() { setTab(t.key); },
         },
           React.createElement(Icon, { n: t.icon }),
           ' ', t.label,
-          tab === t.key && !loading && React.createElement('span', {
+          tab === t.key && !loading ? React.createElement('span', {
             style:{
               marginLeft:6, background:'var(--primary)', color:'#fff',
               borderRadius:10, fontSize:11, padding:'1px 6px', fontWeight:700,
             }
-          }, displayItems.length)
-        )
-      )
+          }, displayItems.length) : null
+        );
+      })
     ),
 
     /* ── Content ── */
@@ -381,19 +388,19 @@ function App() {
         : tab === 'all' && !loading
           ? React.createElement(React.Fragment, null,
               React.createElement('div', { style:{padding:'20px 20px 4px', fontSize:12, fontWeight:700, color:'var(--fg-3)', textTransform:'uppercase', letterSpacing:'.5px'}}, 'Sin acción inmediata'),
-              React.createElement(NoActionPanel, { summary }),
+              React.createElement(NoActionPanel, { summary: summary }),
               React.createElement('div', { style:{padding:'20px 20px 4px', fontSize:12, fontWeight:700, color:'var(--fg-3)', textTransform:'uppercase', letterSpacing:'.5px'}}, 'Conversaciones activas en cola'),
-              React.createElement(ItemsTable, { items: displayItems, loading, emptyMsg:'No hay conversaciones activas en cola.' })
+              React.createElement(ItemsTable, { items: displayItems, loading: loading, emptyMsg:'No hay conversaciones activas en cola.' })
             )
           : React.createElement(React.Fragment, null,
-              tab === 'supervisor' && (summary?.supervisor_queue?.total ?? 0) === 0 && !loading
+              tab === 'supervisor' && summary && (summary.supervisor_queue || {}).total === 0 && !loading
                 ? React.createElement('div', { className:'ho-empty' },
                     React.createElement(Icon, {n:'shield-check-outline'}), ' Sin conversaciones en supervisión — bien.'
                   )
                 : null,
               React.createElement(ItemsTable, {
-                items: displayItems, loading,
-                emptyMsg: `No hay conversaciones en cola "${QUEUE_TABS.find(t2=>t2.key===tab)?.label || tab}".`
+                items: displayItems, loading: loading,
+                emptyMsg: 'No hay conversaciones en cola "' + (QUEUE_TABS.filter(function(t2){return t2.key===tab;})[0] || {label:tab}).label + '".'
               })
             )
     )
