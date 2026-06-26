@@ -339,23 +339,14 @@ class ReportPdfService
                         }
                     }
 
-                    $files = $this->getPackageFiles($formId, $hcNumber);
-                    if ($this->isAngiografiaRetinal((string) ($item['tipo_examen'] ?? null))) {
-                        $files = $this->selectRetinalOverviewPackageFiles($files, [
+                    $files = $this->selectPackageFilesForExam(
+                        $this->getPackageFiles($formId, $hcNumber),
+                        (string) ($item['tipo_examen'] ?? ''),
+                        [
                             'form_id' => $formId,
                             'hc_number' => $hcNumber,
-                            'tipo_examen' => (string) ($item['tipo_examen'] ?? ''),
-                        ], 'angiografia');
-                    } elseif ($this->isRetinografiaOAutofluorescenciaZeiss((string) ($item['tipo_examen'] ?? null))) {
-                        $files = $this->selectRetinalOverviewPackageFiles($files, [
-                            'form_id' => $formId,
-                            'hc_number' => $hcNumber,
-                            'tipo_examen' => (string) ($item['tipo_examen'] ?? ''),
-                        ], 'retinografia_autofluorescencia');
-                    }
-                    if ($this->isBiometriaOcular((string) ($item['tipo_examen'] ?? null)) && count($files) > 1) {
-                        $files = [end($files)];
-                    }
+                        ]
+                    );
 
                     foreach ($files as $file) {
                         if (!is_array($file)) {
@@ -1268,6 +1259,192 @@ class ReportPdfService
         }
 
         return $bestFile;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $files
+     * @param array<string, mixed> $context
+     * @return array<int, array<string, mixed>>
+     */
+    private function selectPackageFilesForExam(array $files, string $tipoExamen, array $context = []): array
+    {
+        if ($files === []) {
+            return [];
+        }
+
+        $context += ['tipo_examen' => $tipoExamen];
+
+        if ($this->isAngiografiaRetinal($tipoExamen)) {
+            return $this->selectRetinalOverviewPackageFiles($files, $context, 'angiografia');
+        }
+
+        if ($this->isRetinografiaOAutofluorescenciaZeiss($tipoExamen)) {
+            return $this->selectRetinalOverviewPackageFiles($files, $context, 'retinografia_autofluorescencia');
+        }
+
+        if ($this->isBiometriaOcular($tipoExamen)) {
+            return $this->selectLastPackageFile($files, $context + ['rule' => 'biometria_last_file']);
+        }
+
+        if ($this->isOctNervioOptico($tipoExamen)) {
+            return $this->selectDeviceReportPackageFiles($files, $context + ['rule' => 'oct_nervio'], ['hno', 'onh', 'rnfl']);
+        }
+
+        if ($this->isOctMacular($tipoExamen)) {
+            return $this->selectDeviceReportPackageFiles($files, $context + ['rule' => 'oct_macular'], ['gy', 'gc', 'gcl', 'mac', 'macula', 'thickness']);
+        }
+
+        if (
+            $this->isTopografiaCorneal($tipoExamen)
+            || $this->isPaquimetriaZeiss($tipoExamen)
+            || $this->isCampimetriaComputarizada($tipoExamen)
+            || $this->isMicroespecular($tipoExamen)
+            || $this->isEcografiaModoB($tipoExamen)
+            || $this->isOctAngulo($tipoExamen)
+            || $this->isOctCorneaEsclera($tipoExamen)
+        ) {
+            return $this->selectDeviceReportPackageFiles($files, $context + ['rule' => 'device_report'], []);
+        }
+
+        Log::info('reporting.package.file_selection.unclassified', $context + [
+            'total_files' => count($files),
+            'selected_files' => count($files),
+        ]);
+
+        return array_values($files);
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $files
+     * @param array<string, mixed> $context
+     * @param list<string> $preferredSuffixTokens
+     * @return array<int, array<string, mixed>>
+     */
+    private function selectDeviceReportPackageFiles(array $files, array $context, array $preferredSuffixTokens): array
+    {
+        $pdfs = $this->filterPackageFilesByExtension($files, ['pdf']);
+        if ($pdfs !== []) {
+            Log::info('reporting.package.file_selection.device_report', $context + [
+                'mode' => 'pdf',
+                'total_files' => count($files),
+                'selected_files' => count($pdfs),
+                'selected_names' => array_map(static fn(array $file): string => (string) ($file['name'] ?? ''), $pdfs),
+            ]);
+
+            return $pdfs;
+        }
+
+        $images = array_values(array_filter($files, function (array $file): bool {
+            $ext = strtolower((string) ($file['ext'] ?? pathinfo((string) ($file['name'] ?? ''), PATHINFO_EXTENSION)));
+            return $this->isImageExtension($ext);
+        }));
+
+        if ($images === []) {
+            Log::info('reporting.package.file_selection.device_report', $context + [
+                'mode' => 'no_images',
+                'total_files' => count($files),
+                'selected_files' => 0,
+            ]);
+
+            return [];
+        }
+
+        $preferred = $preferredSuffixTokens !== []
+            ? array_values(array_filter($images, function (array $file) use ($preferredSuffixTokens): bool {
+                $token = $this->extractPackageFilenameSuffixToken((string) ($file['name'] ?? $file['filename'] ?? ''));
+                return $token !== '' && in_array($token, $preferredSuffixTokens, true);
+            }))
+            : [];
+
+        if ($preferred !== []) {
+            Log::info('reporting.package.file_selection.device_report', $context + [
+                'mode' => 'suffix_match',
+                'total_files' => count($files),
+                'selected_files' => count($preferred),
+                'selected_names' => array_map(static fn(array $file): string => (string) ($file['name'] ?? ''), $preferred),
+            ]);
+
+            return $preferred;
+        }
+
+        return $this->selectLatestImagePackageFile($images, $context + [
+            'rule' => (string) ($context['rule'] ?? 'device_report') . '_latest_image',
+            'total_files' => count($files),
+        ]);
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $files
+     * @param list<string> $extensions
+     * @return array<int, array<string, mixed>>
+     */
+    private function filterPackageFilesByExtension(array $files, array $extensions): array
+    {
+        return array_values(array_filter($files, static function (array $file) use ($extensions): bool {
+            $ext = strtolower((string) ($file['ext'] ?? pathinfo((string) ($file['name'] ?? ''), PATHINFO_EXTENSION)));
+            return in_array($ext, $extensions, true);
+        }));
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $files
+     * @param array<string, mixed> $context
+     * @return array<int, array<string, mixed>>
+     */
+    private function selectLastPackageFile(array $files, array $context): array
+    {
+        $selected = end($files);
+        if (!is_array($selected)) {
+            return [];
+        }
+
+        Log::info('reporting.package.file_selection.last_file', $context + [
+            'total_files' => count($files),
+            'selected_file' => (string) ($selected['name'] ?? ''),
+        ]);
+
+        return [$selected];
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $files
+     * @param array<string, mixed> $context
+     * @return array<int, array<string, mixed>>
+     */
+    private function selectLatestImagePackageFile(array $files, array $context): array
+    {
+        $selected = $files[0] ?? null;
+        if (!is_array($selected)) {
+            return [];
+        }
+
+        Log::info('reporting.package.file_selection.latest_image', $context + [
+            'selected_file' => (string) ($selected['name'] ?? ''),
+            'selected_files' => 1,
+        ]);
+
+        return [$selected];
+    }
+
+    private function extractPackageFilenameSuffixToken(string $name): string
+    {
+        $base = pathinfo($name, PATHINFO_FILENAME);
+        if ($base === '') {
+            return '';
+        }
+
+        $base = trim((string) preg_replace('/\s+/', ' ', $base));
+        $left = preg_replace('/[\s._-]*\(?\d+\)?$/', '', $base) ?? $base;
+        $left = trim($left, " \t\n\r\0\x0B._-()");
+        if ($left === '') {
+            return '';
+        }
+
+        if (preg_match('/([A-Za-z]{1,12})$/', $left, $match) !== 1) {
+            return '';
+        }
+
+        return strtolower((string) ($match[1] ?? ''));
     }
 
     /**

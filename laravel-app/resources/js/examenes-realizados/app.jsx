@@ -381,7 +381,16 @@ export default function App({ config }) {
     if (sel.length) setUrgenteRows(sel);
   }, [rows, selectedIds]);
 
-  const printRows = useCallback(() => {
+  const printRows = useCallback((row = null) => {
+    if (row?.informado && row.form_id && row.hc_number) {
+      const params = new URLSearchParams({
+        form_id: String(row.form_id),
+        hc_number: String(row.hc_number),
+      });
+      window.open(`/v2/reports/imagenes/012b/pdf?${params.toString()}`, '_blank', 'noopener');
+      return;
+    }
+
     const n = selectedIds.size || 1;
     showToast(`Preparando impresión de ${n} informe${n !== 1 ? 's' : ''}…`, 'mdi-printer');
   }, [selectedIds, showToast]);
