@@ -833,6 +833,7 @@ class ReportingReadController
 
         $formId = trim((string) $request->input('form_id', $request->query('form_id', '')));
         $hcNumber = trim((string) $request->input('hc_number', $request->query('hc_number', '')));
+        $tipoExamen = trim((string) $request->input('tipo_examen', $request->query('tipo_examen', '')));
 
         if ($formId === '' || $hcNumber === '') {
             return response()
@@ -847,6 +848,7 @@ class ReportingReadController
             $pdf = $this->reportPdfService()->generateInforme012BPackagePdf([[
                 'form_id' => $formId,
                 'hc_number' => $hcNumber,
+                'tipo_examen' => $tipoExamen,
             ]]);
         } catch (\Throwable $e) {
             Log::error('reporting.read.imagenes_012b_package_pdf.error', [

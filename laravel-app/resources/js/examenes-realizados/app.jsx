@@ -68,6 +68,7 @@ function normalizeRow(raw) {
     afiliacion: raw.afiliacion || raw.afiliacion_empresa || '',
     afiliacion_cat: raw.afiliacion_categoria || raw.afiliacion_cat || 'otros',
     sede: raw.sede || '',
+    tipo_examen: procedureText,
     tipo_key: tipoKey,
     tipo_label: tipoInfo?.label || raw.tipo_examen || raw.procedimiento || '—',
     tipo_short: tipoInfo?.short || raw.tipo_examen || '—',
@@ -306,7 +307,7 @@ export default function App({ config }) {
         full_name: row.full_name,
         paciente: row.full_name,
         cedula: row.cedula,
-        tipo_examen: row.tipo_label,
+        tipo_examen: row.tipo_examen || row.tipo_label,
         tipo_label: row.tipo_label,
         ojo: row.ojo,
         afiliacion: row.afiliacion,
@@ -381,7 +382,16 @@ export default function App({ config }) {
     if (sel.length) setUrgenteRows(sel);
   }, [rows, selectedIds]);
 
-  const printRows = useCallback(() => {
+  const printRows = useCallback((row = null) => {
+    if (row?.informado && row.form_id && row.hc_number) {
+      const params = new URLSearchParams({
+        form_id: String(row.form_id),
+        hc_number: String(row.hc_number),
+      });
+      window.open(`/v2/reports/imagenes/012b/pdf?${params.toString()}`, '_blank', 'noopener');
+      return;
+    }
+
     const n = selectedIds.size || 1;
     showToast(`Preparando impresión de ${n} informe${n !== 1 ? 's' : ''}…`, 'mdi-printer');
   }, [selectedIds, showToast]);

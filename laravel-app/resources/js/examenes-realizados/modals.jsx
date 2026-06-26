@@ -283,7 +283,7 @@ export function InformarModal({ row, readOnly, onClose, onSave, showToast, docto
   useEffect(() => {
     setVals({});  // always reset first so previous exam data doesn't bleed through
     if (!row.form_id) return;
-    const params = new URLSearchParams({ form_id: String(row.form_id), tipo_examen: row.tipo_label || '' });
+    const params = new URLSearchParams({ form_id: String(row.form_id), tipo_examen: row.tipo_examen || row.tipo_label || '' });
     fetch(`/v2/imagenes/informes/datos?${params}`, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
       .then((r) => r.json())
       .then((data) => {
@@ -367,7 +367,7 @@ export function InformarModal({ row, readOnly, onClose, onSave, showToast, docto
     setSaving(true);
     const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
     const legacyPayload = buildLegacyPayload(vals, tpl, row.tipo_key, eyes, showBilateral, singleEyeSuffix);
-    const tipoExamen = row.tipo_label || '';
+    const tipoExamen = row.tipo_examen || row.tipo_label || '';
     fetch('/v2/imagenes/informes/guardar', {
       method: 'POST',
       credentials: 'same-origin',

@@ -15,6 +15,7 @@ export const AFILIACIONES = [
 export const TIPOS = [
   { key: 'OCT_MACULA',      label: 'OCT de mácula',                short: 'OCT mácula',       icon: 'mdi-circle-double',             equipo: 'Cirrus HD-OCT 5000' },
   { key: 'OCT_NERVIO',      label: 'OCT de nervio óptico (RNFL)',  short: 'OCT nervio',        icon: 'mdi-eye-circle-outline',        equipo: 'Cirrus HD-OCT 5000' },
+  { key: 'OCT_ANGULO',      label: 'OCT de ángulo',                short: 'OCT ángulo',        icon: 'mdi-angle-acute',               equipo: 'Cirrus HD-OCT 5000' },
   { key: 'TOPOGRAFIA',      label: 'Topografía corneal',           short: 'Topografía',        icon: 'mdi-terrain',                   equipo: 'Pentacam AXL' },
   { key: 'PAQUIMETRIA',     label: 'Paquimetría',                  short: 'Paquimetría',       icon: 'mdi-arrow-collapse-horizontal', equipo: 'Pentacam AXL' },
   { key: 'MICROESPECULAR',  label: 'Microscopía especular',        short: 'Microsc. especular', icon: 'mdi-grid',                    equipo: 'Tomey EM-4000' },
@@ -108,6 +109,22 @@ export const TEMPLATES = {
       { id: 'rnfl_sup', label: 'RNFL red. sup', text: 'Reducción del espesor de la CFNR en el cuadrante superior.' },
       { id: 'rnfl_inf', label: 'RNFL red. inf', text: 'Reducción del espesor de la CFNR en el cuadrante inferior.' },
       { id: 'glauc',    label: 'Sosp. glaucoma',text: 'Patrón de adelgazamiento sectorial compatible con daño glaucomatoso. Se recomienda correlación clínica y perimetría.' },
+    ],
+  },
+  OCT_ANGULO: {
+    titulo: 'OCT de ángulo',
+    bilateral: true,
+    campos: [
+      { k: 'angulo', label: 'Ángulo iridocorneal', type: 'num', ph: '30' },
+      { k: 'hallazgos', label: 'Descripción / hallazgos', type: 'text', ph: 'Ángulo abierto, estrecho, cierre angular…' },
+    ],
+    legacyMap: { angulo: 'input', hallazgos: 'text' },
+    checksTextKey: 'hallazgos',
+    checks: [
+      { id: 'normal', label: 'Abierto', text: 'Ángulo iridocorneal abierto en ambos ojos, sin signos de cierre angular.' },
+      { id: 'estrecho', label: 'Estrecho', text: 'Ángulo iridocorneal estrecho. Se recomienda correlación clínica con gonioscopía.' },
+      { id: 'cierre', label: 'Cierre angular', text: 'Hallazgos sugestivos de cierre angular. Se recomienda valoración oftalmológica prioritaria.' },
+      { id: 'asimetrico', label: 'Asimétrico', text: 'Asimetría del ángulo iridocorneal entre ambos ojos.' },
     ],
   },
   TOPOGRAFIA: {

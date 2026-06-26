@@ -39,6 +39,15 @@ export function inferTipoKey(procedimiento) {
   if (p.includes('CAMPO VISUAL') || p.includes('CAMPO_VISUAL') || p.includes('CAMPIMETRIA')) return 'CAMPO_VISUAL';
   if (p.includes('ANGIOGRAF')) return 'ANGIOGRAFIA';
   if (p.includes('RETINOGRAF')) return 'RETINOGRAFIA';
+  if (
+    p.includes('ANGULO')
+    || p.includes('ÁNGULO')
+    || p.includes('IRIDOCORNEAL')
+    || p.includes('ANTERIOR CHAMBER')
+    || p.includes('PRUEBAS PROVOCATIVAS')
+    || p.includes('TOMOGRAFIA CON PRUEBAS')
+    || p.includes('TOMOGRAFÍA CON PRUEBAS')
+  ) return 'OCT_ANGULO';
   if (p.includes('OCT') && (p.includes('NERV') || p.includes('RNFL') || p.includes('PAPILA'))) return 'OCT_NERVIO';
   if (p.includes('OCT')) return 'OCT_MACULA';
   if (p.includes('TOPOGRAF') || p.includes('PENTACAM')) return 'TOPOGRAFIA';
