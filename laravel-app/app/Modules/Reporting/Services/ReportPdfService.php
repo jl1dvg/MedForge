@@ -376,6 +376,19 @@ class ReportPdfService
                         $tempFiles[] = $tmpPath;
 
                         if ($ext === 'pdf') {
+                            if ($this->isOctAngulo((string) ($item['tipo_examen'] ?? null))) {
+                                if ($this->safeAppendPdfFile($pdf, $tmpPath, [
+                                    'source' => (string) ($file['source'] ?? 'package_file'),
+                                    'form_id' => $formId,
+                                    'hc_number' => $hcNumber,
+                                    'file_ref' => $fileRef,
+                                    'fecha_examen' => (string) ($item['fecha_examen'] ?? ''),
+                                    'oct_variant' => 'oct_angulo',
+                                ])) {
+                                    $hasPages = true;
+                                }
+                                continue;
+                            }
                             if ($this->isOctNervioOptico((string) ($item['tipo_examen'] ?? null))) {
                                 if ($this->safeAppendOctNervioOpticoPdfFile($pdf, $tmpPath, [
                                     'source' => (string) ($file['source'] ?? 'package_file'),
@@ -1286,6 +1299,10 @@ class ReportPdfService
             return $this->selectLastPackageFile($files, $context + ['rule' => 'biometria_last_file']);
         }
 
+        if ($this->isOctAngulo($tipoExamen)) {
+            return $this->selectDeviceReportPackageFiles($files, $context + ['rule' => 'oct_angulo'], ['angle', 'angulo', 'aca']);
+        }
+
         if ($this->isOctNervioOptico($tipoExamen)) {
             return $this->selectDeviceReportPackageFiles($files, $context + ['rule' => 'oct_nervio'], ['hno', 'onh', 'rnfl']);
         }
@@ -1300,7 +1317,6 @@ class ReportPdfService
             || $this->isCampimetriaComputarizada($tipoExamen)
             || $this->isMicroespecular($tipoExamen)
             || $this->isEcografiaModoB($tipoExamen)
-            || $this->isOctAngulo($tipoExamen)
             || $this->isOctCorneaEsclera($tipoExamen)
         ) {
             return $this->selectDeviceReportPackageFiles($files, $context + ['rule' => 'device_report'], []);
@@ -1621,11 +1637,11 @@ class ReportPdfService
             } elseif ($ext === 'pdf' && $this->isCampimetriaComputarizada($tipoExamen)) {
                 Log::info('reporting.pdf.mask.campimetria.attempt', $maskContext);
                 $this->maskCampimetriaPdfDateInPlace($tmpPath, $maskContext);
-            } elseif ($ext === 'pdf' && ($this->isOctNervioOptico($tipoExamen) || $this->isOctMacular($tipoExamen) || $this->isOctAngulo($tipoExamen) || $this->isOctCorneaEsclera($tipoExamen))) {
-                $octVariant = $this->isOctMacular($tipoExamen)
-                    ? 'oct_macular'
-                    : ($this->isOctAngulo($tipoExamen)
-                        ? 'oct_angulo'
+            } elseif ($ext === 'pdf' && ($this->isOctAngulo($tipoExamen) || $this->isOctNervioOptico($tipoExamen) || $this->isOctMacular($tipoExamen) || $this->isOctCorneaEsclera($tipoExamen))) {
+                $octVariant = $this->isOctAngulo($tipoExamen)
+                    ? 'oct_angulo'
+                    : ($this->isOctMacular($tipoExamen)
+                        ? 'oct_macular'
                         : ($this->isOctCorneaEsclera($tipoExamen) ? 'oct_cornea_esclera' : 'oct_nervio'));
                 Log::info('reporting.pdf.mask.' . $octVariant . '.attempt', $maskContext);
                 $this->maskOctNervioOpticoPdfDateInPlace($tmpPath, $maskContext);
@@ -1639,11 +1655,11 @@ class ReportPdfService
                     'ext' => $ext,
                 ]);
                 $this->maskEcografiaModoBImageDateInPlace($tmpPath, $ext, $maskContext);
-            } elseif ($this->isImageExtension($ext) && ($this->isOctNervioOptico($tipoExamen) || $this->isOctMacular($tipoExamen) || $this->isOctAngulo($tipoExamen) || $this->isOctCorneaEsclera($tipoExamen) || $this->isAngiografiaRetinal($tipoExamen))) {
-                $octVariant = $this->isOctMacular($tipoExamen)
-                    ? 'oct_macular'
-                    : ($this->isOctAngulo($tipoExamen)
-                        ? 'oct_angulo'
+            } elseif ($this->isImageExtension($ext) && ($this->isOctAngulo($tipoExamen) || $this->isOctNervioOptico($tipoExamen) || $this->isOctMacular($tipoExamen) || $this->isOctCorneaEsclera($tipoExamen) || $this->isAngiografiaRetinal($tipoExamen))) {
+                $octVariant = $this->isOctAngulo($tipoExamen)
+                    ? 'oct_angulo'
+                    : ($this->isOctMacular($tipoExamen)
+                        ? 'oct_macular'
                         : ($this->isOctCorneaEsclera($tipoExamen)
                             ? 'oct_cornea_esclera'
                             : ($this->isAngiografiaRetinal($tipoExamen) ? 'angiografia_retinal' : 'oct_nervio')));
@@ -2841,7 +2857,9 @@ class ReportPdfService
             || str_contains($texto, 'oct del angulo')
             || str_contains($texto, 'anterior chamber analysis')
             || str_contains($texto, 'angulo iridocorneal')
-            || str_contains($texto, 'anterior chamber');
+            || str_contains($texto, 'anterior chamber')
+            || str_contains($texto, 'pruebas provocativas')
+            || str_contains($texto, 'tomografia con pruebas');
     }
 
     private function isOctCorneaEsclera(?string $tipoExamen): bool

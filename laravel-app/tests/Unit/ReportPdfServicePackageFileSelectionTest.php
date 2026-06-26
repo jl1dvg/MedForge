@@ -50,6 +50,27 @@ class ReportPdfServicePackageFileSelectionTest extends TestCase
         $this->assertTrue($method->invoke($service, 'Angiografía con fluoresceína'));
     }
 
+    public function test_tomografia_con_pruebas_provocativas_is_detected_as_oct_angulo(): void
+    {
+        $service = new ReportPdfService();
+        $method = new ReflectionMethod($service, 'isOctAngulo');
+        $method->setAccessible(true);
+
+        $this->assertTrue($method->invoke($service, 'Informe de TOMOGRAFIA CON PRUEBAS PROVOCATIVAS (281032) - Ambos ojos'));
+    }
+
+    public function test_oct_angulo_prefers_angle_files_over_other_oct_variants(): void
+    {
+        $selected = $this->selectFiles('Informe de TOMOGRAFIA CON PRUEBAS PROVOCATIVAS (281032) - Ambos ojos', [
+            $this->file('sanchez_rnfl_001.jpg', 'jpg', 300),
+            $this->file('sanchez_macula_002.jpg', 'jpg', 200),
+            $this->file('sanchez_angle_003.jpg', 'jpg', 100),
+            $this->file('sanchez_angulo_004.jpg', 'jpg', 90),
+        ]);
+
+        $this->assertSame(['sanchez_angle_003.jpg', 'sanchez_angulo_004.jpg'], array_column($selected, 'name'));
+    }
+
     /**
      * @param array<int, array<string, mixed>> $files
      * @return array<int, array<string, mixed>>
