@@ -474,6 +474,111 @@ class WhatsappHandoffConsoleCommandTest extends TestCase
         $this->assertCount(1, $realtime->events);
         $this->assertSame('handoff.auto_assigned', $realtime->events[0]['event']);
     }
+
+    // ── Dry-run write isolation ───────────────────────────────────────────────
+
+    public function test_dry_run_does_not_write_conversations_or_handoffs(): void
+    {
+        $this->seedHotQueuedHandoff(920, 1920, 'captacion_agendar');
+
+        $realtime = new FakeWhatsappRealtimeService();
+        $service  = new WhatsappHandoffAutoAssignService(realtime: $realtime);
+        $result   = $service->run(['dry_run' => true, 'limit' => 10]);
+
+        // Exactly 1 eligible, 0 db writes
+        $this->assertSame(1, $result['would_assign'], 'dry-run must report would_assign');
+        $this->assertSame(0, $result['assigned'], 'dry-run must not assign');
+        $this->assertSame(0, $result['db_writes'], 'dry-run must report 0 db_writes');
+        $this->assertTrue($result['read_only'], 'read_only must be true in dry-run');
+        $this->assertSame('dry_run', $result['mode']);
+
+        // No DB mutations
+        $this->assertDatabaseHas('whatsapp_conversations', ['id' => 920, 'assigned_user_id' => null]);
+        $this->assertDatabaseHas('whatsapp_handoffs', ['id' => 1920, 'status' => 'queued', 'assigned_agent_id' => null]);
+        $this->assertDatabaseMissing('whatsapp_handoff_events', ['handoff_id' => 1920, 'event_type' => 'auto_assigned']);
+
+        // No realtime broadcast
+        $this->assertCount(0, $realtime->events, 'dry-run must not emit broadcasts');
+    }
+
+    public function test_dry_run_does_not_write_handoff_events(): void
+    {
+        $this->seedHotQueuedHandoff(921, 1921, 'agenda_sin_disponibilidad');
+
+        $realtime = new FakeWhatsappRealtimeService();
+        $service  = new WhatsappHandoffAutoAssignService(realtime: $realtime);
+        $service->run(['dry_run' => true, 'limit' => 10]);
+
+        $this->assertDatabaseMissing('whatsapp_handoff_events', ['handoff_id' => 1921]);
+    }
+
+    public function test_dry_run_reports_hot_open_as_would_assign(): void
+    {
+        $this->seedHotQueuedHandoff(922, 1922, 'captacion_agendar');
+
+        $service = new WhatsappHandoffAutoAssignService();
+        $result  = $service->run(['dry_run' => true, 'limit' => 10]);
+
+        $row = collect($result['rows'])->firstWhere('handoff_id', 1922);
+        $this->assertNotNull($row, 'Row must appear in result');
+        $this->assertSame('would_assign', $row['status']);
+        $this->assertSame('hot_open', $row['bucket']);
+        $this->assertSame('captacion', $row['category']);
+        $this->assertNotEmpty($row['topic_label']);
+        $this->assertNotNull($row['assigned_to']);
+    }
+
+    public function test_dry_run_reports_rescue_as_skipped(): void
+    {
+        DB::table('whatsapp_conversations')->insert([
+            'id' => 923, 'wa_number' => '593999923', 'display_name' => 'Rescue',
+            'needs_human' => 1, 'assigned_user_id' => null,
+            'last_message_at' => now()->subHours(48), 'last_message_direction' => 'inbound',
+            'created_at' => now()->subHours(48), 'updated_at' => now(),
+        ]);
+        DB::table('whatsapp_handoffs')->insert([
+            'id' => 1923, 'conversation_id' => 923, 'wa_number' => '593999923',
+            'status' => 'queued', 'priority' => 'normal', 'topic' => 'captacion_agendar',
+            'assigned_agent_id' => null, 'queued_at' => now()->subHours(48),
+            'created_at' => now()->subHours(48), 'updated_at' => now(),
+        ]);
+        DB::table('whatsapp_messages')->insert([
+            'conversation_id' => 923, 'direction' => 'inbound',
+            'message_timestamp' => now()->subHours(48),
+            'created_at' => now()->subHours(48), 'updated_at' => now()->subHours(48),
+        ]);
+
+        $service = new WhatsappHandoffAutoAssignService();
+        $result  = $service->run(['dry_run' => true, 'limit' => 50, 'max_age_hours' => 72]);
+
+        $this->assertSame(0, $result['would_assign']);
+        $this->assertSame(0, $result['db_writes']);
+        $row = collect($result['rows'])->firstWhere('handoff_id', 1923);
+        $this->assertNotNull($row);
+        $this->assertSame('skipped', $row['status']);
+        $this->assertSame('rescue', $row['bucket']);
+        $this->assertArrayHasKey('bucket_not_hot_open', $result['skipped_reasons']);
+    }
+
+    public function test_dry_run_json_command_returns_read_only_true_and_zero_db_writes(): void
+    {
+        $this->seedHotQueuedHandoff(924, 1924, 'captacion_agendar');
+
+        Artisan::call('whatsapp:handoff-auto-assign', ['--dry-run' => true, '--json' => true, '--limit' => 10]);
+        $output = Artisan::output();
+
+        $json = json_decode($output, true);
+        $this->assertIsArray($json, 'Output must be valid JSON');
+        $this->assertTrue($json['read_only'] ?? false, 'read_only must be true');
+        $this->assertSame(0, $json['db_writes'] ?? -1, 'db_writes must be 0');
+        $this->assertSame('dry_run', $json['mode'] ?? '');
+        $this->assertArrayHasKey('would_assign', $json);
+        $this->assertArrayHasKey('skipped_reasons', $json);
+
+        // Confirm DB untouched
+        $this->assertDatabaseHas('whatsapp_conversations', ['id' => 924, 'assigned_user_id' => null]);
+        $this->assertDatabaseHas('whatsapp_handoffs', ['id' => 1924, 'status' => 'queued', 'assigned_agent_id' => null]);
+    }
 }
 
 class FakeWhatsappRealtimeService extends WhatsappRealtimeService

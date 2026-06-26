@@ -545,33 +545,74 @@ Artisan::command('whatsapp:handoff-requeue-expired {--dry-run : Solo muestra los
 })->purpose('Reencola handoffs vencidos del inbox WhatsApp Laravel');
 
 Artisan::command('whatsapp:handoff-auto-assign
-    {--dry-run : Solo muestra candidatos sin asignar}
+    {--dry-run : Solo muestra candidatos sin asignar (read-only)}
+    {--json : Emite resultado completo como JSON (implica dry-run si se combina)}
     {--limit=100 : Máximo de conversaciones calientes a procesar}
     {--max-age-hours=72 : Solo revisa handoffs recientes dentro de esta ventana}', function (): int {
     /** @var WhatsappHandoffAutoAssignService $service */
     $service = app(WhatsappHandoffAutoAssignService::class);
 
+    $dryRun = (bool) $this->option('dry-run');
+    $jsonOutput = (bool) $this->option('json');
+
     try {
         $result = $service->run([
-            'dry_run' => (bool) $this->option('dry-run'),
+            'dry_run' => $dryRun,
             'limit' => (int) $this->option('limit'),
             'max_age_hours' => (int) $this->option('max-age-hours'),
         ]);
+
+        if ($jsonOutput) {
+            $rows = is_array($result['rows'] ?? null) ? $result['rows'] : [];
+            $wouldAssign = array_values(array_filter($rows, static fn (array $r): bool => ($r['status'] ?? '') === 'would_assign'));
+            $skipped = array_values(array_filter($rows, static fn (array $r): bool => ($r['status'] ?? '') === 'skipped'));
+
+            $output = [
+                'ok'              => empty($result['error']),
+                'mode'            => $result['mode'] ?? ($dryRun ? 'dry_run' : 'live'),
+                'read_only'       => (bool) ($result['read_only'] ?? $dryRun),
+                'limit'           => (int) $this->option('limit'),
+                'evaluated'       => (int) ($result['evaluated'] ?? 0),
+                'eligible'        => (int) ($result['eligible'] ?? 0),
+                'skipped'         => (int) ($result['skipped'] ?? 0),
+                'would_assign'    => $wouldAssign,
+                'skipped_reasons' => $result['skipped_reasons'] ?? [],
+                'skipped_sample'  => array_slice($skipped, 0, 10),
+                'db_writes'       => (int) ($result['db_writes'] ?? 0),
+            ];
+            if (!empty($result['error'])) {
+                $output['error'] = (string) $result['error'];
+            }
+            $this->line((string) json_encode($output, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+
+            return 0;
+        }
 
         if (!empty($result['error'])) {
             $this->warn((string) $result['error']);
         }
 
         $this->table(
-            ['Eligible', 'Assigned', 'Would assign', 'Supervisor', 'Skipped'],
+            ['Mode', 'Evaluated', 'Eligible', 'Assigned', 'Would assign', 'Supervisor', 'Skipped', 'DB writes'],
             [[
+                (string) ($result['mode'] ?? ($dryRun ? 'dry_run' : 'live')),
+                (int) ($result['evaluated'] ?? 0),
                 (int) ($result['eligible'] ?? 0),
                 (int) ($result['assigned'] ?? 0),
                 (int) ($result['would_assign'] ?? 0),
                 (int) ($result['supervisor'] ?? 0),
                 (int) ($result['skipped'] ?? 0),
+                (int) ($result['db_writes'] ?? 0),
             ]]
         );
+
+        $skippedReasons = $result['skipped_reasons'] ?? [];
+        if (is_array($skippedReasons) && $skippedReasons !== []) {
+            $this->table(
+                ['Skip reason', 'Count'],
+                collect($skippedReasons)->map(fn ($count, $reason): array => [(string) $reason, (int) $count])->values()->all()
+            );
+        }
 
         $byTopic = $result['by_topic'] ?? [];
         if (is_array($byTopic) && $byTopic !== []) {
@@ -584,13 +625,14 @@ Artisan::command('whatsapp:handoff-auto-assign
         $rows = array_slice(is_array($result['rows'] ?? null) ? $result['rows'] : [], 0, 25);
         if ($rows !== []) {
             $this->table(
-                ['Conversation', 'Handoff', 'Topic', 'Priority', 'Reason', 'Status', 'Assigned to'],
+                ['Conversation', 'Handoff', 'Topic', 'Category', 'Bucket', 'Priority', 'Status', 'Assigned to'],
                 array_map(static fn (array $row): array => [
                     (int) ($row['conversation_id'] ?? 0),
                     (int) ($row['handoff_id'] ?? 0),
                     (string) ($row['topic'] ?? ''),
+                    (string) ($row['category'] ?? ''),
+                    (string) ($row['bucket'] ?? ''),
                     (string) ($row['priority'] ?? ''),
-                    (string) ($row['reason'] ?? ''),
                     (string) ($row['status'] ?? ''),
                     (string) data_get($row, 'assigned_to.name', ''),
                 ], $rows)

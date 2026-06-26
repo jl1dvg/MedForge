@@ -32,7 +32,7 @@ class WhatsappHandoffAutoAssignService
 
     /**
      * @param array{dry_run?:bool,limit?:int,max_age_hours?:int} $options
-     * @return array{eligible:int,assigned:int,would_assign:int,supervisor:int,skipped:int,by_topic:array<string,int>,rows:array<int,array<string,mixed>>,error?:string}
+     * @return array{mode:string,read_only:bool,db_writes:int,evaluated:int,eligible:int,assigned:int,would_assign:int,supervisor:int,skipped:int,skipped_reasons:array<string,int>,by_topic:array<string,int>,rows:array<int,array<string,mixed>>,error?:string}
      */
     public function run(array $options = []): array
     {
@@ -49,38 +49,50 @@ class WhatsappHandoffAutoAssignService
         $this->requeuedCache = $this->preloadRequeuedHandoffIds($candidates);
 
         $result = [
-            'eligible' => 0,
-            'assigned' => 0,
-            'would_assign' => 0,
-            'supervisor' => 0,
-            'skipped' => 0,
-            'by_topic' => [],
-            'rows' => [],
+            'mode'            => $dryRun ? 'dry_run' : 'live',
+            'read_only'       => $dryRun,
+            'db_writes'       => 0,
+            'evaluated'       => 0,
+            'eligible'        => 0,
+            'assigned'        => 0,
+            'would_assign'    => 0,
+            'supervisor'      => 0,
+            'skipped'         => 0,
+            'skipped_reasons' => [],
+            'by_topic'        => [],
+            'rows'            => [],
         ];
         if (!$businessOpen) {
             $result['error'] = 'Autoasignación pausada: el canal está fuera del horario laboral configurado.';
         }
 
         foreach ($candidates as $candidate) {
+            $result['evaluated']++;
             $priority = $this->resolvePriority($candidate);
             $reason = $this->resolveReason($candidate);
             $topic = (string) ($candidate->topic ?? 'faq_escalada');
+            $topicLabel = WhatsappOperationalDecisionService::topicLabel($topic);
+            $category = WhatsappOperationalDecisionService::topicCategory($topic);
 
             // ── Operational bucket guard ──────────────────────────────────────
             // Only hot_open + assign_now candidates may be auto-assigned.
             // RESCUE / BACKLOG / LOST are excluded even if requeued recently.
             $eligibility = $this->decisionService->evaluateForAutoAssign($candidate);
             if (!$eligibility['eligible']) {
+                $skipReason = (string) ($eligibility['skip_reason'] ?? 'unknown');
                 $result['skipped']++;
+                $result['skipped_reasons'][$skipReason] = (int) ($result['skipped_reasons'][$skipReason] ?? 0) + 1;
                 $result['rows'][] = [
                     'conversation_id' => (int) $candidate->conversation_id,
                     'handoff_id'      => (int) $candidate->handoff_id,
                     'topic'           => $topic,
+                    'topic_label'     => $topicLabel,
+                    'category'        => $category,
                     'priority'        => $priority,
                     'reason'          => $reason,
                     'assigned_to'     => null,
                     'status'          => 'skipped',
-                    'skip_reason'     => $eligibility['skip_reason'],
+                    'skip_reason'     => $skipReason,
                     'bucket'          => $eligibility['bucket'],
                 ];
                 continue;
@@ -92,12 +104,15 @@ class WhatsappHandoffAutoAssignService
             $agent = $agents[0] ?? null;
             $row = [
                 'conversation_id' => (int) $candidate->conversation_id,
-                'handoff_id' => (int) $candidate->handoff_id,
-                'topic' => $topic,
-                'priority' => $priority,
-                'reason' => $reason,
-                'assigned_to' => null,
-                'status' => $dryRun ? 'dry_run' : 'pending',
+                'handoff_id'      => (int) $candidate->handoff_id,
+                'topic'           => $topic,
+                'topic_label'     => $topicLabel,
+                'category'        => $category,
+                'priority'        => $priority,
+                'reason'          => $reason,
+                'bucket'          => $eligibility['bucket'],
+                'assigned_to'     => null,
+                'status'          => $dryRun ? 'dry_run' : 'pending',
             ];
 
             if (!is_array($agent)) {
@@ -108,6 +123,7 @@ class WhatsappHandoffAutoAssignService
             }
 
             if ($dryRun) {
+                $row['status'] = 'would_assign';
                 $row['assigned_to'] = [
                     'id' => (int) $agent['id'],
                     'name' => (string) $agent['name'],
@@ -125,6 +141,7 @@ class WhatsappHandoffAutoAssignService
                     'name' => (string) $agent['name'],
                 ];
                 $result['assigned']++;
+                $result['db_writes']++;
                 $agents[0]['assigned_open_count'] = (int) ($agents[0]['assigned_open_count'] ?? 0) + 1;
                 usort($agents, $this->agentSort(...));
             } else {
@@ -165,19 +182,24 @@ class WhatsappHandoffAutoAssignService
     }
 
     /**
-     * @return array{eligible:int,assigned:int,would_assign:int,supervisor:int,skipped:int,by_topic:array<string,int>,rows:array<int,array<string,mixed>>,error?:string}
+     * @return array{mode:string,read_only:bool,db_writes:int,evaluated:int,eligible:int,assigned:int,would_assign:int,supervisor:int,skipped:int,skipped_reasons:array<string,int>,by_topic:array<string,int>,rows:array<int,array<string,mixed>>,error?:string}
      */
     private function emptyResult(string $error): array
     {
         return [
-            'eligible' => 0,
-            'assigned' => 0,
-            'would_assign' => 0,
-            'supervisor' => 0,
-            'skipped' => 0,
-            'by_topic' => [],
-            'rows' => [],
-            'error' => $error,
+            'mode'            => 'live',
+            'read_only'       => false,
+            'db_writes'       => 0,
+            'evaluated'       => 0,
+            'eligible'        => 0,
+            'assigned'        => 0,
+            'would_assign'    => 0,
+            'supervisor'      => 0,
+            'skipped'         => 0,
+            'skipped_reasons' => [],
+            'by_topic'        => [],
+            'rows'            => [],
+            'error'           => $error,
         ];
     }
 
