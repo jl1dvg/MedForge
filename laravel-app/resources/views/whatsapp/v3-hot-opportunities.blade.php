@@ -111,11 +111,18 @@
 <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin="anonymous"></script>
 <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin="anonymous"></script>
 <script>
+// Clear any stale localStorage keys left by previous app versions
+(function() {
+  var staleKeys = ['hot_opps_state', 'whatsapp_hot_opps', 'hot-opps', 'short'];
+  staleKeys.forEach(function(k) {
+    try { localStorage.removeItem(k); } catch(e) {}
+  });
+})();
 window.HOT_OPPS_CONFIG = {
   apiUrl:         @json($apiUrl),
   chatUrl:        @json($chatUrl),
   pollIntervalMs: 0,
 };
 </script>
-<script src="/js/whatsapp-hot-opps/app.js?v={{ filemtime(public_path('js/whatsapp-hot-opps/app.js')) }}"></script>
+<script src="/js/whatsapp-hot-opps/app.js?v=3a-3"></script>
 @endpush
