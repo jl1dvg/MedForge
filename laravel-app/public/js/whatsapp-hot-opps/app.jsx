@@ -4,883 +4,390 @@
 /* @jsxFrag React.Fragment */
 const { useState, useEffect, useRef, useCallback } = React;
 
-const CFG = window.HOT_OPPS_CONFIG || { apiUrl: '/v2/whatsapp/api/hot-opportunities', chatUrl: '/v2/whatsapp/chat', pollIntervalMs: 30000 };
-
-/* ─────────────────────────── Bucket metadata ─────────────────────────── */
-const BUCKET_META = {
-  hot:     { label: 'Atender ahora',         cls: 'bk-hot',     ic: 'fire',             tabIc: 'fire',             tabLabel: 'HOT' },
-  rescue:  { label: 'Requiere rescate',      cls: 'bk-rescue',  ic: 'lifebuoy',         tabIc: 'alert-circle',     tabLabel: 'RESCUE' },
-  backlog: { label: 'Deuda histórica',       cls: 'bk-backlog', ic: 'archive-clock',    tabIc: 'archive-outline',  tabLabel: 'Backlog' },
-  lost:    { label: 'Probablemente perdida', cls: 'bk-lost',    ic: 'account-off',      tabIc: 'close-circle',     tabLabel: 'Perdidas' },
+const CFG = window.HOT_OPPS_CONFIG || {
+  apiUrl:          '/v2/whatsapp/api/operational-queues',
+  chatUrl:         '/v2/whatsapp/chat',
+  pollIntervalMs:  0,
 };
 
-/* ─────────────────────────── Field mapping (API → UI) ─────────────────────────── */
-function mapConversation(c, bucket) {
-  /* source — null if absent */
-  const src = (c.attribution_source_category || '').toLowerCase();
-  const sourceLabel =
-    src === 'paid'     ? 'Ads'      :
-    src === 'organic'  ? 'Orgánico' :
-    src === 'return'   ? 'Retorno'  :
-    src === 'campaign' ? 'Campaña'  :
-    (c.attribution_source_category || null);
+/* ─── Icons ─────────────────────────────────────────────────────────────── */
+function Icon({ n, cls = '' }) {
+  return React.createElement('span', { className: `mdi mdi-${n} ${cls}`.trim() });
+}
 
-  /* intent — null if absent */
-  const intentRaw   = c.attribution_initial_intent || '';
-  const intentLower = intentRaw.toLowerCase();
-  const intentLabel =
-    intentLower.includes('agenda') || intentLower.includes('agendar') ? 'agendar'   :
-    intentLower.includes('reagend')                                    ? 'reagendar' :
-    intentLower.includes('cancel')                                     ? 'cancelar'  :
-    (intentRaw || null);
+/* ─── Helpers ────────────────────────────────────────────────────────────── */
+function fmt(v, fallback = '—') { return v == null ? fallback : v; }
+function fmtBool(v) { return v ? 'Sí' : 'No'; }
 
-  /* topic — null if absent */
-  const topic = c.handoff_topic || null;
+const PRIORITY_CLS = { high: 'pri-high', medium: 'pri-med', normal: 'pri-normal', low: 'pri-low' };
+const RISK_CLS     = { high: 'risk-high', medium: 'risk-med', low: 'risk-low', closed: 'risk-closed' };
 
-  /* wait */
-  const waitMin = typeof c.queue_age_minutes === 'number' ? c.queue_age_minutes : 0;
+const ACTION_LABEL = {
+  assign_now:              'Asignar ahora',
+  supervisor_review:       'Supervisar',
+  rescue_followup:         'Rescatar',
+  send_template_or_review: 'Template / revisar',
+  hold_backlog:            'Backlog',
+  no_action_lost:          'Perdida',
+  no_action_converted:     'Convertida',
+  no_action_already_handled: 'Atendida',
+};
 
-  /* meta window — backend label, no hardcoded value */
-  const mwState = c.messaging_window_state || '';
-  let metaState = 'open';
-  if (mwState === 'needs_template') metaState = 'warn';
-  const metaLabel = c.messaging_window_label || (metaState !== 'open' ? 'Requiere plantilla' : 'Abierta');
+const QUEUE_TABS = [
+  { key: 'all',        label: 'Todas',        icon: 'view-grid-outline' },
+  { key: 'assignment', label: 'Asignar ahora', icon: 'account-plus-outline' },
+  { key: 'supervisor', label: 'Supervisar',    icon: 'shield-account-outline' },
+  { key: 'rescue',     label: 'Rescatar',      icon: 'lifebuoy' },
+];
 
-  /* priority — from backend */
-  const prio   = mapPrioLevel(c.priority_level);
-  const score  = typeof c.priority_score  === 'number' ? c.priority_score  : 0;
-  const reasons = (c.priority_reasons || []).map(mapReason).slice(0, 4);
+const BUCKET_CLS = {
+  hot_open:          'bk-hot',
+  hot_needs_template:'bk-hot',
+  rescue:            'bk-rescue',
+  backlog:           'bk-backlog',
+  lost:              'bk-lost',
+};
 
-  /* requeue — null if absent, never fabricate */
-  const requeued = typeof c.requeue_count === 'number' ? c.requeue_count : null;
+/* ─── Toast ──────────────────────────────────────────────────────────────── */
+function ToastContainer({ toasts }) {
+  return React.createElement('div', { style: { position:'fixed', bottom:24, right:24, zIndex:9999, display:'flex', flexDirection:'column', gap:8 } },
+    toasts.map(t =>
+      React.createElement('div', { key: t.id, style: {
+        background: t.type === 'error' ? '#fee2e2' : '#f0fdf4',
+        border: `1px solid ${t.type === 'error' ? '#fca5a5' : '#86efac'}`,
+        color: t.type === 'error' ? '#991b1b' : '#166534',
+        padding: '10px 16px', borderRadius: 8, fontSize: 13, maxWidth: 360,
+        boxShadow: '0 4px 12px rgba(0,0,0,.1)',
+      }}, t.msg)
+    )
+  );
+}
 
-  return {
-    id:       c.id,
-    name:     c.display_name || c.patient_full_name || c.wa_number || `Conv #${c.id}`,
-    hc:       c.patient_hc_number || null,
-    source:   sourceLabel,
-    intent:   intentLabel,
-    topic,
-    waitMin,
-    agentId:  c.assigned_user_id || null,
-    metaState,
-    metaLabel,
-    prio,
-    score,
-    requeued,
-    reasons,
-    bucket,
-    _raw: c,
+/* ─── KPI Card ───────────────────────────────────────────────────────────── */
+function KpiCard({ icon, label, value, sub, color = 'primary', urgent = false }) {
+  const colors = {
+    primary: { bg: 'rgba(99,102,241,.1)', fg: '#6366f1', border: 'rgba(99,102,241,.2)' },
+    amber:   { bg: 'rgba(245,158,11,.1)', fg: '#d97706', border: 'rgba(245,158,11,.2)' },
+    red:     { bg: 'rgba(239,68,68,.1)',  fg: '#ef4444', border: 'rgba(239,68,68,.2)'  },
+    green:   { bg: 'rgba(34,197,94,.1)',  fg: '#16a34a', border: 'rgba(34,197,94,.2)'  },
+    gray:    { bg: 'rgba(107,114,128,.1)', fg:'#6b7280', border:'rgba(107,114,128,.2)' },
   };
-}
-
-function mapPrioLevel(level) {
-  switch (level) {
-    case 'critical': return 'crit';
-    case 'high':     return 'risk';
-    case 'normal':   return 'norm';
-    default:         return 'norm';
-  }
-}
-
-function mapReason(r) {
-  if (!r) return ['information-outline', r, 'info'];
-  if (r.includes('Sin agente'))                             return ['account-off',           r, 'crit'];
-  if (r.includes('sin leer'))                              return ['message-alert-outline',  r, 'crit'];
-  if (r.includes('min en cola') || r.includes('Backlog'))  return ['timer-sand',             r, 'risk'];
-  if (r.includes('Ventana'))                               return ['timer-alert-outline',    r, 'risk'];
-  if (r.includes('asignada a ti') || r.includes('Asignada a ti'))
-                                                           return ['account-arrow-right',    r, 'info'];
-  return ['information-outline', r, 'info'];
-}
-
-function mapReminder(r) {
-  return {
-    id:            String(r.id),
-    conversationId: r.conversation_id,
-    name:          r.patient_name || `HC ${r.hc_number}`,
-    hc:            r.hc_number || null,
-    apptDate:      r.appointment_at ? fmtApptDate(r.appointment_at) : '—',
-    apptMinutes:   r.appointment_minutes_from_now ?? 9999,
-    apptDoctor:    r.doctor_name || '',
-    apptSede:      r.sede || '',
-    failureReason: r.failure_reason || 'unknown',
-    failedAt:      r.failed_at ? r.failed_at.slice(11, 16) : '—',
-    retries:       r.retry_count || 0,
-    windowState:   r.window_state || 'open',
-  };
-}
-
-function fmtApptDate(isoStr) {
-  try {
-    const d        = new Date(isoStr);
-    const today    = new Date();
-    const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
-    const sameDay  = x => x.getDate() === today.getDate() && x.getMonth() === today.getMonth();
-    const prefix   = sameDay(d) ? 'Hoy'
-      : (d.getDate() === tomorrow.getDate() && d.getMonth() === tomorrow.getMonth()) ? 'Mañana'
-      : d.toLocaleDateString('es-EC', { day: '2-digit', month: 'short' });
-    const time = d.toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit', hour12: false });
-    return `${prefix} ${time}`;
-  } catch { return isoStr; }
-}
-
-function mapAgent(a) {
-  const STATUS_MAP = { available: 'available', busy: 'busy', away: 'away', offline: 'away' };
-  return {
-    id:      a.id,
-    name:    a.name,
-    initials: a.initials || makeInitials(a.name),
-    color:   a.color || '#5156be',
-    status:  STATUS_MAP[a.presence_status] || 'available',
-    convs:   a.assigned_open_count || 0,
-    unread:  a.unread_open_count   || 0,
-  };
-}
-
-function makeInitials(name) {
-  const parts = (name || '').trim().split(/\s+/);
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return (name || '??').slice(0, 2).toUpperCase();
-}
-
-/* ─────────────────────────── Helpers ─────────────────────────── */
-const loadPct   = (n, max = 15) => Math.min(100, Math.round(n / max * 100));
-const loadClass = p => p >= 75 ? 'load-high' : p >= 45 ? 'load-mid' : 'load-ok';
-function scoreColor(s) { return s >= 170 ? 'var(--danger)' : s >= 90 ? 'var(--warning)' : 'var(--success)'; }
-const isRemSoon = r => typeof r.apptMinutes === 'number' && r.apptMinutes <= 120 && r.apptMinutes >= 0;
-function fmtApptIn(min) {
-  if (min <= 0) return ['pasada', true];
-  if (min <= 60) return [`${min}min`, true];
-  const h = Math.floor(min / 60), m = min % 60;
-  return [`${h}h${m ? ` ${m}min` : ''}`, false];
-}
-
-const TOPIC = {
-  captacion_agendar:         ['captación', 'tp-captacion'],
-  agenda_sin_disponibilidad: ['agenda · sin disp.', 'tp-agenda'],
-  faq_escalada:              ['faq · escalada', 'tp-faq'],
-  operacion_reagenda:        ['operación · reagenda', 'tp-operacion'],
-};
-const SOURCE = {
-  'Ads':      ['src-ads',      'bullhorn-variant'],
-  'Orgánico': ['src-organico', 'leaf'],
-  'Retorno':  ['src-retorno',  'backup-restore'],
-  'Campaña':  ['src-campana',  'bullhorn'],
-};
-const INTENT = {
-  'agendar':   ['int-agendar',   'calendar-plus'],
-  'reagendar': ['int-reagendar', 'calendar-sync'],
-  'cancelar':  ['int-cancelar',  'calendar-remove'],
-};
-const FAILURE = {
-  location_header_missing_coordinates: ['Coord. faltantes',  'fl-location', 'map-marker-off-outline',      'El template espera coordenadas de ubicación pero no se enviaron. Requiere corregir el payload del recordatorio.'],
-  template_header_location_mismatch:   ['Header incorrecto', 'fl-template', 'file-document-alert-outline', 'El header del template está configurado como LOCATION pero se envió un tipo distinto. PR #401 corregido.'],
-  whatsapp_messages_table_missing:     ['Tabla ausente',     'fl-infra',    'database-alert-outline',       'El servicio de recordatorios no encontró la tabla whatsapp_messages al deduplicar. Error de infraestructura.'],
-};
-const failInfo = r => FAILURE[r] || [r || 'Sin detalle', 'fl-unknown', 'help-circle-outline', r || 'Razón de fallo no disponible'];
-const Icon = ({ n, ...p }) => <i className={`mdi mdi-${n}`} {...p} />;
-
-/* ─────────────────────────── Assign dropdown ─────────────────────────── */
-function AgentDropdown({ agents, onSelect, onClose }) {
-  const ref = useRef();
-  useEffect(() => {
-    const h = e => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
-    document.addEventListener('mousedown', h);
-    return () => document.removeEventListener('mousedown', h);
-  }, []);
-  const sorted = [...agents].sort((a, b) => a.convs - b.convs);
-  return (
-    <div className="ho-dd" ref={ref}>
-      <div className="ho-dd-lbl"><span>Asignar a agente</span><span>menor carga primero</span></div>
-      {sorted.map((a, i) => {
-        const p = loadPct(a.convs);
-        return (
-          <div key={a.id} className="ho-dd-item" onClick={() => onSelect(a)}>
-            <div className={`ho-av st-${a.status}`} style={{ background: a.color, width: 30, height: 30 }}>{a.initials}</div>
-            <div style={{ minWidth: 0 }}>
-              <div className="ho-dd-name">{a.name} {i === 0 && <span className="ho-dd-best">óptimo</span>}</div>
-              <div className="ho-dd-meta">{a.convs} conv activas</div>
-            </div>
-            <div className="ho-dd-load">
-              <div className="ho-dd-loadbar"><div className={`ho-dd-loadfill ${loadClass(p)}`} style={{ width: `${p}%` }} /></div>
-              <span className="ho-dd-loadnum">{a.convs}</span>
-            </div>
-          </div>
-        );
-      })}
-    </div>
+  const c = colors[color] || colors.primary;
+  return React.createElement('div', {
+    style: {
+      background: '#fff', border: `1px solid ${urgent ? c.border : 'var(--border)'}`,
+      borderRadius: 12, padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 4,
+      boxShadow: urgent ? `0 0 0 2px ${c.border}` : 'var(--shadow-xs)',
+    }
+  },
+    React.createElement('div', { style: { display:'flex', alignItems:'center', gap:8, marginBottom:4 } },
+      React.createElement('span', { style: { fontSize:20, color: c.fg } },
+        React.createElement(Icon, { n: icon })
+      ),
+      React.createElement('span', { style: { fontSize:12, fontWeight:600, color:'var(--fg-3)', textTransform:'uppercase', letterSpacing:'.5px' } }, label)
+    ),
+    React.createElement('div', { style: { fontSize:32, fontWeight:800, color: urgent ? c.fg : 'var(--fg-1)', lineHeight:1 } }, value),
+    sub && React.createElement('div', { style: { fontSize:12, color:'var(--fg-3)', marginTop:2 } }, sub)
   );
 }
 
-/* ─────────────────────────── Opportunity card ─────────────────────────── */
-function OppCard({ conv, agents, prio, selected, onSelect, onAssign, onOpen }) {
-  const [drop, setDrop] = useState(false);
-  const agent   = agents.find(a => a.id === conv.agentId);
-  const waitCls = prio === 'crit' ? 'w-crit' : prio === 'risk' ? 'w-risk' : 'w-ok';
-  const bm      = BUCKET_META[conv.bucket] || BUCKET_META.hot;
+/* ─── Summary strip ──────────────────────────────────────────────────────── */
+function SummaryStrip({ summary, loading }) {
+  if (!summary) return null;
+  const aq  = summary.assignment_queue || {};
+  const sq  = summary.supervisor_queue || {};
+  const rq  = summary.rescue_queue     || {};
+  const na  = summary.no_action        || {};
+  const noActionTotal = (na.converted || 0) + (na.already_handled || 0) + (na.backlog || 0) + (na.lost || 0);
 
-  /* source / intent / topic — null-safe */
-  const [srcCls, srcIc] = conv.source ? (SOURCE[conv.source] || ['int-info', 'information-outline']) : ['int-info', 'help-circle-outline'];
-  const srcLabel = conv.source || 'Sin origen';
-  const [intCls, intIc] = conv.intent ? (INTENT[conv.intent] || ['int-info', 'information-outline']) : ['int-info', 'help-circle-outline'];
-  const intLabel = conv.intent || 'Sin intención';
-  const [topLbl, topCls] = conv.topic ? (TOPIC[conv.topic] || [conv.topic, 'tp-faq']) : ['Sin topic', 'tp-unknown'];
-
-  return (
-    <div className={`ho-card ${prio} ${selected ? 'sel' : ''}`} onClick={() => onSelect(conv.id)}>
-      <div className="ho-card-body">
-        {/* patient */}
-        <div style={{ minWidth: 0 }}>
-          <div className="ho-pt-name">{conv.name}</div>
-          {conv.hc
-            ? <span className="ho-pt-hc"><Icon n="card-account-details-outline" />HC {conv.hc}</span>
-            : <span className="ho-pt-nohc"><Icon n="card-account-details-outline" />Sin HC</span>}
-          <div className="ho-score" title={`Prioridad ${conv.score}/450`}>
-            <div className="ho-score-track"><div className="ho-score-fill" style={{ width: `${Math.min(100, Math.round(conv.score / 4.5))}%`, background: scoreColor(conv.score) }} /></div>
-            <span className="ho-score-lbl" style={{ color: scoreColor(conv.score) }}>{conv.score}</span>
-          </div>
-        </div>
-
-        {/* bucket badge + source + intent */}
-        <div className="ho-badges">
-          <span className={`ho-bucket ${bm.cls}`}><Icon n={bm.ic} />{bm.label}</span>
-          <span className={`ho-badge ${srcCls}`}><Icon n={srcIc} />{srcLabel}</span>
-          <span className={`ho-badge ${intCls}`}><Icon n={intIc} />{intLabel}</span>
-        </div>
-
-        {/* wait */}
-        <div className="ho-wait">
-          <span className={`ho-wait-badge ${waitCls}`}>{conv.waitMin}<small>min</small></span>
-          <div className="ho-wait-sub">en cola</div>
-        </div>
-
-        {/* topic + requeue */}
-        <div style={{ minWidth: 0 }}>
-          <span className={`ho-topic ${topCls}`}>{topLbl}</span>
-          {conv.requeued !== null && conv.requeued >= 1 && (
-            <div className="ho-requeue"><Icon n="backup-restore" />reencolado {conv.requeued}×</div>
-          )}
-        </div>
-
-        {/* meta window — text from backend */}
-        <div className="ho-meta">
-          {conv.metaState === 'open' && (
-            <span className="ho-meta-open"><Icon n="check-circle" />{conv.metaLabel}</span>
-          )}
-          {conv.metaState === 'warn' && (
-            <span className="ho-meta-warn m-warn"><Icon n="timer-sand" />{conv.metaLabel}</span>
-          )}
-          <div className="ho-meta-lbl">ventana Meta</div>
-        </div>
-
-        {/* agent */}
-        <div className="ho-agent">
-          {agent ? (
-            <>
-              <div className={`ho-av st-${agent.status}`} style={{ background: agent.color }}>{agent.initials}</div>
-              <div style={{ minWidth: 0 }}>
-                <div className="ho-agent-name">{agent.name}</div>
-                <div className="ho-agent-meta">{agent.convs} conv asignadas</div>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="ho-av-empty"><Icon n="account-plus-outline" /></div>
-              <span className="ho-agent-none">Sin asignar</span>
-            </>
-          )}
-        </div>
-
-        {/* actions */}
-        <div className="ho-actions" onClick={e => e.stopPropagation()}>
-          <div className="ho-dd-wrap">
-            <button className={agent ? 'ho-btn ho-btn-sec' : 'ho-btn ho-btn-pri'} onClick={() => setDrop(v => !v)}>
-              <Icon n={agent ? 'account-switch' : 'account-arrow-right'} />{agent ? 'Reasignar' : 'Asignar'}
-            </button>
-            {drop && <AgentDropdown agents={agents} onSelect={a => { setDrop(false); onAssign(conv.id, a, conv.bucket); }} onClose={() => setDrop(false)} />}
-          </div>
-          <button className="ho-btn ho-btn-ic" title="Abrir chat" onClick={() => onOpen(conv)}><Icon n="message-text-outline" /></button>
-        </div>
-      </div>
-
-      {/* reasons — from backend */}
-      {conv.reasons.length > 0 && (
-        <div className="ho-reasons">
-          <span className="ho-reasons-lbl"><Icon n="information-outline" />Por qué</span>
-          {conv.reasons.map(([ic, txt, sev], i) => (
-            <span key={i} className={`ho-reason rs-${sev}`}><Icon n={ic} />{txt}</span>
-          ))}
-        </div>
-      )}
-    </div>
+  return React.createElement('div', {
+    style: {
+      display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))',
+      gap: 12, padding: '16px 20px', background:'var(--bg-soft)',
+      borderBottom: '1px solid var(--border)',
+    }
+  },
+    React.createElement(KpiCard, {
+      icon:'view-dashboard-outline', label:'Decisiones', value: loading ? '…' : (summary.total_decisions ?? '—'),
+      color:'gray',
+    }),
+    React.createElement(KpiCard, {
+      icon:'account-plus-outline', label:'Asignar ahora',
+      value: loading ? '…' : (aq.total ?? 0),
+      sub: aq.eligible_for_autoassign != null ? `${aq.eligible_for_autoassign} elegibles autoassign` : null,
+      color:'primary', urgent: (aq.total ?? 0) > 0,
+    }),
+    React.createElement(KpiCard, {
+      icon:'shield-account-outline', label:'Supervisar',
+      value: loading ? '…' : (sq.total ?? 0),
+      sub: sq.over_sla != null ? `${sq.over_sla} sobre SLA` : null,
+      color:'red', urgent: (sq.total ?? 0) > 0,
+    }),
+    React.createElement(KpiCard, {
+      icon:'lifebuoy', label:'Rescatar',
+      value: loading ? '…' : (rq.total ?? 0),
+      sub: rq.total ? `${rq.rescue_followup ?? 0} followup · ${rq.send_template_or_review ?? 0} template` : null,
+      color:'amber', urgent: (rq.total ?? 0) > 0,
+    }),
+    React.createElement(KpiCard, {
+      icon:'check-circle-outline', label:'Sin acción',
+      value: loading ? '…' : noActionTotal,
+      sub: noActionTotal ? `${na.converted ?? 0} conv · ${na.already_handled ?? 0} atend · ${na.backlog ?? 0} backlog` : null,
+      color:'green',
+    }),
   );
 }
 
-/* ─────────────────────────── Historical banner ─────────────────────────── */
-function HistoricalBanner({ bucket, total }) {
-  const bm = BUCKET_META[bucket] || {};
-  return (
-    <div className="ho-hist-banner">
-      <Icon n="information-outline" />
-      <span>
-        Vista de <b>deuda histórica · {bm.tabLabel}</b> — estas <b>{total}</b> conversaciones
-        no forman parte del KPI operacional ejecutivo.
-      </span>
-    </div>
+/* ─── Badge helpers ──────────────────────────────────────────────────────── */
+function PriorityBadge({ v }) {
+  const labels = { high:'Alta', medium:'Media', normal:'Normal', low:'Baja' };
+  return React.createElement('span', { className: `ho-bucket ${PRIORITY_CLS[v] || ''}` }, labels[v] || v || '—');
+}
+function RiskBadge({ v }) {
+  const labels = { high:'Alto', medium:'Medio', low:'Bajo', closed:'Cerrado' };
+  return React.createElement('span', { className: `ho-bucket ${RISK_CLS[v] || ''}` }, labels[v] || v || '—');
+}
+function BucketBadge({ v }) {
+  const labels = { hot_open:'HOT', hot_needs_template:'HOT·Template', rescue:'Rescue', backlog:'Backlog', lost:'Perdida' };
+  return React.createElement('span', { className: `ho-bucket ${BUCKET_CLS[v] || 'bk-backlog'}` }, labels[v] || v || '—');
+}
+function ActionBadge({ v }) {
+  return React.createElement('span', { style:{fontSize:12, color:'var(--fg-2)'}}, ACTION_LABEL[v] || v || '—');
+}
+
+/* ─── Table ──────────────────────────────────────────────────────────────── */
+function ItemsTable({ items, loading, emptyMsg }) {
+  if (loading) return React.createElement('div', { className:'ho-empty' },
+    React.createElement(Icon, { n:'loading', cls:'mdi-spin' }), ' Cargando…'
+  );
+  if (!items || items.length === 0) return React.createElement('div', { className:'ho-empty' },
+    React.createElement(Icon, { n:'inbox-outline' }), ' ', emptyMsg || 'Sin conversaciones.'
+  );
+
+  return React.createElement('div', { style:{ overflowX:'auto' } },
+    React.createElement('table', { className:'ho-table' },
+      React.createElement('thead', null,
+        React.createElement('tr', null,
+          ['Conv ID','Bucket','Acción recomendada','Prioridad','Riesgo','Oportunidad','Autoassign','Rescate','Supervisor','Booking','Motivo'].map(h =>
+            React.createElement('th', { key:h }, h)
+          )
+        )
+      ),
+      React.createElement('tbody', null,
+        items.map(item =>
+          React.createElement('tr', { key: item.conversation_id },
+            React.createElement('td', null,
+              React.createElement('a', {
+                href: `${CFG.chatUrl}/${item.conversation_id}`,
+                target:'_blank', rel:'noopener noreferrer',
+                style:{ fontWeight:700, color:'var(--primary)' }
+              }, `#${item.conversation_id}`)
+            ),
+            React.createElement('td', null, React.createElement(BucketBadge, { v: item.bucket })),
+            React.createElement('td', null, React.createElement(ActionBadge, { v: item.recommended_action })),
+            React.createElement('td', null, React.createElement(PriorityBadge, { v: item.priority })),
+            React.createElement('td', null, React.createElement(RiskBadge, { v: item.risk_level })),
+            React.createElement('td', null, item.opportunity_level || '—'),
+            React.createElement('td', { style:{textAlign:'center'} }, item.eligible_for_autoassign ? React.createElement(Icon, {n:'check-circle', cls:'text-green'}) : React.createElement(Icon, {n:'minus-circle-outline', cls:'text-muted'})),
+            React.createElement('td', { style:{textAlign:'center'} }, item.eligible_for_rescue ? React.createElement(Icon, {n:'check-circle', cls:'text-green'}) : React.createElement(Icon, {n:'minus-circle-outline', cls:'text-muted'})),
+            React.createElement('td', { style:{textAlign:'center'} }, item.eligible_for_supervisor_alert ? React.createElement(Icon, {n:'check-circle', cls:'text-green'}) : React.createElement(Icon, {n:'minus-circle-outline', cls:'text-muted'})),
+            React.createElement('td', { style:{textAlign:'center'} }, item.has_attributed_booking ? React.createElement(Icon, {n:'calendar-check', cls:'text-green'}) : React.createElement(Icon, {n:'minus-circle-outline', cls:'text-muted'})),
+            React.createElement('td', { title: item.reason, style:{maxWidth:300, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'} }, item.reason || '—')
+          )
+        )
+      )
+    )
   );
 }
 
-/* ─────────────────────────── Reminder card ─────────────────────────── */
-function RemCard({ rem, selected, onSelect, onOpen, onRecontact }) {
-  const [desc, setDesc]  = useState(false);
-  const soon             = isRemSoon(rem);
-  const [failLbl, failCls, failIc, failDesc] = failInfo(rem.failureReason);
-  const [inLbl, inSoon]  = fmtApptIn(rem.apptMinutes);
-  return (
-    <div className={`ho-rcard ${soon ? 'soon' : ''} ${selected === rem.id ? 'sel' : ''}`} onClick={() => onSelect(rem.id)}>
-      <div className="ho-rcard-body">
-        <div style={{ minWidth: 0 }}>
-          <div className="ho-pt-name">{rem.name}</div>
-          {rem.hc
-            ? <span className="ho-pt-hc"><Icon n="card-account-details-outline" />HC {rem.hc}</span>
-            : <span className="ho-pt-nohc"><Icon n="card-account-details-outline" />Sin HC</span>}
-          {soon && <div className="ho-soon-flag"><Icon n="alert-circle" />Cita muy pronto</div>}
-        </div>
-        <div style={{ minWidth: 0 }}>
-          <span className={`ho-fail ${failCls}`}><Icon n={failIc} />{failLbl}</span>
-          <div className="ho-fail-toggle" onClick={e => { e.stopPropagation(); setDesc(v => !v); }}>
-            <Icon n={desc ? 'chevron-up' : 'chevron-down'} />{desc ? 'Ocultar detalle' : 'Ver detalle'}
-          </div>
-          {desc && <div className="ho-fail-desc">{failDesc}</div>}
-          {rem.retries > 0 && <div className="ho-fail-retry"><Icon n="restart" />Reintentado {rem.retries}×</div>}
-        </div>
-        <div style={{ minWidth: 0 }}>
-          <span className={`ho-appt-date ${soon ? 'soon' : ''}`}><Icon n="calendar-clock" />{rem.apptDate}</span>
-          <div className="ho-appt-in">en <b className={inSoon ? 'soon' : ''}>{inLbl}</b></div>
-          {(rem.apptDoctor || rem.apptSede) && <div className="ho-appt-where">{[rem.apptDoctor, rem.apptSede].filter(Boolean).join(' · ')}</div>}
-        </div>
-        <div>
-          {rem.windowState === 'open'           && <span className="ho-win w-open"><Icon n="check-circle" />Abierta</span>}
-          {rem.windowState === 'needs_template' && <span className="ho-win w-tmpl"><Icon n="file-document-outline" />Requiere template</span>}
-          {rem.windowState === 'closed'         && <span className="ho-win w-closed"><Icon n="close-circle" />Cerrada</span>}
-          <div className="ho-win-lbl">ventana WhatsApp</div>
-        </div>
-        <div className="ho-actions" onClick={e => e.stopPropagation()}>
-          <button className="ho-btn ho-btn-rem" onClick={() => onRecontact(rem)}><Icon n="phone-outline" />Recontactar</button>
-          {rem.conversationId && <button className="ho-btn ho-btn-ic" title="Abrir chat" onClick={() => onOpen({ name: rem.name, id: rem.conversationId })}><Icon n="message-text-outline" /></button>}
-        </div>
-      </div>
-    </div>
+/* ─── No-action panel ────────────────────────────────────────────────────── */
+function NoActionPanel({ summary }) {
+  if (!summary) return null;
+  const na = summary.no_action || {};
+  const rows = [
+    { label:'Convertidas',    icon:'calendar-check',     val: na.converted       ?? 0, desc:'Paciente ya tiene cita atribuida.' },
+    { label:'Ya atendidas',   icon:'check-decagram',     val: na.already_handled ?? 0, desc:'Agente respondió dentro del SLA.' },
+    { label:'Backlog',        icon:'archive-clock',      val: na.backlog         ?? 0, desc:'Sin actividad reciente — deuda histórica.' },
+    { label:'Perdidas',       icon:'account-off-outline', val: na.lost           ?? 0, desc:'Sin actividad en más de 30 días.' },
+  ];
+  return React.createElement('div', { style:{padding:'20px', display:'flex', flexDirection:'column', gap:8} },
+    React.createElement('p', { style:{fontSize:13, color:'var(--fg-3)', marginBottom:8} },
+      'Estas conversaciones no requieren acción inmediata.'
+    ),
+    rows.map(r =>
+      React.createElement('div', {
+        key: r.label,
+        style:{
+          display:'flex', alignItems:'center', gap:12, padding:'12px 16px',
+          background:'#fff', border:'1px solid var(--border)', borderRadius:8,
+        }
+      },
+        React.createElement('span', { style:{fontSize:22, color:'var(--fg-3)'}}, React.createElement(Icon, {n: r.icon})),
+        React.createElement('div', { style:{flex:1}},
+          React.createElement('div', { style:{fontWeight:600, fontSize:14}}, r.label),
+          React.createElement('div', { style:{fontSize:12, color:'var(--fg-3)'}}, r.desc)
+        ),
+        React.createElement('div', { style:{fontSize:24, fontWeight:800, color:'var(--fg-2)'}}, r.val)
+      )
+    )
   );
 }
 
-/* ─────────────────────────── Failure summary ─────────────────────────── */
-function FailureSummary({ reminders, active, onFilter }) {
-  const counts = {};
-  reminders.forEach(r => { counts[r.failureReason] = (counts[r.failureReason] || 0) + 1; });
-  const items = Object.entries(counts).sort((a, b) => b[1] - a[1]);
-  const soon  = reminders.filter(isRemSoon).length;
-  return (
-    <div className="ho-failsum">
-      <span className="ho-failsum-title"><Icon n="chart-donut" />Fallos por causa</span>
-      <div className="ho-failsum-items">
-        {items.map(([reason, count]) => {
-          const [lbl, cls, ic] = failInfo(reason);
-          return (
-            <span key={reason} className={`ho-fail ${cls} ho-failsum-chip ${active === reason ? 'active' : ''}`}
-              onClick={() => onFilter(active === reason ? null : reason)}>
-              <Icon n={ic} /><b>{count}</b> {lbl}
-            </span>
-          );
-        })}
-        <span className="ho-failsum-total">Total <b style={{ color: 'var(--fg-1)' }}>{reminders.length}</b> fallidos · <b>{soon}</b> con cita &lt; 2h</span>
-      </div>
-    </div>
-  );
-}
-
-/* ─────────────────────────── Section (priority sub-group) ─────────────────────────── */
-const SEC_META = {
-  crit: ['sev-crit', 'fire',                 'CRÍTICAS',    'acción inmediata'],
-  risk: ['sev-risk', 'alert-outline',        'EN RIESGO',   'responder pronto'],
-  norm: ['sev-norm', 'check-circle-outline', 'BAJO CONTROL','asignadas y activas'],
-};
-function Section({ prio, convs, ...rest }) {
-  if (!convs.length) return null;
-  const [cls, ic, lbl, sub] = SEC_META[prio];
-  return (
-    <div className={cls}>
-      <div className="ho-sec-hdr">
-        <span className="ho-sec-icon"><Icon n={ic} /></span>
-        <h3>{lbl} <span className="ho-sec-sub">· {sub}</span></h3>
-        <span className="ho-sec-count">{convs.length}</span>
-        <span className="ho-sec-line" />
-      </div>
-      <div className="ho-cards">
-        {convs.map(c => <OppCard key={c.id} conv={c} prio={prio} {...rest} />)}
-      </div>
-    </div>
-  );
-}
-
-function SecHeader({ ic, label, sub, count }) {
-  return (
-    <div className="ho-sec-hdr">
-      <span className="ho-sec-icon"><Icon n={ic} /></span>
-      <h3>{label} <span className="ho-sec-sub">· {sub}</span></h3>
-      <span className="ho-sec-count">{count}</span>
-      <span className="ho-sec-line" />
-    </div>
-  );
-}
-
-/* ─────────────────────────── Agent panel ─────────────────────────── */
-function AgentPanel({ agents }) {
-  const totalConv   = agents.reduce((s, a) => s + a.convs,   0);
-  const totalUnread = agents.reduce((s, a) => s + a.unread,  0);
-  const avail       = agents.filter(a => a.status === 'available').length;
-  const STATUS_LBL  = { available: 'Disponible', busy: 'Ocupado', away: 'Ausente' };
-  return (
-    <aside className="ho-ap">
-      <div className="ho-ap-hd">
-        <span className="ho-ap-hd-eye"><Icon n="account-group-outline" />Equipo en turno</span>
-        <h4>{agents.length} agentes <small>· {avail} disponibles</small></h4>
-      </div>
-      <div className="ho-ap-list">
-        {[...agents].sort((a, b) => a.convs - b.convs).map(a => {
-          const p = loadPct(a.convs);
-          return (
-            <div className="ho-ac" key={a.id}>
-              <div className={`ho-ac-av st-${a.status}`} style={{ background: a.color }}>{a.initials}</div>
-              <div className="ho-ac-info">
-                <div className="ho-ac-name">{a.name}</div>
-                <span className={`ho-ac-status s-${a.status}`}>{STATUS_LBL[a.status]}</span>
-                <div className="ho-ac-loadbar"><div className={`ho-ac-loadfill ${loadClass(p)}`} style={{ width: `${p}%` }} /></div>
-              </div>
-              <div className="ho-ac-stats">
-                <div className="ho-ac-conv">{a.convs}<small> conv</small></div>
-                {a.unread > 0 && <div className="ho-ac-unread">{a.unread} sin leer</div>}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      <div className="ho-ap-foot">
-        <div className="ho-ap-foot-row"><span>Conversaciones asignadas</span><b>{totalConv}</b></div>
-        <div className="ho-ap-foot-row"><span>Sin leer en el equipo</span><b>{totalUnread}</b></div>
-      </div>
-    </aside>
-  );
-}
-
-/* ─────────────────────────── Toasts ─────────────────────────── */
-function Toasts({ toasts }) {
-  return (
-    <div className="ho-toasts">
-      {toasts.map(t => (
-        <div key={t.id} className={`ho-toast ${t.out ? 'out' : ''}`}>
-          <span className={`ho-toast-ic t-${t.kind}`}><Icon n={t.icon} /></span>
-          <span>{t.msg}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function FSelect({ value, onChange, allLabel, options }) {
-  return (
-    <select className={`ho-select ${value !== 'all' ? 'active' : ''}`} value={value} onChange={e => onChange(e.target.value)}>
-      <option value="all">{allLabel}</option>
-      {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-    </select>
-  );
-}
-
-function LoadingState() {
-  return (
-    <div className="ho-empty" style={{ margin: 'auto' }}>
-      <div className="ho-empty-ic" style={{ background: 'var(--primary-fade)', color: 'var(--primary)' }}>
-        <Icon n="loading" style={{ animation: 'ho-spin .75s linear infinite' }} />
-      </div>
-      <h4>Cargando bandeja operacional</h4>
-      <p>Conectando con el servidor…</p>
-    </div>
-  );
-}
-
-function ErrorState({ msg, onRetry }) {
-  return (
-    <div className="ho-empty" style={{ margin: 'auto' }}>
-      <div className="ho-empty-ic" style={{ background: '#fde2e7', color: 'var(--danger)' }}>
-        <Icon n="wifi-off" />
-      </div>
-      <h4>Error al cargar los datos</h4>
-      <p>{msg}</p>
-      <button className="ho-btn ho-btn-pri" style={{ margin: '14px auto 0', display: 'inline-flex' }} onClick={onRetry}>
-        <Icon n="refresh" />Reintentar
-      </button>
-    </div>
-  );
-}
-
-/* ─────────────────────────── App ─────────────────────────── */
+/* ─── App ────────────────────────────────────────────────────────────────── */
 function App() {
-  /* ── Bucket state — one array per bucket from API ── */
-  const [hotOpps,    setHotOpps]    = useState([]);
-  const [rescueOpps, setRescueOpps] = useState([]);
-  const [backlogOpps,setBacklogOpps]= useState([]);
-  const [lostOpps,   setLostOpps]   = useState([]);
-  const [apiCounts,  setApiCounts]  = useState({});   // data.counts from API
+  const today = new Date().toISOString().slice(0,10);
+  const [date,    setDate]    = useState(today);
+  const [tab,     setTab]     = useState('all');
+  const [loading, setLoading] = useState(true);
+  const [error,   setError]   = useState(null);
+  const [summary, setSummary] = useState(null);
+  const [items,   setItems]   = useState([]);
+  const [toasts,  setToasts]  = useState([]);
 
-  const [agents,    setAgents]    = useState([]);
-  const [reminders, setReminders] = useState([]);
-  const [loading,   setLoading]   = useState(true);
-  const [error,     setError]     = useState(null);
+  function addToast(msg, type = 'error') {
+    const id = Date.now();
+    setToasts(t => [...t, { id, msg, type }]);
+    setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 5000);
+  }
 
-  /* default tab: 'hot' (operational, accionable hoy) */
-  const [tab,        setTab]        = useState('hot');
-  const [failFilter, setFailFilter] = useState(null);
-  const [selected,   setSelected]   = useState(null);
-  const [spin,       setSpin]       = useState(false);
-  const [toasts,     setToasts]     = useState([]);
-  const [ts,         setTs]         = useState(null);
-  const [now,        setNow]        = useState(() => Date.now());
-
-  const [fPrio,   setFPrio]   = useState('all');
-  const [fTopic,  setFTopic]  = useState('all');
-  const [fSource, setFSource] = useState('all');
-  const [fIntent, setFIntent] = useState('all');
-  const [fAgent,  setFAgent]  = useState('all');
-
-  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
-
-  const addToast = useCallback((msg, icon = 'check-circle', kind = 'ok') => {
-    const id = Date.now() + Math.random();
-    setToasts(p => [...p, { id, msg, icon, kind }]);
-    setTimeout(() => {
-      setToasts(p => p.map(t => t.id === id ? { ...t, out: true } : t));
-      setTimeout(() => setToasts(p => p.filter(t => t.id !== id)), 240);
-    }, 2800);
-  }, []);
-
-  const fetchData = useCallback(async (showSpin = false) => {
-    if (showSpin) setSpin(true);
+  const fetchData = useCallback(async (queue, dateVal) => {
+    setLoading(true);
+    setError(null);
     try {
-      const resp = await fetch(CFG.apiUrl, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const params = new URLSearchParams({ date: dateVal, queue });
+      const resp = await fetch(`${CFG.apiUrl}?${params}`, {
+        headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+      });
+
+      // Session expired → redirect
+      if (resp.redirected || resp.status === 302 || resp.headers.get('content-type')?.includes('text/html')) {
+        setError('Sesión expirada. Por favor recarga la página e inicia sesión.');
+        setLoading(false);
+        return;
+      }
+
       const json = await resp.json();
-      if (!json.ok) throw new Error(json.error || 'Error del servidor');
+
+      if (!resp.ok || !json.ok) {
+        setError(json.message || `Error ${resp.status}`);
+        setLoading(false);
+        return;
+      }
 
       const data = json.data || {};
+      setSummary(data.summary || null);
 
-      /* Detect API shape:
-         NEW → data.hot_opportunities array exists (Codex classification)
-         OLD → data.conversations array (legacy, everything goes to HOT) */
-      const hasNewShape = Array.isArray(data.hot_opportunities);
-
-      if (hasNewShape) {
-        /* New bucket structure from Codex classification */
-        const lostRaw = [
-          ...(data.lost_opportunities || []),
-          ...(data.expired_or_lost    || []),
-        ];
-        setHotOpps(    (data.hot_opportunities   || []).map(c => mapConversation(c, 'hot')));
-        setRescueOpps( (data.rescue_opportunities|| []).map(c => mapConversation(c, 'rescue')));
-        setBacklogOpps((data.historical_backlog   || []).map(c => mapConversation(c, 'backlog')));
-        setLostOpps(   lostRaw                        .map(c => mapConversation(c, 'lost')));
-        setApiCounts(  data.counts || {});
+      // Normalize items from different queue shapes
+      if (queue === 'all') {
+        const queues = data.queues || {};
+        setItems([
+          ...(queues.assignment || []),
+          ...(queues.supervisor || []),
+          ...(queues.rescue     || []),
+        ]);
       } else {
-        /* Legacy shape — all conversations go to HOT until backend deploys new structure */
-        setHotOpps(    (data.conversations || []).map(c => mapConversation(c, 'hot')));
-        setRescueOpps( []);
-        setBacklogOpps([]);
-        setLostOpps(   []);
-        setApiCounts(  {});
+        setItems(data.items || []);
       }
-      setAgents(    (data.agents    || []).map(mapAgent));
-      setReminders( (data.reminders || []).map(mapReminder));
-      setTs(new Date());
-      setError(null);
-      setLoading(false);
     } catch (e) {
-      setError(e.message);
-      setLoading(false);
+      setError('Error de red: ' + e.message);
+      addToast('Error cargando datos: ' + e.message);
     } finally {
-      setSpin(false);
+      setLoading(false);
     }
   }, []);
 
-  useEffect(() => {
-    const handleWsEvent = (e) => {
-      const ev = e.detail || {};
-      if (['handoff.requeued', 'handoff.escalated', 'handoff.auto_assigned'].includes(ev.event)) {
-        fetchData(false);
-        if (ev.event === 'handoff.auto_assigned' && ev.assigned_to) {
-          addToast(`Auto-asignado a ${ev.assigned_to.name}`, 'account-arrow-right', 'user');
-        }
-      }
-    };
-    window.addEventListener('whatsapp:handoff', handleWsEvent);
-    return () => window.removeEventListener('whatsapp:handoff', handleWsEvent);
-  }, [fetchData, addToast]);
+  useEffect(() => { fetchData(tab, date); }, [tab, date, fetchData]);
 
-  useEffect(() => { fetchData(false); }, [fetchData]);
-  useEffect(() => {
-    const t = setInterval(() => fetchData(false), CFG.pollIntervalMs);
-    return () => clearInterval(t);
-  }, [fetchData]);
-
-  const refresh = useCallback(() => {
-    fetchData(true);
-    addToast('Actualizando bandeja…', 'refresh', 'info');
-  }, [fetchData, addToast]);
-
-  /* ── Assign — bucket-aware to update correct state array ── */
-  function assign(convId, agent, bucket) {
-    const all  = [...hotOpps, ...rescueOpps, ...backlogOpps, ...lostOpps];
-    const conv = all.find(c => c.id === convId);
-    const prev = conv && conv.agentId;
-    const upd  = p => p.map(c => c.id === convId ? { ...c, agentId: agent.id } : c);
-    if (bucket === 'hot')     setHotOpps(upd);
-    if (bucket === 'rescue')  setRescueOpps(upd);
-    if (bucket === 'backlog') setBacklogOpps(upd);
-    if (bucket === 'lost')    setLostOpps(upd);
-    setAgents(p => p.map(a => {
-      if (a.id === agent.id) return { ...a, convs: a.convs + 1 };
-      if (a.id === prev)     return { ...a, convs: Math.max(0, a.convs - 1) };
-      return a;
-    }));
-    addToast(`${conv?.name || 'Conv'} → ${agent.name}`, 'account-arrow-right', 'user');
-  }
-
-  const openChat = conv => {
-    const url = conv.id ? `${CFG.chatUrl}?conversation_id=${conv.id}` : CFG.chatUrl;
-    window.location.href = url;
-  };
-  const recontact = rem => {
-    if (rem.conversationId) {
-      window.location.href = `${CFG.chatUrl}?conversation_id=${rem.conversationId}`;
-    } else {
-      addToast(`Recontacto manual iniciado para ${rem.name}`, 'phone-outline', 'user');
-    }
-  };
-
-  /* ── KPIs — operational only (hot + rescue), from API counts ── */
-  const execOpps = [...hotOpps, ...rescueOpps];
-  const critKpi       = execOpps.filter(c => c.prio === 'crit').length;
-  const riskKpi       = execOpps.filter(c => c.prio === 'risk').length;
-  const unassignedKpi = execOpps.filter(c => !c.agentId).length;
-  const execTotal     = typeof apiCounts.executive_operational === 'number'
-    ? apiCounts.executive_operational : execOpps.length;
-  const debtTotal     = typeof apiCounts.historical_debt === 'number'
-    ? apiCounts.historical_debt : (backlogOpps.length + lostOpps.length);
-  const urgentRemCount = reminders.filter(isRemSoon).length;
-
-  /* ── Active tab data ── */
-  const isHistorical = tab === 'backlog' || tab === 'lost';
-  const tabData =
-    tab === 'hot'     ? hotOpps     :
-    tab === 'rescue'  ? rescueOpps  :
-    tab === 'backlog' ? backlogOpps :
-    tab === 'lost'    ? lostOpps    :
-    [];
-
-  /* ── Filtering — applies to active tab ── */
-  const filtered = tabData.filter(c => {
-    if (fTopic  !== 'all' && c.topic  !== fTopic)  return false;
-    if (fSource !== 'all' && c.source !== fSource)  return false;
-    if (fIntent !== 'all' && c.intent !== fIntent)  return false;
-    if (fPrio   !== 'all' && c.prio   !== fPrio)    return false;
-    if (fAgent  !== 'all') {
-      if (fAgent === 'none' && c.agentId !== null)          return false;
-      if (fAgent !== 'none' && String(c.agentId) !== fAgent) return false;
-    }
+  // Filtered items per tab for display
+  const displayItems = tab === 'all' ? items : items.filter(i => {
+    if (tab === 'assignment') return i.recommended_action === 'assign_now';
+    if (tab === 'supervisor') return i.recommended_action === 'supervisor_review';
+    if (tab === 'rescue')     return ['rescue_followup','send_template_or_review'].includes(i.recommended_action);
     return true;
   });
 
-  const byScore = (a, b) => b.score - a.score;
-  const crit    = filtered.filter(c => c.prio === 'crit').sort(byScore);
-  const risk    = filtered.filter(c => c.prio === 'risk').sort(byScore);
-  const norm    = filtered.filter(c => c.prio === 'norm').sort(byScore);
+  return React.createElement(React.Fragment, null,
+    React.createElement(ToastContainer, { toasts }),
 
-  const filteredRem    = failFilter ? reminders.filter(r => r.failureReason === failFilter) : reminders;
-  const byAppt         = (a, b) => a.apptMinutes - b.apptMinutes;
-  const soonRem        = filteredRem.filter(isRemSoon).sort(byAppt);
-  const laterRem       = filteredRem.filter(r => !isRemSoon(r)).sort(byAppt);
+    /* ── Header ── */
+    React.createElement('div', { className:'ho-hd' },
+      React.createElement('div', { style:{display:'flex', alignItems:'center', gap:12, flex:1} },
+        React.createElement('span', { style:{fontSize:20, color:'var(--primary)'}},
+          React.createElement(Icon, {n:'view-dashboard-variant-outline'})
+        ),
+        React.createElement('span', { className:'ho-hd-title'}, 'Colas operacionales'),
+        summary && React.createElement('span', { className:'ho-hd-pill' },
+          `${summary.total_decisions ?? '—'} decisiones`
+        ),
+      ),
+      /* Date picker */
+      React.createElement('div', { style:{display:'flex', alignItems:'center', gap:8}},
+        React.createElement(Icon, {n:'calendar-outline', cls:''}),
+        React.createElement('input', {
+          type:'date', value:date,
+          onChange: e => setDate(e.target.value),
+          style:{
+            border:'1px solid var(--border)', borderRadius:6, padding:'5px 10px',
+            fontSize:13, color:'var(--fg-1)', background:'#fff',
+          }
+        }),
+        React.createElement('button', {
+          className:'ho-btn',
+          onClick: () => fetchData(tab, date),
+          disabled: loading,
+        }, loading ? React.createElement(Icon,{n:'loading',cls:'mdi-spin'}) : React.createElement(Icon,{n:'refresh'}))
+      )
+    ),
 
-  const hasFilters  = [fPrio, fTopic, fSource, fIntent, fAgent].some(f => f !== 'all');
-  const clearFilters = () => { setFPrio('all'); setFTopic('all'); setFSource('all'); setFIntent('all'); setFAgent('all'); };
+    /* ── KPI Strip ── */
+    React.createElement(SummaryStrip, { summary, loading }),
 
-  const secsAgo  = ts ? Math.floor((now - ts.getTime()) / 1000) : 0;
-  const fmtTs    = ts ? ts.toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' }) : '—';
-  const agoLabel = !ts ? '…' : secsAgo < 5 ? 'recién' : secsAgo < 60 ? `hace ${secsAgo}s` : `hace ${Math.floor(secsAgo / 60)} min`;
+    /* ── Tabs ── */
+    React.createElement('div', { className:'ho-tabs' },
+      QUEUE_TABS.map(t =>
+        React.createElement('button', {
+          key: t.key,
+          className: `ho-tab ${tab === t.key ? 'active' : ''}`,
+          onClick: () => setTab(t.key),
+        },
+          React.createElement(Icon, { n: t.icon }),
+          ' ', t.label,
+          tab === t.key && !loading && React.createElement('span', {
+            style:{
+              marginLeft:6, background:'var(--primary)', color:'#fff',
+              borderRadius:10, fontSize:11, padding:'1px 6px', fontWeight:700,
+            }
+          }, displayItems.length)
+        )
+      )
+    ),
 
-  const sectionProps = { agents, selected, onSelect: setSelected, onAssign: assign, onOpen: openChat };
-
-  return (
-    <>
-      {/* ── Header ── */}
-      <header className="ho-hd">
-        <div className="ho-brand">
-          <div className="ho-brand-mark"><Icon n="lightning-bolt" /></div>
-          <div className="ho-brand-text">
-            <div className="ho-brand-word">MedForge</div>
-            <div className="ho-brand-sub">by Consulmed</div>
-          </div>
-        </div>
-        <div className="ho-hd-divider" />
-        <div className="ho-hd-title">
-          <h1>Bandeja operacional</h1>
-          <span className="ho-hd-crumb"><Icon n="whatsapp" />WhatsApp · Supervisión CIVE</span>
-        </div>
-        <div className="ho-live"><span className="ho-pulse" />En vivo</div>
-
-        {/* ── KPIs — operational (HOT + RESCUE) only ── */}
-        {!loading && !error && (
-          <div className="ho-hd-pills">
-            <span className="ho-hd-pill exec" title="HOT + RESCUE — total operacional">
-              <Icon n="lightning-bolt" /><b>{execTotal}</b> operacional
-            </span>
-            <span className="ho-hd-pill crit"><Icon n="fire" /><b>{critKpi}</b> críticas</span>
-            <span className="ho-hd-pill risk"><Icon n="alert-outline" /><b>{riskKpi}</b> en riesgo</span>
-            <span className="ho-hd-pill unassi"><Icon n="account-off-outline" /><b>{unassignedKpi}</b> sin asignar</span>
-            {debtTotal > 0 && (
-              <span className="ho-hd-pill debt" title="Backlog histórico + Perdidas — no incluido en KPI ejecutivo">
-                <Icon n="archive-outline" /><b>{debtTotal}</b> deuda histórica
-              </span>
-            )}
-            {urgentRemCount > 0 && (
-              <span className="ho-hd-pill reminder" style={{ background: 'rgba(213,150,35,.26)', color: '#f3cd7e' }}>
-                <Icon n="calendar-alert" /><b>{urgentRemCount}</b> rec. urgentes
-              </span>
-            )}
-          </div>
-        )}
-
-        <div className="ho-hd-meta">
-          <span className="ho-hd-ts">{ts ? `Actualizado ${fmtTs} · ${agoLabel}` : 'Cargando…'}</span>
-          <button className={`ho-refresh ${spin ? 'spin' : ''}`} onClick={refresh} title="Actualizar"><Icon n="refresh" /></button>
-        </div>
-      </header>
-
-      {/* ── Tab bar ── */}
-      <div className="ho-tabs">
-        {/* Operational group */}
-        <button className={`ho-tab ho-tab-hot ${tab === 'hot' ? 'active' : ''}`} onClick={() => setTab('hot')}>
-          <Icon n="fire" />HOT
-          <span className="ho-tab-count">{hotOpps.length}</span>
-        </button>
-        <button className={`ho-tab ho-tab-rescue ${tab === 'rescue' ? 'active' : ''}`} onClick={() => setTab('rescue')}>
-          <Icon n="alert-circle" />RESCUE
-          <span className="ho-tab-count">{rescueOpps.length}</span>
-        </button>
-
-        {/* Divider — separates operational from historical */}
-        <div className="ho-tab-sep" title="Deuda histórica (no KPI ejecutivo)" />
-
-        {/* Historical group */}
-        <button className={`ho-tab ho-tab-backlog ${tab === 'backlog' ? 'active' : ''}`} onClick={() => setTab('backlog')}>
-          <Icon n="archive-outline" />Backlog
-          <span className="ho-tab-count">{backlogOpps.length}</span>
-        </button>
-        <button className={`ho-tab ho-tab-lost ${tab === 'lost' ? 'active' : ''}`} onClick={() => setTab('lost')}>
-          <Icon n="close-circle" />Perdidas
-          <span className="ho-tab-count">{lostOpps.length}</span>
-        </button>
-
-        {/* Recordatorios */}
-        <div className="ho-tab-sep" />
-        <button className={`ho-tab ${tab === 'recordatorios' ? 'active' : ''}`} onClick={() => setTab('recordatorios')}>
-          <Icon n="calendar-alert" />Recordatorios
-          <span className="ho-tab-count">{reminders.length}</span>
-          {urgentRemCount > 0 && <span className="ho-tab-urgent"><Icon n="clock-alert-outline" />{urgentRemCount}</span>}
-        </button>
-      </div>
-
-      {/* ── Filter bar (opp tabs only) ── */}
-      {tab !== 'recordatorios' && !loading && !error && (
-        <div className="ho-fb">
-          <span className="ho-fb-label"><Icon n="filter-variant" />Filtrar</span>
-          <FSelect value={fPrio}   onChange={setFPrio}   allLabel="Prioridad" options={[['crit', 'Crítico'], ['risk', 'En riesgo'], ['norm', 'Bajo control']]} />
-          <FSelect value={fTopic}  onChange={setFTopic}  allLabel="Topic"     options={[['captacion_agendar', 'Captación · agendar'], ['agenda_sin_disponibilidad', 'Agenda sin disponibilidad'], ['faq_escalada', 'FAQ escalada'], ['operacion_reagenda', 'Operación · reagenda']]} />
-          <FSelect value={fSource} onChange={setFSource} allLabel="Origen"    options={[['Ads', 'Ads'], ['Orgánico', 'Orgánico'], ['Retorno', 'Retorno'], ['Campaña', 'Campaña']]} />
-          <FSelect value={fIntent} onChange={setFIntent} allLabel="Intención" options={[['agendar', 'Agendar'], ['reagendar', 'Reagendar'], ['cancelar', 'Cancelar']]} />
-          <FSelect value={fAgent}  onChange={setFAgent}  allLabel="Agente"    options={[['none', 'Sin asignar'], ...agents.map(a => [String(a.id), a.name])]} />
-          {hasFilters && <><div className="ho-fb-sep" /><button className="ho-fb-clear" onClick={clearFilters}><Icon n="close" />Limpiar</button></>}
-          <span className="ho-fb-count"><b>{filtered.length}</b> de {tabData.length} conversaciones</span>
-        </div>
-      )}
-
-      {/* ── Main ── */}
-      <div className="ho-main">
-        <main className="ho-queue">
-          {loading ? <LoadingState /> :
-           error   ? <ErrorState msg={error} onRetry={refresh} /> :
-
-           /* ── Oportunidades (hot / rescue / backlog / lost) ── */
-           tab !== 'recordatorios' ? (
-            <>
-              {/* Historical banner — only for backlog/lost */}
-              {isHistorical && <HistoricalBanner bucket={tab} total={tabData.length} />}
-
-              {filtered.length === 0 ? (
-                <div className="ho-empty">
-                  <div className="ho-empty-ic"><Icon n="check-all" /></div>
-                  <h4>Sin conversaciones{hasFilters ? ' con estos filtros' : ''}</h4>
-                  <p>{hasFilters ? 'Ajusta los filtros.' : `No hay conversaciones en ${BUCKET_META[tab]?.tabLabel || tab}.`}</p>
-                </div>
-              ) : (
-                <>
-                  <Section prio="crit" convs={crit} {...sectionProps} />
-                  <Section prio="risk" convs={risk} {...sectionProps} />
-                  <Section prio="norm" convs={norm} {...sectionProps} />
-                </>
-              )}
-            </>
-           ) : (
-
-           /* ── Recordatorios ── */
-           reminders.length === 0 ? (
-             <div className="ho-empty">
-               <div className="ho-empty-ic"><Icon n="check-all" /></div>
-               <h4>Sin recordatorios fallidos</h4>
-               <p>El servicio de recordatorios no reporta entregas fallidas.</p>
-             </div>
-           ) : (
-             <>
-               <FailureSummary reminders={reminders} active={failFilter} onFilter={setFailFilter} />
-               {filteredRem.length === 0 ? (
-                 <div className="ho-empty">
-                   <div className="ho-empty-ic"><Icon n="check-all" /></div>
-                   <h4>Sin resultados con este filtro</h4>
-                   <p>Selecciona otro tipo de fallo para ver los recordatorios correspondientes.</p>
-                 </div>
-               ) : (
-                 <>
-                   {soonRem.length > 0 && (
-                     <div className="sev-crit">
-                       <SecHeader ic="clock-alert-outline" label="URGENTE" sub="cita en menos de 2 horas" count={soonRem.length} />
-                       <div className="ho-cards">{soonRem.map(r => <RemCard key={r.id} rem={r} selected={selected} onSelect={setSelected} onOpen={openChat} onRecontact={recontact} />)}</div>
-                     </div>
-                   )}
-                   {laterRem.length > 0 && (
-                     <div className="sev-risk">
-                       <SecHeader ic="calendar-alert" label="FALLIDOS" sub="cita posterior" count={laterRem.length} />
-                       <div className="ho-cards">{laterRem.map(r => <RemCard key={r.id} rem={r} selected={selected} onSelect={setSelected} onOpen={openChat} onRecontact={recontact} />)}</div>
-                     </div>
-                   )}
-                 </>
-               )}
-             </>
-           ))}
-        </main>
-        {!loading && !error && <AgentPanel agents={agents} />}
-      </div>
-
-      <Toasts toasts={toasts} />
-    </>
+    /* ── Content ── */
+    React.createElement('div', { style:{flex:1, overflowY:'auto', padding:'0 0 24px'} },
+      error
+        ? React.createElement('div', { style:{margin:'24px', padding:'16px', background:'#fee2e2', border:'1px solid #fca5a5', borderRadius:8, color:'#991b1b', fontSize:13}},
+            React.createElement(Icon, {n:'alert-circle-outline'}), ' ', error
+          )
+        : tab === 'all' && !loading
+          ? React.createElement(React.Fragment, null,
+              React.createElement('div', { style:{padding:'20px 20px 4px', fontSize:12, fontWeight:700, color:'var(--fg-3)', textTransform:'uppercase', letterSpacing:'.5px'}}, 'Sin acción inmediata'),
+              React.createElement(NoActionPanel, { summary }),
+              React.createElement('div', { style:{padding:'20px 20px 4px', fontSize:12, fontWeight:700, color:'var(--fg-3)', textTransform:'uppercase', letterSpacing:'.5px'}}, 'Conversaciones activas en cola'),
+              React.createElement(ItemsTable, { items: displayItems, loading, emptyMsg:'No hay conversaciones activas en cola.' })
+            )
+          : React.createElement(React.Fragment, null,
+              tab === 'supervisor' && (summary?.supervisor_queue?.total ?? 0) === 0 && !loading
+                ? React.createElement('div', { className:'ho-empty' },
+                    React.createElement(Icon, {n:'shield-check-outline'}), ' Sin conversaciones en supervisión — bien.'
+                  )
+                : null,
+              React.createElement(ItemsTable, {
+                items: displayItems, loading,
+                emptyMsg: `No hay conversaciones en cola "${QUEUE_TABS.find(t2=>t2.key===tab)?.label || tab}".`
+              })
+            )
+    )
   );
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));

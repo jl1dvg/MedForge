@@ -275,7 +275,7 @@ class WhatsappUiController
     public function hotOpportunities(Request $request): View
     {
         return view('whatsapp.v3-hot-opportunities', [
-            'apiUrl' => url('/v2/whatsapp/api/hot-opportunities'),
+            'apiUrl'  => url('/v2/whatsapp/api/operational-queues'),
             'chatUrl' => url('/v2/whatsapp/chat'),
         ]);
     }

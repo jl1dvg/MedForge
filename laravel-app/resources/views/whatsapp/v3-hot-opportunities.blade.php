@@ -74,6 +74,32 @@
   /* ── KPI pill variants ── */
   .ho-hd-pill.exec { background: rgba(99,102,241,.15); color: var(--primary); }
   .ho-hd-pill.debt { background: rgba(107,114,128,.12); color: #6b7280; }
+
+  /* ── Priority / risk badges ── */
+  .pri-high   { background: rgba(239,68,68,.13);   color: #ef4444; border: 1px solid rgba(239,68,68,.22); }
+  .pri-med    { background: rgba(245,158,11,.13);  color: #d97706; border: 1px solid rgba(245,158,11,.22); }
+  .pri-normal { background: rgba(99,102,241,.1);   color: #6366f1; border: 1px solid rgba(99,102,241,.2); }
+  .pri-low    { background: rgba(107,114,128,.1);  color: #6b7280; border: 1px solid rgba(107,114,128,.2); }
+  .risk-high   { background: rgba(239,68,68,.13);   color: #ef4444; border: 1px solid rgba(239,68,68,.22); }
+  .risk-med    { background: rgba(245,158,11,.13);  color: #d97706; border: 1px solid rgba(245,158,11,.22); }
+  .risk-low    { background: rgba(34,197,94,.1);    color: #16a34a; border: 1px solid rgba(34,197,94,.2); }
+  .risk-closed { background: rgba(107,114,128,.1);  color: #6b7280; border: 1px solid rgba(107,114,128,.2); }
+
+  /* ── Table ── */
+  .ho-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .ho-table th { padding: 10px 14px; text-align: left; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; color: var(--fg-3); border-bottom: 2px solid var(--border); white-space: nowrap; }
+  .ho-table td { padding: 10px 14px; border-bottom: 1px solid var(--border-soft); vertical-align: middle; }
+  .ho-table tr:hover td { background: var(--primary-light); }
+  .text-green { color: #16a34a; }
+  .text-muted { color: var(--fg-mute); }
+
+  /* ── Empty state ── */
+  .ho-empty { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 48px 24px; color: var(--fg-3); font-size: 14px; }
+
+  /* ── Button ── */
+  .ho-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 6px; border: 1px solid var(--border); background: #fff; font-size: 13px; font-weight: 600; color: var(--fg-2); cursor: pointer; transition: background .15s; }
+  .ho-btn:hover { background: var(--gray-100); }
+  .ho-btn:disabled { opacity: .5; cursor: not-allowed; }
 </style>
 @endpush
 
@@ -86,9 +112,9 @@
 <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin="anonymous"></script>
 <script>
 window.HOT_OPPS_CONFIG = {
-  apiUrl: @json($apiUrl),
-  chatUrl: @json($chatUrl),
-  pollIntervalMs: 30000,
+  apiUrl:         @json($apiUrl),
+  chatUrl:        @json($chatUrl),
+  pollIntervalMs: 0,
 };
 </script>
 <script src="/js/whatsapp-hot-opps/app.js"></script>

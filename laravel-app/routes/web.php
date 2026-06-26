@@ -243,6 +243,9 @@ Route::middleware(['app.auth'])->group(function (): void {
     Route::get('/v2/whatsapp/hot-opportunities', [WhatsappUiController::class, 'hotOpportunities'])
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.supervise,settings.manage')
         ->middleware('whatsapp.feature:ui,/whatsapp/dashboard');
+    Route::get('/v2/whatsapp/operational-queues', [WhatsappUiController::class, 'hotOpportunities'])
+        ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.supervise,settings.manage')
+        ->middleware('whatsapp.feature:ui,/whatsapp/dashboard');
     Route::get('/v2/whatsapp/api/hot-opportunities', [ConversationReadController::class, 'hotOpportunities'])
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.supervise,settings.manage');
     Route::get('/v2/whatsapp/flowmaker', [WhatsappUiController::class, 'flowmaker'])
