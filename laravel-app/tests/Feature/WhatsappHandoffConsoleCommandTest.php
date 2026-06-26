@@ -18,6 +18,7 @@ class WhatsappHandoffConsoleCommandTest extends TestCase
         parent::setUp();
 
         Schema::dropIfExists('whatsapp_handoff_events');
+        Schema::dropIfExists('whatsapp_messages');
         Schema::dropIfExists('whatsapp_handoffs');
         Schema::dropIfExists('whatsapp_conversations');
         Schema::dropIfExists('whatsapp_agent_presence');
@@ -97,6 +98,14 @@ class WhatsappHandoffConsoleCommandTest extends TestCase
             $table->unsignedBigInteger('actor_user_id')->nullable();
             $table->text('notes')->nullable();
             $table->timestamp('created_at')->useCurrent();
+        });
+
+        Schema::create('whatsapp_messages', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('conversation_id');
+            $table->string('direction', 16)->default('inbound');
+            $table->timestamp('message_timestamp')->nullable();
+            $table->timestamps();
         });
 
         Schema::create('whatsapp_agent_presence', function (Blueprint $table): void {
@@ -322,6 +331,14 @@ class WhatsappHandoffConsoleCommandTest extends TestCase
             'updated_at' => now(),
         ]);
 
+        DB::table('whatsapp_messages')->insert([
+            'conversation_id'   => $conversationId,
+            'direction'         => 'inbound',
+            'message_timestamp' => now()->subMinutes(20),
+            'created_at'        => now()->subMinutes(20),
+            'updated_at'        => now()->subMinutes(20),
+        ]);
+
         DB::table('whatsapp_conversation_attributions')->insert([
             'conversation_id' => $conversationId,
             'source_category' => 'ad',
@@ -331,6 +348,131 @@ class WhatsappHandoffConsoleCommandTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+    }
+
+    public function test_rescue_requeued_handoff_is_not_autoassigned(): void
+    {
+        // Conversation queued 48h ago: ageMinutes = 2880 > 1440 → bucket = rescue
+        DB::table('whatsapp_conversations')->insert([
+            'id'                   => 910,
+            'wa_number'            => '593999910',
+            'display_name'         => 'Paciente Rescue',
+            'needs_human'          => 1,
+            'assigned_user_id'     => null,
+            'handoff_requested_at' => now()->subHours(48),
+            'last_message_at'      => now()->subHours(48),
+            'last_message_direction' => 'inbound',
+            'created_at'           => now()->subHours(48),
+            'updated_at'           => now(),
+        ]);
+        DB::table('whatsapp_handoffs')->insert([
+            'id'               => 1910,
+            'conversation_id'  => 910,
+            'wa_number'        => '593999910',
+            'status'           => 'queued',
+            'priority'         => 'normal',
+            'topic'            => 'captacion_agendar',
+            'assigned_agent_id' => null,
+            'queued_at'        => now()->subHours(48),
+            'created_at'       => now()->subHours(48),
+            'updated_at'       => now(),
+        ]);
+        DB::table('whatsapp_messages')->insert([
+            'conversation_id'   => 910,
+            'direction'         => 'inbound',
+            'message_timestamp' => now()->subHours(48),
+            'created_at'        => now()->subHours(48),
+            'updated_at'        => now()->subHours(48),
+        ]);
+
+        $realtime = new FakeWhatsappRealtimeService();
+        $service  = new WhatsappHandoffAutoAssignService(realtime: $realtime);
+        $result   = $service->run(['dry_run' => false, 'limit' => 50, 'max_age_hours' => 72]);
+
+        $this->assertSame(0, $result['assigned'], 'RESCUE must not be assigned');
+        $this->assertSame(0, $result['would_assign']);
+        $this->assertCount(0, $realtime->events, 'No realtime event should fire');
+        $this->assertDatabaseHas('whatsapp_conversations', ['id' => 910, 'assigned_user_id' => null]);
+        $this->assertDatabaseHas('whatsapp_handoffs', ['id' => 1910, 'status' => 'queued', 'assigned_agent_id' => null]);
+        $this->assertDatabaseMissing('whatsapp_handoff_events', ['handoff_id' => 1910, 'event_type' => 'auto_assigned']);
+
+        $skippedRow = collect($result['rows'])->firstWhere('handoff_id', 1910);
+        $this->assertNotNull($skippedRow, 'Row must appear in result with skip info');
+        $this->assertSame('skipped', $skippedRow['status']);
+        $this->assertSame('bucket_not_hot_open', $skippedRow['skip_reason']);
+        $this->assertSame('rescue', $skippedRow['bucket']);
+    }
+
+    public function test_backlog_requeued_handoff_is_not_autoassigned(): void
+    {
+        // Conversation queued 10 days ago: ageMinutes ≈ 14400 > 7*1440 → bucket = backlog
+        DB::table('whatsapp_conversations')->insert([
+            'id'                   => 911,
+            'wa_number'            => '593999911',
+            'display_name'         => 'Paciente Backlog',
+            'needs_human'          => 1,
+            'assigned_user_id'     => null,
+            'handoff_requested_at' => now()->subDays(10),
+            'last_message_at'      => now()->subDays(10),
+            'last_message_direction' => 'inbound',
+            'created_at'           => now()->subDays(10),
+            'updated_at'           => now(),
+        ]);
+        DB::table('whatsapp_handoffs')->insert([
+            'id'               => 1911,
+            'conversation_id'  => 911,
+            'wa_number'        => '593999911',
+            'status'           => 'queued',
+            'priority'         => 'normal',
+            'topic'            => 'operacion_reagenda',
+            'assigned_agent_id' => null,
+            'queued_at'        => now()->subDays(10),
+            'created_at'       => now()->subDays(10),
+            'updated_at'       => now(),
+        ]);
+        DB::table('whatsapp_messages')->insert([
+            'conversation_id'   => 911,
+            'direction'         => 'inbound',
+            'message_timestamp' => now()->subDays(10),
+            'created_at'        => now()->subDays(10),
+            'updated_at'        => now()->subDays(10),
+        ]);
+
+        $realtime = new FakeWhatsappRealtimeService();
+        $service  = new WhatsappHandoffAutoAssignService(realtime: $realtime);
+        // Use max_age_hours=720 to ensure a 10-day-old record is included by candidateRows
+        $result   = $service->run(['dry_run' => false, 'limit' => 50, 'max_age_hours' => 720]);
+
+        $this->assertSame(0, $result['assigned'], 'BACKLOG must not be assigned');
+        $this->assertSame(0, $result['would_assign']);
+        $this->assertCount(0, $realtime->events);
+        $this->assertDatabaseHas('whatsapp_conversations', ['id' => 911, 'assigned_user_id' => null]);
+        $this->assertDatabaseHas('whatsapp_handoffs', ['id' => 1911, 'status' => 'queued', 'assigned_agent_id' => null]);
+        $this->assertDatabaseMissing('whatsapp_handoff_events', ['handoff_id' => 1911, 'event_type' => 'auto_assigned']);
+
+        $skippedRow = collect($result['rows'])->firstWhere('handoff_id', 1911);
+        $this->assertNotNull($skippedRow);
+        $this->assertSame('skipped', $skippedRow['status']);
+        $this->assertSame('bucket_not_hot_open', $skippedRow['skip_reason']);
+        $this->assertSame('backlog', $skippedRow['bucket']);
+    }
+
+    public function test_hot_open_with_recent_inbound_is_autoassigned(): void
+    {
+        // Conversation queued 15 min ago, inbound message 10 min ago → bucket = hot_open
+        $this->seedHotQueuedHandoff(912, 1912, 'captacion_agendar');
+
+        $realtime = new FakeWhatsappRealtimeService();
+        $service  = new WhatsappHandoffAutoAssignService(realtime: $realtime);
+        $result   = $service->run(['dry_run' => false, 'limit' => 10]);
+
+        $this->assertSame(1, $result['assigned'], 'HOT_OPEN must be assigned');
+        $this->assertSame(0, $result['skipped']);
+        $this->assertDatabaseHas('whatsapp_conversations', ['id' => 912, 'assigned_user_id' => 10]);
+        $this->assertDatabaseHas('whatsapp_handoffs', ['id' => 1912, 'status' => 'assigned', 'assigned_agent_id' => 10]);
+        $this->assertDatabaseHas('whatsapp_handoff_events', ['handoff_id' => 1912, 'event_type' => 'auto_assigned']);
+        $this->assertCount(1, $realtime->events);
+        $this->assertSame('handoff.auto_assigned', $realtime->events[0]['event']);
     }
 }
 

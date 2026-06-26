@@ -251,6 +251,44 @@ class WhatsappOperationalDecisionService
     }
 
     /**
+     * Evaluate a raw candidate row (from AutoAssign's candidateRows()) for autoassign eligibility.
+     * The row must expose: queued_at, handoff_requested_at, last_message_at,
+     * conversation_created_at, latest_inbound_at, assigned_user_id, assigned_agent_id.
+     *
+     * @return array{eligible:bool,bucket:string,skip_reason:string|null}
+     */
+    public function evaluateForAutoAssign(object $row, ?CarbonImmutable $asOf = null): array
+    {
+        $asOf  ??= CarbonImmutable::now();
+        $bucket  = $this->classifyBucket($row, $asOf);
+
+        if ($bucket !== 'hot_open') {
+            return [
+                'eligible'    => false,
+                'bucket'      => $bucket,
+                'skip_reason' => 'bucket_not_hot_open',
+            ];
+        }
+
+        $isAssigned = (int) ($row->assigned_user_id ?? 0) > 0
+            || (int) ($row->assigned_agent_id ?? 0) > 0;
+
+        if ($isAssigned) {
+            return [
+                'eligible'    => false,
+                'bucket'      => $bucket,
+                'skip_reason' => 'already_assigned',
+            ];
+        }
+
+        return [
+            'eligible'    => true,
+            'bucket'      => $bucket,
+            'skip_reason' => null,
+        ];
+    }
+
+    /**
      * Public alias so commands can re-summarize a filtered subset of decisions.
      *
      * @param array<int,array<string,mixed>> $decisions

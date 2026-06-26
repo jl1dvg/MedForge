@@ -26,6 +26,7 @@ class WhatsappHandoffAutoAssignService
 
     public function __construct(
         private readonly WhatsappRealtimeService $realtime = new WhatsappRealtimeService(),
+        private readonly WhatsappOperationalDecisionService $decisionService = new WhatsappOperationalDecisionService(),
     ) {
     }
 
@@ -64,6 +65,27 @@ class WhatsappHandoffAutoAssignService
             $priority = $this->resolvePriority($candidate);
             $reason = $this->resolveReason($candidate);
             $topic = (string) ($candidate->topic ?? 'faq_escalada');
+
+            // ── Operational bucket guard ──────────────────────────────────────
+            // Only hot_open + assign_now candidates may be auto-assigned.
+            // RESCUE / BACKLOG / LOST are excluded even if requeued recently.
+            $eligibility = $this->decisionService->evaluateForAutoAssign($candidate);
+            if (!$eligibility['eligible']) {
+                $result['skipped']++;
+                $result['rows'][] = [
+                    'conversation_id' => (int) $candidate->conversation_id,
+                    'handoff_id'      => (int) $candidate->handoff_id,
+                    'topic'           => $topic,
+                    'priority'        => $priority,
+                    'reason'          => $reason,
+                    'assigned_to'     => null,
+                    'status'          => 'skipped',
+                    'skip_reason'     => $eligibility['skip_reason'],
+                    'bucket'          => $eligibility['bucket'],
+                ];
+                continue;
+            }
+
             $result['eligible']++;
             $result['by_topic'][$topic] = (int) ($result['by_topic'][$topic] ?? 0) + 1;
 
@@ -173,12 +195,15 @@ class WhatsappHandoffAutoAssignService
                 'h.topic',
                 'h.priority',
                 'h.queued_at',
+                'h.assigned_agent_id',
                 'h.notes',
                 'c.patient_hc_number',
                 'c.patient_full_name',
+                'c.assigned_user_id',
                 'c.last_message_at',
                 'c.last_message_direction',
                 'c.handoff_requested_at',
+                'c.created_at as conversation_created_at',
             ])
             ->where('h.status', 'queued')
             ->whereNull('h.assigned_agent_id')
@@ -204,6 +229,17 @@ class WhatsappHandoffAutoAssignService
                 DB::raw('NULL as initial_intent'),
                 DB::raw('NULL as patient_segment'),
             ]);
+        }
+
+        if (Schema::hasTable('whatsapp_messages')) {
+            $latestInbound = DB::table('whatsapp_messages')
+                ->selectRaw('conversation_id, MAX(COALESCE(message_timestamp, created_at)) AS latest_inbound_at')
+                ->where('direction', 'inbound')
+                ->groupBy('conversation_id');
+            $query->leftJoinSub($latestInbound, 'latest_inbound', 'latest_inbound.conversation_id', '=', 'c.id')
+                ->addSelect(['latest_inbound.latest_inbound_at']);
+        } else {
+            $query->addSelect([DB::raw('NULL AS latest_inbound_at')]);
         }
 
         if (Schema::hasColumn('whatsapp_conversations', 'closed_at')) {
