@@ -268,8 +268,9 @@ function CampoField({ c, prefix, vals, setVals, readOnly }) {
 // ---- Modal: Informar examen ----------------------------------------
 export function InformarModal({ row, readOnly, onClose, onSave, showToast, doctores }) {
   const tpl = TEMPLATES[row.tipo_key] || { titulo: row.tipo_label, campos: [], bilateral: false };
+  const isCorrection = Boolean(row.informado) && !readOnly;
   const [vals, setVals] = useState({});
-  const [notify, setNotify] = useState(true);
+  const [notify, setNotify] = useState(!row.informado);
   const [auto, setAuto] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -393,6 +394,8 @@ export function InformarModal({ row, readOnly, onClose, onSave, showToast, docto
       <span className="imr-foot-note">
         {readOnly
           ? `Informado por ${row.informado_por} · ${fmtDate(row.informado_fecha)}`
+          : isCorrection
+            ? 'Al guardar se actualizará el informe existente.'
           : 'El informe quedará disponible para impresión y descarga.'}
       </span>
       <div className="imr-modal-spacer"></div>
@@ -419,7 +422,7 @@ export function InformarModal({ row, readOnly, onClose, onSave, showToast, docto
     <ModalShell size="xl"
       icon={readOnly ? 'mdi-file-eye-outline' : 'mdi-file-document-edit-outline'}
       iconTone={readOnly ? 'success' : 'primary'}
-      title={readOnly ? 'Informe del examen' : 'Informar examen'}
+      title={readOnly ? 'Informe del examen' : isCorrection ? 'Corregir informe' : 'Informar examen'}
       sub={`${row.tipo_label} · ${row.ojo}`}
       onClose={onClose} footer={footer}>
       <PatientStrip row={row} />

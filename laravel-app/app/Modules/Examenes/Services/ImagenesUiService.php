@@ -514,9 +514,16 @@ class ImagenesUiService
             $params[':sede_filter_match'] = $sedeFilter;
         }
 
-        if (!empty($filters['tipo_examen'])) {
-            $sql .= ' AND TRIM(pp.procedimiento_proyectado) LIKE :tipo_examen';
-            $params[':tipo_examen'] = '%' . $filters['tipo_examen'] . '%';
+        $tipoFilterTerms = $this->resolveTipoExamenFilterTerms((string)($filters['tipo_examen'] ?? ''));
+        if ($tipoFilterTerms !== []) {
+            $tipoExpr = $this->normalizeSqlText("TRIM(COALESCE(pp.procedimiento_proyectado, ''))");
+            $tipoClauses = [];
+            foreach ($tipoFilterTerms as $idx => $term) {
+                $param = ':tipo_examen_' . $idx;
+                $tipoClauses[] = "{$tipoExpr} LIKE {$param}";
+                $params[$param] = '%' . $term . '%';
+            }
+            $sql .= ' AND (' . implode(' OR ', $tipoClauses) . ')';
         }
 
         if (!empty($filters['paciente'])) {
@@ -3969,6 +3976,48 @@ class ImagenesUiService
         $normalized = $this->normalizeSqlText($expr);
 
         return "REPLACE(REPLACE({$normalized}, ' ', '_'), '-', '_')";
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function resolveTipoExamenFilterTerms(string $value): array
+    {
+        $raw = trim($value);
+        if ($raw === '') {
+            return [];
+        }
+
+        $key = strtoupper(str_replace([' ', '-'], '_', $raw));
+        $terms = match ($key) {
+            'OCT_MACULA' => ['oct macular', 'oct de macula', 'macular cube', 'macula thickness'],
+            'OCT_NERVIO' => ['oct nervio', 'oct del nervio', 'nervio optico', 'rnfl', 'papila', 'cfnr'],
+            'OCT_ANGULO' => ['oct de angulo', 'oct del angulo', 'angulo', 'anterior chamber', 'pruebas provocativas', 'tomografia con pruebas'],
+            'AUTOFLUORESCENCIA' => ['autofluorescencia', 'autoflourescencia', 'autofluor', 'faf', 'fundus autofluorescence'],
+            'TOPOGRAFIA' => ['topografia', 'pentacam'],
+            'PAQUIMETRIA' => ['paquimetria', 'pachymetry', 'espesor corneal'],
+            'MICROESPECULAR' => ['microscopia especular', 'microscopia', 'especular', 'endotelial'],
+            'BIOMETRIA' => ['biometria', 'iolmaster', 'lio'],
+            'CAMPO_VISUAL' => ['campo visual', 'campimetria', 'analisis de campo unico'],
+            'RETINOGRAFIA' => ['retinografia', 'fotografia a color de segmento posterior'],
+            'ANGIOGRAFIA' => ['angiografia', 'fluoresceina', 'fluorescein angiography'],
+            'ECOGRAFIA' => ['ecografia', 'ultrasonido', 'modo b'],
+            default => [$raw],
+        };
+
+        return array_values(array_unique(array_filter(array_map(
+            fn(string $term): string => $this->normalizeFilterText($term),
+            $terms
+        ), static fn(string $term): bool => $term !== '')));
+    }
+
+    private function normalizeFilterText(string $value): string
+    {
+        $value = mb_strtolower(trim($value), 'UTF-8');
+        $search = ['á', 'é', 'í', 'ó', 'ú', 'ñ'];
+        $replace = ['a', 'e', 'i', 'o', 'u', 'n'];
+
+        return str_replace($search, $replace, $value);
     }
 
     private function safeSqlDateExpr(string $expr): string

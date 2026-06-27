@@ -94,7 +94,7 @@ export function BulkBar({ tab, count, selectedRows, onSendBandeja, onPrint, onCl
 }
 
 // ---- Table row -----------------------------------------------------
-function Row({ row, tab, today, selected, onToggle, onInformar, onVerImagenes, onMarcarUrgente, onQuitarBandeja, onPrint, onRevisarArchivos, isRechecking }) {
+function Row({ row, tab, today, selected, onToggle, onInformar, onEditarInforme, onVerImagenes, onMarcarUrgente, onQuitarBandeja, onPrint, onRevisarArchivos, isRechecking }) {
   const afil = AFILIACIONES.find((a) => a.value === row.afiliacion);
   const dl = row.fecha_limite ? deadlineInfo(row.fecha_limite, today) : null;
   const overdue = dl && dl.state === 'over';
@@ -161,6 +161,9 @@ function Row({ row, tab, today, selected, onToggle, onInformar, onVerImagenes, o
             <>
               <button className="imr-btn imr-btn-outline-primary imr-btn-sm" onClick={() => onInformar(row)} title="Ver informe">
                 <i className="mdi mdi-file-eye-outline"></i> Ver
+              </button>
+              <button className="imr-btn imr-btn-ghost imr-btn-sm" onClick={() => onEditarInforme(row)} title="Corregir informe">
+                <i className="mdi mdi-pencil-outline"></i> Corregir
               </button>
               <button className="imr-btn imr-btn-ghost imr-btn-sm" title="Imprimir informe" onClick={() => onPrint(row)}>
                 <i className="mdi mdi-printer"></i>
@@ -262,7 +265,7 @@ function renderGrouped(rows, selectedIds, onToggle, handlers) {
     if (!groupMap[key]) { groupMap[key] = []; groups.push(key); }
     groupMap[key].push(r);
   });
-  const { today, tab, onInformar, onVerImagenes, onMarcarUrgente, onQuitarBandeja, onPrint, onRevisarArchivos, recheckingIds } = handlers;
+  const { today, tab, onInformar, onEditarInforme, onVerImagenes, onMarcarUrgente, onQuitarBandeja, onPrint, onRevisarArchivos, recheckingIds } = handlers;
   const elements = [];
   groups.forEach((key) => {
     const groupRows = groupMap[key];
@@ -275,7 +278,7 @@ function renderGrouped(rows, selectedIds, onToggle, handlers) {
     groupRows.forEach((row) => elements.push(
       <Row key={row.id} row={row} tab={tab} today={today}
         selected={selectedIds.has(row.id)} onToggle={() => onToggle(row.id)}
-        onInformar={onInformar} onVerImagenes={onVerImagenes}
+        onInformar={onInformar} onEditarInforme={onEditarInforme} onVerImagenes={onVerImagenes}
         onMarcarUrgente={onMarcarUrgente} onQuitarBandeja={onQuitarBandeja} onPrint={onPrint}
         onRevisarArchivos={onRevisarArchivos} isRechecking={recheckingIds?.has(row.id)} />
     ));
@@ -284,7 +287,7 @@ function renderGrouped(rows, selectedIds, onToggle, handlers) {
 }
 
 // ---- Table ---------------------------------------------------------
-export function ExamTable({ rows, tab, today, selectedIds, onToggleAll, onToggle, onInformar, onVerImagenes, onMarcarUrgente, onQuitarBandeja, onPrint, onRevisarArchivos, recheckingIds }) {
+export function ExamTable({ rows, tab, today, selectedIds, onToggleAll, onToggle, onInformar, onEditarInforme, onVerImagenes, onMarcarUrgente, onQuitarBandeja, onPrint, onRevisarArchivos, recheckingIds }) {
   const [sortKey, setSortKey] = useState(null);
   const [sortDir, setSortDir] = useState('asc');
 
@@ -343,12 +346,13 @@ export function ExamTable({ rows, tab, today, selectedIds, onToggleAll, onToggle
         </thead>
         <tbody>
           {tab === 'informados'
-            ? renderGrouped(sortedRows, selectedIds, onToggle, { onInformar, onVerImagenes, onMarcarUrgente, onQuitarBandeja, onPrint, onRevisarArchivos, recheckingIds, today, tab })
+            ? renderGrouped(sortedRows, selectedIds, onToggle, { onInformar, onEditarInforme, onVerImagenes, onMarcarUrgente, onQuitarBandeja, onPrint, onRevisarArchivos, recheckingIds, today, tab })
             : sortedRows.map((row) => (
                 <Row key={row.id} row={row} tab={tab} today={today}
                   selected={selectedIds.has(row.id)}
                   onToggle={() => onToggle(row.id)}
                   onInformar={onInformar}
+                  onEditarInforme={onEditarInforme}
                   onVerImagenes={onVerImagenes}
                   onMarcarUrgente={onMarcarUrgente}
                   onQuitarBandeja={onQuitarBandeja}

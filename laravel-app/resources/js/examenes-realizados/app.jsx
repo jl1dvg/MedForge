@@ -114,6 +114,7 @@ export default function App({ config }) {
 
   // modals
   const [informarRow, setInformarRow] = useState(null);
+  const [informarReadOnly, setInformarReadOnly] = useState(false);
   const [verImagenesRow, setVerImagenesRow] = useState(null);
   const [urgenteRows, setUrgenteRows] = useState(null);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -123,6 +124,16 @@ export default function App({ config }) {
     setToast({ msg, icon, tone });
     clearTimeout(showToast._t);
     showToast._t = setTimeout(() => setToast(null), 2800);
+  }, []);
+
+  const openInforme = useCallback((row, readOnly = false) => {
+    setInformarReadOnly(readOnly);
+    setInformarRow(row);
+  }, []);
+
+  const closeInforme = useCallback(() => {
+    setInformarRow(null);
+    setInformarReadOnly(false);
   }, []);
 
   // ---- Tab membership ----
@@ -441,7 +452,8 @@ export default function App({ config }) {
           <ExamTable
             rows={visibleRows} tab={activeTab} today={today}
             selectedIds={selectedIds} onToggle={toggle} onToggleAll={toggleAll}
-            onInformar={(r) => setInformarRow(r)}
+            onInformar={(r) => openInforme(r, Boolean(r.informado))}
+            onEditarInforme={(r) => openInforme(r, false)}
             onVerImagenes={(r) => setVerImagenesRow(r)}
             onMarcarUrgente={(r) => setUrgenteRows([r])}
             onQuitarBandeja={quitarBandeja}
@@ -453,8 +465,8 @@ export default function App({ config }) {
       </div>
 
       {informarRow && (
-        <InformarModal row={informarRow} readOnly={informarRow.informado}
-          onClose={() => setInformarRow(null)} onSave={saveInforme}
+        <InformarModal row={informarRow} readOnly={informarReadOnly}
+          onClose={closeInforme} onSave={saveInforme}
           showToast={showToast} doctores={doctores} />
       )}
       {verImagenesRow && <VerImagenesModal row={verImagenesRow} onClose={() => setVerImagenesRow(null)} />}
