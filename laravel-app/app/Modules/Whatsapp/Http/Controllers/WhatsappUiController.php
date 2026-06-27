@@ -280,6 +280,14 @@ class WhatsappUiController
         ]);
     }
 
+    public function operationalAlerts(Request $request): View
+    {
+        return view('whatsapp.v2-operational-alerts', [
+            'apiUrl'  => url('/v2/whatsapp/api/operational-alerts'),
+            'chatUrl' => url('/v2/whatsapp/chat'),
+        ]);
+    }
+
 
     public function dashboardV3Live(Request $request): \Illuminate\Http\JsonResponse
     {

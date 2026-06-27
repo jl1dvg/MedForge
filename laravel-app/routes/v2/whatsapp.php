@@ -2,6 +2,7 @@
 
 use App\Modules\Whatsapp\Http\Controllers\ConversationReadController;
 use App\Modules\Whatsapp\Http\Controllers\ConversationOpsController;
+use App\Modules\Whatsapp\Http\Controllers\OperationalAlertsController;
 use App\Modules\Whatsapp\Http\Controllers\OperationalQueuesController;
 use App\Modules\Whatsapp\Http\Controllers\ConversationWriteController;
 use App\Modules\Whatsapp\Http\Controllers\CampaignReadController;
@@ -89,6 +90,8 @@ Route::middleware([
     Route::get('/flowmaker/sandbox', [FlowmakerSandboxController::class, 'status'])
         ->middleware('app.permission:administrativo,whatsapp.manage,settings.manage');
     Route::get('/operational-queues', [OperationalQueuesController::class, 'index'])
+        ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.supervise,settings.manage');
+    Route::get('/operational-alerts', [OperationalAlertsController::class, 'index'])
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.supervise,settings.manage');
 });
 
