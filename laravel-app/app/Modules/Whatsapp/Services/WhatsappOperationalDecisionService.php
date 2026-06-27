@@ -81,14 +81,22 @@ class WhatsappOperationalDecisionService
         $topic    = (string) ($row->topic ?? '');
         $category = self::topicCategory($topic);
 
+        $assignedUserId = ($row->assigned_user_id ?? null) !== null && (int) $row->assigned_user_id > 0
+            ? (int) $row->assigned_user_id
+            : null;
+
         $base = [
             'conversation_id'                  => $convId,
+            'handoff_id'                       => (int) ($row->handoff_id ?? 0),
             'bucket'                           => $bucket,
             'topic'                            => $topic,
             'topic_label'                      => self::topicLabel($topic),
             'category'                         => $category,
             'category_label'                   => self::categoryLabel($category),
             'latest_inbound_at'                => ($row->latest_inbound_at ?? null),
+            'assigned_user_id'                 => $assignedUserId,
+            'waiting_minutes'                  => $minutesSinceQueue,
+            'handoff_priority'                 => (string) ($row->handoff_priority ?? 'normal'),
             'has_attributed_booking'           => $hasAttributedBooking,
             'has_primary_clinical_appointment' => $hasPrimary,
             'has_independent_attributed_service' => $hasIndependent,
@@ -378,6 +386,9 @@ class WhatsappOperationalDecisionService
                 'h.id as handoff_id',
                 'h.status as handoff_status',
                 'h.topic',
+                Schema::hasColumn('whatsapp_handoffs', 'priority')
+                    ? 'h.priority as handoff_priority'
+                    : DB::raw("'normal' as handoff_priority"),
                 'h.assigned_agent_id',
                 'h.assigned_at as handoff_assigned_at',
                 'h.queued_at',

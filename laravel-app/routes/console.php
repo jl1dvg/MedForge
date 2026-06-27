@@ -648,6 +648,111 @@ Artisan::command('whatsapp:handoff-auto-assign
     }
 })->purpose('Autoasigna oportunidades calientes de WhatsApp a agentes disponibles');
 
+Artisan::command('whatsapp:operational-alerts
+    {--date= : Fecha YYYY-MM-DD (por defecto hoy)}
+    {--json : Emite resultado completo como JSON}
+    {--summary : Emite solo resumen por severidad y tipo}
+    {--limit=200 : Máximo de alertas a evaluar}
+    {--category=all : Filtrar por categoría: all|captacion|operacion|ambiguo}
+    {--severity=all : Filtrar por severidad: all|critical|high|medium|low}', function (): int {
+    /** @var \App\Modules\Whatsapp\Services\WhatsappOperationalAlertService $service */
+    $service = app(\App\Modules\Whatsapp\Services\WhatsappOperationalAlertService::class);
+
+    $dateOption = trim((string) ($this->option('date') ?? ''));
+    $date = $dateOption !== '' ? $dateOption : now()->toDateString();
+
+    try {
+        $result = $service->alerts([
+            'date'     => $date,
+            'category' => (string) ($this->option('category') ?? 'all'),
+            'severity' => (string) ($this->option('severity') ?? 'all'),
+            'limit'    => (int) $this->option('limit'),
+        ]);
+
+        if ((bool) $this->option('json')) {
+            $this->line((string) json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+
+            return 0;
+        }
+
+        if ((bool) $this->option('summary')) {
+            $this->table(
+                ['Mode', 'Date', 'Evaluated', 'Alerts total', 'Critical', 'High', 'Medium', 'Low'],
+                [[
+                    $result['mode'],
+                    $result['date'],
+                    $result['evaluated'],
+                    $result['alerts_total'],
+                    $result['summary']['critical'] ?? 0,
+                    $result['summary']['high'] ?? 0,
+                    $result['summary']['medium'] ?? 0,
+                    $result['summary']['low'] ?? 0,
+                ]]
+            );
+
+            $byType = $result['by_type'] ?? [];
+            if (is_array($byType) && $byType !== []) {
+                $this->table(
+                    ['Alert type', 'Count'],
+                    collect($byType)->map(fn ($c, $t): array => [(string) $t, (int) $c])->values()->all()
+                );
+            }
+
+            return 0;
+        }
+
+        // Full table output
+        $this->table(
+            ['Mode', 'Date', 'Evaluated', 'Alerts total', 'Critical', 'High', 'Medium', 'Low', 'DB writes'],
+            [[
+                $result['mode'],
+                $result['date'],
+                $result['evaluated'],
+                $result['alerts_total'],
+                $result['summary']['critical'] ?? 0,
+                $result['summary']['high'] ?? 0,
+                $result['summary']['medium'] ?? 0,
+                $result['summary']['low'] ?? 0,
+                $result['db_writes'],
+            ]]
+        );
+
+        $byType = $result['by_type'] ?? [];
+        if (is_array($byType) && $byType !== []) {
+            $this->table(
+                ['Alert type', 'Count'],
+                collect($byType)->map(fn ($c, $t): array => [(string) $t, (int) $c])->values()->all()
+            );
+        }
+
+        $alerts = array_slice(is_array($result['alerts'] ?? null) ? $result['alerts'] : [], 0, 30);
+        if ($alerts !== []) {
+            $this->table(
+                ['Severity', 'Type', 'Conv', 'Handoff', 'Topic', 'Category', 'Bucket', 'Wait(m)', 'Agent', 'Suggested action'],
+                array_map(static fn (array $a): array => [
+                    (string) ($a['severity'] ?? ''),
+                    (string) ($a['alert_type'] ?? ''),
+                    (int) ($a['conversation_id'] ?? 0),
+                    (int) ($a['handoff_id'] ?? 0),
+                    (string) ($a['topic'] ?? ''),
+                    (string) ($a['category'] ?? ''),
+                    (string) ($a['bucket'] ?? ''),
+                    (int) ($a['waiting_minutes'] ?? 0),
+                    (string) ($a['assigned_user_name'] ?? '—'),
+                    (string) ($a['suggested_action'] ?? ''),
+                ], $alerts)
+            );
+        }
+
+        return 0;
+    } catch (\Throwable $e) {
+        $this->warn('Error generando alertas operacionales WhatsApp.');
+        $this->line($e->getMessage());
+
+        return 1;
+    }
+})->purpose('Motor de alertas operacionales WhatsApp (read-only)');
+
 Artisan::command('whatsapp:rescue-metrics
     {--from= : Fecha inicial YYYY-MM-DD}
     {--to= : Fecha final exclusiva YYYY-MM-DD}
