@@ -85,9 +85,22 @@ class WhatsappOperationalDecisionService
             ? (int) $row->assigned_user_id
             : null;
 
+        $waNumber       = (string) ($row->wa_number ?? '');
+        $displayName    = trim((string) ($row->display_name ?? ''));
+        $patientName    = trim((string) ($row->patient_full_name ?? ''));
+        $hcNumber       = trim((string) ($row->patient_hc_number ?? ''));
+        $resolvedName   = $displayName !== '' ? $displayName
+                        : ($patientName !== '' ? $patientName
+                        : ($waNumber !== '' ? $waNumber : 'Sin nombre'));
+        $subtitle       = $waNumber . ($hcNumber !== '' ? ' · HC ' . $hcNumber : '');
+
         $base = [
             'conversation_id'                  => $convId,
-            'wa_number'                        => (string) ($row->wa_number ?? ''),
+            'wa_number'                        => $waNumber,
+            'display_name'                     => $resolvedName,
+            'display_subtitle'                 => $subtitle,
+            'patient_full_name'                => $patientName,
+            'hc_number'                        => $hcNumber,
             'handoff_id'                       => (int) ($row->handoff_id ?? 0),
             'bucket'                           => $bucket,
             'topic'                            => $topic,
@@ -381,6 +394,9 @@ class WhatsappOperationalDecisionService
             ->select([
                 'c.id as conversation_id',
                 'c.wa_number',
+                'c.display_name',
+                'c.patient_full_name',
+                'c.patient_hc_number',
                 'c.assigned_user_id',
                 'c.last_message_at',
                 'c.handoff_requested_at',

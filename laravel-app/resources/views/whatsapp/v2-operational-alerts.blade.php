@@ -121,6 +121,12 @@
     <div class="oa-kpi"><div class="oa-kpi-label">Bajas</div><div class="oa-kpi-value" id="kpi-low">—</div></div>
   </div>
 
+  {{-- Quick search --}}
+  <div class="oa-filters" style="margin-bottom:6px">
+    <label>Buscar</label>
+    <input type="search" id="f-search" placeholder="Nombre, WhatsApp o HC…" style="padding:4px 8px;border:1px solid var(--border-1);border-radius:4px;font-size:13px;min-width:220px">
+  </div>
+
   {{-- Filters --}}
   <div class="oa-filters">
     <label>Severidad</label>
@@ -216,6 +222,7 @@
   const dateInput  = document.getElementById('oa-date-input');
   const refreshBtn = document.getElementById('oa-refresh-btn');
   const errorBox   = document.getElementById('oa-error');
+  const fSearch    = document.getElementById('f-search');
   const fSeverity  = document.getElementById('f-severity');
   const fCategory  = document.getElementById('f-category');
   const fType      = document.getElementById('f-type');
@@ -251,9 +258,29 @@
     return cat ? `<span class="cat">${esc(cat)}</span>` : '';
   }
 
+  function fmtWa(n) {
+    if (!n) return '—';
+    const s = String(n).replace(/\D/g, '');
+    if (s.length === 12 && s.startsWith('593'))
+      return '+593 ' + s[3] + s[4] + ' ' + s[5] + s[6] + s[7] + ' ' + s.slice(8);
+    return '+' + s;
+  }
+
+  function nameCell(a) {
+    const name = esc(a.display_name || a.wa_number || '—');
+    const sub  = a.conversation_id ? `<small style="color:var(--fg-3);font-size:10px">Conv #${esc(a.conversation_id)}</small>` : '';
+    return `<div style="line-height:1.3">${name}<br>${sub}</div>`;
+  }
+
+  function agentCell(a) {
+    if (a.assigned_user_name) return esc(a.assigned_user_name);
+    return '<span style="background:#fff3cd;color:#856404;border-radius:4px;padding:2px 6px;font-size:11px;font-weight:600">Sin asignar</span>';
+  }
+
   function chatLink(convId, waNumber) {
     const param = waNumber ? `search=${esc(waNumber)}&filter=all` : `conversation=${esc(convId)}`;
-    return `<a class="oa-view-link" href="${esc(CHAT_URL)}?${param}" target="_blank"><span class="mdi mdi-open-in-new"></span> Ver</a>`;
+    const tip   = 'Abre el chat filtrado por número WhatsApp. No asigna la conversación automáticamente.';
+    return `<a class="oa-view-link" href="${esc(CHAT_URL)}?${param}" target="_blank" title="${esc(tip)}"><span class="mdi mdi-open-in-new"></span> Ver en chat</a>`;
   }
 
   function setKpi(id, val) {
@@ -281,38 +308,41 @@
 
   // ── Column definitions ────────────────────────────────────────────────────
   const COLS_CRITICAL = [
-    { label: 'Conv.',      render: a => `<strong>#${esc(a.conversation_id)}</strong>` },
-    { label: 'Categoría',  render: a => catBadge(a.category_label || a.category) },
-    { label: 'Topic',      render: a => esc(a.topic_label || a.topic) },
-    { label: 'Severidad',  render: a => sevBadge(a.severity) },
-    { label: 'Esperando',  render: a => `<strong>${fmtMinutes(a.waiting_minutes)}</strong>` },
-    { label: 'Último inbound', render: a => fmtDatetime(a.latest_inbound_at) },
-    { label: 'Agente',     render: a => a.assigned_user_name ? esc(a.assigned_user_name) : '<em style="color:var(--fg-3)">Sin asignar</em>' },
-    { label: 'Acción sugerida', render: a => `<span style="color:var(--fg-3);font-size:12px">${esc(a.suggested_action)}</span>` },
-    { label: '',           render: a => chatLink(a.conversation_id, a.wa_number) },
+    { label: 'Paciente / Contacto', render: a => nameCell(a) },
+    { label: 'WhatsApp',  render: a => `<code style="font-size:11px">${esc(fmtWa(a.wa_number))}</code>` },
+    { label: 'HC',        render: a => a.hc_number ? `<small>HC ${esc(a.hc_number)}</small>` : '<span style="color:var(--fg-3)">—</span>' },
+    { label: 'Motivo',    render: a => esc(a.topic_label || a.topic) },
+    { label: 'Severidad', render: a => sevBadge(a.severity) },
+    { label: 'Esperando', render: a => `<strong>${fmtMinutes(a.waiting_minutes)}</strong>` },
+    { label: 'Último msg',render: a => fmtDatetime(a.latest_inbound_at) },
+    { label: 'Agente',    render: a => agentCell(a) },
+    { label: '',          render: a => chatLink(a.conversation_id, a.wa_number) },
   ];
 
   const COLS_RESCUE = [
-    { label: 'Conv.',      render: a => `<strong>#${esc(a.conversation_id)}</strong>` },
-    { label: 'Categoría',  render: a => catBadge(a.category_label || a.category) },
-    { label: 'Topic',      render: a => esc(a.topic_label || a.topic) },
-    { label: 'Severidad',  render: a => sevBadge(a.severity) },
-    { label: 'Esperando',  render: a => fmtMinutes(a.waiting_minutes) },
-    { label: 'Último inbound', render: a => fmtDatetime(a.latest_inbound_at) },
-    { label: 'Agente',     render: a => a.assigned_user_name ? esc(a.assigned_user_name) : '<em style="color:var(--fg-3)">Sin asignar</em>' },
-    { label: 'Acción',     render: a => `<span style="color:var(--fg-3);font-size:12px">${esc(a.suggested_action)}</span>` },
-    { label: '',           render: a => chatLink(a.conversation_id, a.wa_number) },
+    { label: 'Paciente / Contacto', render: a => nameCell(a) },
+    { label: 'WhatsApp',  render: a => `<code style="font-size:11px">${esc(fmtWa(a.wa_number))}</code>` },
+    { label: 'HC',        render: a => a.hc_number ? `<small>HC ${esc(a.hc_number)}</small>` : '<span style="color:var(--fg-3)">—</span>' },
+    { label: 'Motivo',    render: a => esc(a.topic_label || a.topic) },
+    { label: 'Severidad', render: a => sevBadge(a.severity) },
+    { label: 'Esperando', render: a => fmtMinutes(a.waiting_minutes) },
+    { label: 'Último msg',render: a => fmtDatetime(a.latest_inbound_at) },
+    { label: 'Agente',    render: a => agentCell(a) },
+    { label: 'Acción',    render: a => `<span style="color:var(--fg-3);font-size:11px">${esc(a.suggested_action)}</span>` },
+    { label: '',          render: a => chatLink(a.conversation_id, a.wa_number) },
   ];
 
   const COLS_OTHER = [
-    { label: 'Conv.',      render: a => `<strong>#${esc(a.conversation_id)}</strong>` },
-    { label: 'Tipo',       render: a => `<code style="font-size:11px">${esc(a.alert_type)}</code>` },
-    { label: 'Severidad',  render: a => sevBadge(a.severity) },
-    { label: 'Categoría',  render: a => catBadge(a.category_label || a.category) },
-    { label: 'Topic',      render: a => esc(a.topic_label || a.topic) },
-    { label: 'Esperando',  render: a => fmtMinutes(a.waiting_minutes) },
-    { label: 'Acción',     render: a => `<span style="color:var(--fg-3);font-size:12px">${esc(a.suggested_action)}</span>` },
-    { label: '',           render: a => chatLink(a.conversation_id, a.wa_number) },
+    { label: 'Paciente / Contacto', render: a => nameCell(a) },
+    { label: 'WhatsApp',  render: a => `<code style="font-size:11px">${esc(fmtWa(a.wa_number))}</code>` },
+    { label: 'HC',        render: a => a.hc_number ? `<small>HC ${esc(a.hc_number)}</small>` : '<span style="color:var(--fg-3)">—</span>' },
+    { label: 'Tipo',      render: a => `<code style="font-size:11px">${esc(a.alert_type)}</code>` },
+    { label: 'Severidad', render: a => sevBadge(a.severity) },
+    { label: 'Motivo',    render: a => esc(a.topic_label || a.topic) },
+    { label: 'Esperando', render: a => fmtMinutes(a.waiting_minutes) },
+    { label: 'Agente',    render: a => agentCell(a) },
+    { label: 'Acción',    render: a => `<span style="color:var(--fg-3);font-size:11px">${esc(a.suggested_action)}</span>` },
+    { label: '',          render: a => chatLink(a.conversation_id, a.wa_number) },
   ];
 
   // ── Render sections ───────────────────────────────────────────────────────
@@ -422,7 +452,7 @@
       allAlerts = data.alerts || [];
 
       populateAgents(allAlerts);
-      renderSections(allAlerts);
+      applySearchAndRender();
 
       if (!allAlerts.length) {
         ['body-critical','body-rescue'].forEach(id => {
@@ -441,8 +471,22 @@
     }
   }
 
+  // ── Client-side search filter ─────────────────────────────────────────────
+  function applySearchAndRender() {
+    const q = (fSearch.value || '').trim().toLowerCase();
+    if (!q) { renderSections(allAlerts); return; }
+    const filtered = allAlerts.filter(a => {
+      return (a.display_name  || '').toLowerCase().includes(q)
+          || (a.wa_number     || '').toLowerCase().includes(q)
+          || (a.hc_number     || '').toLowerCase().includes(q)
+          || String(a.conversation_id || '').includes(q);
+    });
+    renderSections(filtered);
+  }
+
   // ── Events ────────────────────────────────────────────────────────────────
   refreshBtn.addEventListener('click', load);
+  fSearch.addEventListener('input', applySearchAndRender);
 
   [fSeverity, fCategory, fType, fAgent, fLimit, dateInput].forEach(el => {
     el.addEventListener('change', load);

@@ -47,7 +47,9 @@ class OperationalAlertsApiTest extends TestCase
         Schema::create('whatsapp_conversations', function (Blueprint $table): void {
             $table->id();
             $table->string('wa_number', 32)->unique();
+            $table->string('display_name', 191)->nullable();
             $table->string('patient_hc_number', 64)->nullable();
+            $table->string('patient_full_name', 191)->nullable();
             $table->boolean('needs_human')->default(true);
             $table->unsignedBigInteger('assigned_user_id')->nullable();
             $table->timestamp('last_message_at')->nullable();
@@ -156,6 +158,9 @@ class OperationalAlertsApiTest extends TestCase
             $this->assertArrayHasKey('severity', $first);
             $this->assertArrayHasKey('conversation_id', $first);
             $this->assertArrayHasKey('wa_number', $first);
+            $this->assertArrayHasKey('display_name', $first);
+            $this->assertArrayHasKey('display_subtitle', $first);
+            $this->assertArrayHasKey('hc_number', $first);
             $this->assertArrayHasKey('waiting_minutes', $first);
             $this->assertArrayHasKey('suggested_action', $first);
         }
