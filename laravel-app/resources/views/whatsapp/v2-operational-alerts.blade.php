@@ -252,7 +252,7 @@
   }
 
   function chatLink(convId) {
-    return `<a class="oa-view-link" href="${esc(CHAT_URL)}?conversation_id=${esc(convId)}" target="_blank"><span class="mdi mdi-open-in-new"></span> Ver</a>`;
+    return `<a class="oa-view-link" href="${esc(CHAT_URL)}?conversation=${esc(convId)}" target="_blank"><span class="mdi mdi-open-in-new"></span> Ver</a>`;
   }
 
   function setKpi(id, val) {
