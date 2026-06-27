@@ -16,6 +16,8 @@ use PDO;
 
 class ImagenesUiService
 {
+    private const REALIZADAS_CACHE_VERSION_KEY = 'imagenes.realizadas.version';
+
     private PDO $db;
     private AfiliacionDimensionService $afiliacionDimensions;
 
@@ -62,16 +64,49 @@ class ImagenesUiService
     {
         $filters = $this->buildFilters($query);
         $filters['afiliacion_match_mode'] = 'grouped';
-        $rows = $this->fetchImagenesRealizadas($filters, true);
-        $rows = array_map(fn(array $row): array => $this->decorateImagenRow($row), $rows);
+        $cacheTtl = (int) config('nas-imagenes.realizadas_cache_ttl', 60);
+        $forceRefresh = filter_var($query['_refresh'] ?? $query['refresh'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $cacheKey = $this->imagenesRealizadasCacheKey($filters);
 
-        return [
-            'filters' => $filters,
-            'rows' => $rows,
-            'afiliacionOptions' => $this->getImagenesAfiliacionOptions(),
-            'afiliacionCategoriaOptions' => $this->getImagenesAfiliacionCategoriaOptions(),
-            'seguroOptions' => $this->getImagenesSeguroOptions((string)($filters['afiliacion'] ?? '')),
-        ];
+        $compute = function () use ($filters): array {
+            $rows = $this->fetchImagenesRealizadas($filters, true);
+            $rows = array_map(fn(array $row): array => $this->decorateImagenRow($row), $rows);
+
+            return [
+                'filters' => $filters,
+                'rows' => $rows,
+                'afiliacionOptions' => $this->getImagenesAfiliacionOptions(),
+                'afiliacionCategoriaOptions' => $this->getImagenesAfiliacionCategoriaOptions(),
+                'seguroOptions' => $this->getImagenesSeguroOptions((string)($filters['afiliacion'] ?? '')),
+            ];
+        };
+
+        if ($cacheTtl <= 0 || $forceRefresh) {
+            if ($forceRefresh) {
+                $this->forgetCacheKey($cacheKey);
+            }
+
+            return $compute();
+        }
+
+        try {
+            return Cache::remember($cacheKey, $cacheTtl, $compute);
+        } catch (\Throwable) {
+            return $compute();
+        }
+    }
+
+    public static function bumpImagenesRealizadasCacheVersion(): void
+    {
+        try {
+            if (!Cache::has(self::REALIZADAS_CACHE_VERSION_KEY)) {
+                Cache::forever(self::REALIZADAS_CACHE_VERSION_KEY, 1);
+            }
+
+            Cache::increment(self::REALIZADAS_CACHE_VERSION_KEY);
+        } catch (\Throwable) {
+            // Redis/cache no disponible: el flujo funcional no debe fallar.
+        }
     }
 
     /**
@@ -173,6 +208,45 @@ class ImagenesUiService
         ];
 
         return md5(json_encode($relevant));
+    }
+
+    /**
+     * @param array<string,string> $filters
+     */
+    private function imagenesRealizadasCacheKey(array $filters): string
+    {
+        $version = 1;
+        try {
+            $version = (int) Cache::get(self::REALIZADAS_CACHE_VERSION_KEY, 1);
+        } catch (\Throwable) {
+            $version = 1;
+        }
+
+        $relevant = [
+            'version' => $version,
+            'fecha_inicio' => $filters['fecha_inicio'] ?? '',
+            'fecha_fin' => $filters['fecha_fin'] ?? '',
+            'sede' => $filters['sede'] ?? '',
+            'tipo_examen' => $filters['tipo_examen'] ?? '',
+            'afiliacion' => $filters['afiliacion'] ?? '',
+            'afiliacion_categoria' => $filters['afiliacion_categoria'] ?? '',
+            'seguro' => $filters['seguro'] ?? '',
+            'paciente' => $filters['paciente'] ?? '',
+            'estado_agenda' => $filters['estado_agenda'] ?? '',
+            'hc_number' => $filters['hc_number'] ?? '',
+            'form_id' => $filters['form_id'] ?? '',
+        ];
+
+        return 'imagenes_realizadas:' . md5(json_encode($relevant));
+    }
+
+    private function forgetCacheKey(string $cacheKey): void
+    {
+        try {
+            Cache::forget($cacheKey);
+        } catch (\Throwable) {
+            // Cache no disponible: continuar con cálculo directo.
+        }
     }
 
     /**
