@@ -155,6 +155,7 @@ class OperationalAlertsApiTest extends TestCase
             $this->assertArrayHasKey('alert_type', $first);
             $this->assertArrayHasKey('severity', $first);
             $this->assertArrayHasKey('conversation_id', $first);
+            $this->assertArrayHasKey('wa_number', $first);
             $this->assertArrayHasKey('waiting_minutes', $first);
             $this->assertArrayHasKey('suggested_action', $first);
         }

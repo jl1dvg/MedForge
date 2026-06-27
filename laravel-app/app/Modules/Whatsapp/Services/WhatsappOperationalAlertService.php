@@ -189,6 +189,7 @@ class WhatsappOperationalAlertService
             'alert_type'         => $alertType,
             'severity'           => $severity,
             'conversation_id'    => (int) ($decision['conversation_id'] ?? 0),
+            'wa_number'          => (string) ($decision['wa_number'] ?? ''),
             'handoff_id'         => (int) ($decision['handoff_id'] ?? 0),
             'topic'              => (string) ($decision['topic'] ?? ''),
             'topic_label'        => (string) ($decision['topic_label'] ?? ''),

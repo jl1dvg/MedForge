@@ -251,8 +251,9 @@
     return cat ? `<span class="cat">${esc(cat)}</span>` : '';
   }
 
-  function chatLink(convId) {
-    return `<a class="oa-view-link" href="${esc(CHAT_URL)}?conversation=${esc(convId)}" target="_blank"><span class="mdi mdi-open-in-new"></span> Ver</a>`;
+  function chatLink(convId, waNumber) {
+    const param = waNumber ? `search=${esc(waNumber)}&filter=all` : `conversation=${esc(convId)}`;
+    return `<a class="oa-view-link" href="${esc(CHAT_URL)}?${param}" target="_blank"><span class="mdi mdi-open-in-new"></span> Ver</a>`;
   }
 
   function setKpi(id, val) {
@@ -288,7 +289,7 @@
     { label: 'Último inbound', render: a => fmtDatetime(a.latest_inbound_at) },
     { label: 'Agente',     render: a => a.assigned_user_name ? esc(a.assigned_user_name) : '<em style="color:var(--fg-3)">Sin asignar</em>' },
     { label: 'Acción sugerida', render: a => `<span style="color:var(--fg-3);font-size:12px">${esc(a.suggested_action)}</span>` },
-    { label: '',           render: a => chatLink(a.conversation_id) },
+    { label: '',           render: a => chatLink(a.conversation_id, a.wa_number) },
   ];
 
   const COLS_RESCUE = [
@@ -300,7 +301,7 @@
     { label: 'Último inbound', render: a => fmtDatetime(a.latest_inbound_at) },
     { label: 'Agente',     render: a => a.assigned_user_name ? esc(a.assigned_user_name) : '<em style="color:var(--fg-3)">Sin asignar</em>' },
     { label: 'Acción',     render: a => `<span style="color:var(--fg-3);font-size:12px">${esc(a.suggested_action)}</span>` },
-    { label: '',           render: a => chatLink(a.conversation_id) },
+    { label: '',           render: a => chatLink(a.conversation_id, a.wa_number) },
   ];
 
   const COLS_OTHER = [
@@ -311,7 +312,7 @@
     { label: 'Topic',      render: a => esc(a.topic_label || a.topic) },
     { label: 'Esperando',  render: a => fmtMinutes(a.waiting_minutes) },
     { label: 'Acción',     render: a => `<span style="color:var(--fg-3);font-size:12px">${esc(a.suggested_action)}</span>` },
-    { label: '',           render: a => chatLink(a.conversation_id) },
+    { label: '',           render: a => chatLink(a.conversation_id, a.wa_number) },
   ];
 
   // ── Render sections ───────────────────────────────────────────────────────

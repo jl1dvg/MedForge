@@ -87,6 +87,7 @@ class WhatsappOperationalDecisionService
 
         $base = [
             'conversation_id'                  => $convId,
+            'wa_number'                        => (string) ($row->wa_number ?? ''),
             'handoff_id'                       => (int) ($row->handoff_id ?? 0),
             'bucket'                           => $bucket,
             'topic'                            => $topic,
@@ -379,6 +380,7 @@ class WhatsappOperationalDecisionService
             ->join('whatsapp_handoffs as h', 'h.id', '=', 'latest_h.id')
             ->select([
                 'c.id as conversation_id',
+                'c.wa_number',
                 'c.assigned_user_id',
                 'c.last_message_at',
                 'c.handoff_requested_at',
