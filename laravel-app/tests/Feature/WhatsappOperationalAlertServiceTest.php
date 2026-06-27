@@ -169,26 +169,44 @@ class WhatsappOperationalAlertServiceTest extends TestCase
         Carbon::setTestNow();
     }
 
-    public function test_rescue_bucket_generates_rescue_aging_alert(): void
+    public function test_rescue_bucket_with_rescue_followup_generates_rescue_aging_alert(): void
     {
         Carbon::setTestNow('2026-06-26 10:00:00');
-        // queued 3 days ago → rescue bucket (1440 < age ≤ 7*1440), inbound stale
-        $this->seedConversation(4, now()->subDays(3), 'captacion_agendar', null, 'normal');
-        $this->seedInbound(4, now()->subDays(3));
+        // queued 2 days ago → rescue bucket, inbound stale → rescue_followup action
+        // 2 days = 2880 min: < 3*1440=4320 → medium severity
+        $this->seedConversation(4, now()->subDays(2), 'captacion_agendar', null, 'normal');
+        $this->seedInbound(4, now()->subDays(2));
 
         $result = $this->runAlerts();
 
         $alert = $this->findAlert($result, 4, WhatsappOperationalAlertService::ALERT_RESCUE_AGING);
-        $this->assertNotNull($alert, 'Must generate rescue_aging alert');
-        $this->assertSame('medium', $alert['severity'], '3 days < 5 days → medium');
+        $this->assertNotNull($alert, 'rescue + rescue_followup must generate rescue_aging');
+        $this->assertSame('medium', $alert['severity'], '2 days < 3 days → medium');
         $this->assertSame('rescue', $alert['bucket']);
 
         Carbon::setTestNow();
     }
 
-    public function test_rescue_5days_is_high_severity(): void
+    public function test_rescue_3days_is_high_severity(): void
     {
         Carbon::setTestNow('2026-06-26 10:00:00');
+        // 3 days = 4320 min ≥ 3*1440 → high
+        $this->seedConversation(40, now()->subDays(3), 'captacion_agendar', null, 'normal');
+        $this->seedInbound(40, now()->subDays(3));
+
+        $result = $this->runAlerts();
+
+        $alert = $this->findAlert($result, 40, WhatsappOperationalAlertService::ALERT_RESCUE_AGING);
+        $this->assertNotNull($alert);
+        $this->assertSame('high', $alert['severity'], '3 days ≥ 3-day threshold → high');
+
+        Carbon::setTestNow();
+    }
+
+    public function test_rescue_5days_is_critical_severity(): void
+    {
+        Carbon::setTestNow('2026-06-26 10:00:00');
+        // 6 days = 8640 min ≥ 5*1440 → critical
         $this->seedConversation(5, now()->subDays(6), 'captacion_agendar', null, 'normal');
         $this->seedInbound(5, now()->subDays(6));
 
@@ -196,22 +214,22 @@ class WhatsappOperationalAlertServiceTest extends TestCase
 
         $alert = $this->findAlert($result, 5, WhatsappOperationalAlertService::ALERT_RESCUE_AGING);
         $this->assertNotNull($alert);
-        $this->assertSame('high', $alert['severity'], '6 days ≥ 5 days → high');
+        $this->assertSame('critical', $alert['severity'], '6 days ≥ 5-day threshold → critical');
 
         Carbon::setTestNow();
     }
 
-    public function test_agenda_sin_disponibilidad_urgent_generates_no_availability_alert(): void
+    public function test_agenda_sin_disponibilidad_urgent_without_repeat_does_not_generate_alert(): void
     {
         Carbon::setTestNow('2026-06-26 10:00:00');
+        // urgent priority but repeat_count = 1 (only current handoff) → no alert in v1
         $this->seedConversation(6, now()->subMinutes(30), 'agenda_sin_disponibilidad', null, 'urgent');
         $this->seedInbound(6, now()->subMinutes(20));
 
         $result = $this->runAlerts();
 
         $alert = $this->findAlert($result, 6, WhatsappOperationalAlertService::ALERT_NO_AVAILABILITY);
-        $this->assertNotNull($alert, 'Must generate no_availability alert for urgent priority');
-        $this->assertSame('medium', $alert['severity']);
+        $this->assertNull($alert, 'no_availability requires repeat_count >= 2 in v1');
 
         Carbon::setTestNow();
     }
@@ -342,6 +360,160 @@ class WhatsappOperationalAlertServiceTest extends TestCase
         $this->assertArrayHasKey('summary', $json);
         $this->assertArrayHasKey('by_type', $json);
         $this->assertArrayHasKey('alerts', $json);
+
+        Carbon::setTestNow();
+    }
+
+    // ── Calibration guards ────────────────────────────────────────────────────
+
+    public function test_no_action_converted_does_not_generate_rescue_aging_alert(): void
+    {
+        Carbon::setTestNow('2026-06-26 10:00:00');
+        // rescue bucket (2 days old) but has booking attribution → no_action_converted → no alert
+        $this->seedConversation(50, now()->subDays(2), 'captacion_agendar', null, 'normal');
+        $this->seedInbound(50, now()->subDays(2));
+
+        // bot_api booking → category = ophthalmology_consult → hasPrimary=true → no_action_converted
+        DB::table('whatsapp_operational_booking_attributions')->insert([
+            'id'                          => 50,
+            'booking_source'              => 'bot_api',
+            'observed_booking_key'        => 'key-conv-50',
+            'attributed_conversation_id'  => 50,
+            'event_type'                  => 'booking_created',
+            'attribution_method'          => 'direct',
+            'confidence'                  => 'high',
+            'created_at'                  => now()->subDays(1),
+            'updated_at'                  => now()->subDays(1),
+        ]);
+
+        $result = $this->runAlerts();
+
+        $alert = $this->findAlert($result, 50, WhatsappOperationalAlertService::ALERT_RESCUE_AGING);
+        $this->assertNull($alert, 'no_action_converted must not generate rescue_aging');
+
+        Carbon::setTestNow();
+    }
+
+    public function test_no_action_already_handled_does_not_generate_alert(): void
+    {
+        Carbon::setTestNow('2026-06-26 10:00:00');
+        // hot_open + assigned + has human response → no_action_already_handled → no alert
+        $this->seedConversation(51, now()->subMinutes(30), 'captacion_agendar', 5, 'high');
+        $this->seedInbound(51, now()->subMinutes(20));
+        // Outbound response after queue time → hasHumanResponse = true
+        DB::table('whatsapp_messages')->insert([
+            'conversation_id'   => 51,
+            'direction'         => 'outbound',
+            'message_timestamp' => now()->subMinutes(15),
+            'created_at'        => now()->subMinutes(15),
+            'updated_at'        => now()->subMinutes(15),
+        ]);
+
+        $result = $this->runAlerts();
+
+        $this->assertNull($this->findAlert($result, 51, WhatsappOperationalAlertService::ALERT_HOT_UNASSIGNED));
+        $this->assertNull($this->findAlert($result, 51, WhatsappOperationalAlertService::ALERT_SUPERVISOR_SLA));
+
+        Carbon::setTestNow();
+    }
+
+    public function test_hold_backlog_does_not_generate_rescue_aging_alert(): void
+    {
+        Carbon::setTestNow('2026-06-26 10:00:00');
+        // backlog bucket (8-30 days) → hold_backlog action, not rescue_followup → no rescue_aging
+        $this->seedConversation(52, now()->subDays(10), 'captacion_agendar', null, 'normal');
+        $this->seedInbound(52, now()->subDays(10));
+
+        $result = $this->runAlerts();
+
+        $alert = $this->findAlert($result, 52, WhatsappOperationalAlertService::ALERT_RESCUE_AGING);
+        $this->assertNull($alert, 'hold_backlog must not generate rescue_aging');
+
+        Carbon::setTestNow();
+    }
+
+    public function test_agenda_sin_disponibilidad_in_backlog_does_not_generate_no_availability_alert(): void
+    {
+        Carbon::setTestNow('2026-06-26 10:00:00');
+        // backlog bucket (10 days old) → not in allowed buckets for no_availability_repeated
+        $this->seedConversation(53, now()->subDays(10), 'agenda_sin_disponibilidad', null, 'normal');
+        $this->seedInbound(53, now()->subDays(10));
+
+        // Add repeat handoffs so repeat_count >= 2
+        DB::table('whatsapp_handoffs')->insert([
+            'id'              => 530,
+            'conversation_id' => 53,
+            'wa_number'       => '5930053',
+            'status'          => 'expired',
+            'topic'           => 'agenda_sin_disponibilidad',
+            'priority'        => 'normal',
+            'queued_at'       => now()->subDays(12),
+            'created_at'      => now()->subDays(12),
+            'updated_at'      => now()->subDays(12),
+        ]);
+
+        $result = $this->runAlerts();
+
+        $alert = $this->findAlert($result, 53, WhatsappOperationalAlertService::ALERT_NO_AVAILABILITY);
+        $this->assertNull($alert, 'backlog bucket must not generate no_availability_repeated');
+
+        Carbon::setTestNow();
+    }
+
+    // ── Pagination / summary ──────────────────────────────────────────────────
+
+    public function test_summary_only_returns_no_alerts_array_items(): void
+    {
+        Carbon::setTestNow('2026-06-26 10:00:00');
+        $this->seedConversation(60, now()->subMinutes(30), 'captacion_agendar', null, 'high');
+        $this->seedInbound(60, now()->subMinutes(20));
+
+        $result = app(WhatsappOperationalAlertService::class)->alerts([
+            'date'         => '2026-06-26',
+            'summary_only' => true,
+        ]);
+
+        $this->assertArrayHasKey('summary', $result);
+        $this->assertSame([], $result['alerts'], 'summary_only must return empty alerts[]');
+        $this->assertSame(0, $result['alerts_returned'], 'alerts_returned must be 0 when summary_only');
+        $this->assertGreaterThanOrEqual(1, $result['alerts_total'], 'alerts_total must still count actual alerts');
+
+        Carbon::setTestNow();
+    }
+
+    public function test_json_response_contains_alerts_returned_and_truncated(): void
+    {
+        Carbon::setTestNow('2026-06-26 10:00:00');
+        $this->seedConversation(61, now()->subMinutes(30), 'captacion_agendar', null, 'high');
+        $this->seedInbound(61, now()->subMinutes(20));
+
+        $result = app(WhatsappOperationalAlertService::class)->alerts(['date' => '2026-06-26']);
+
+        $this->assertArrayHasKey('alerts_returned', $result);
+        $this->assertArrayHasKey('truncated', $result);
+        $this->assertIsInt($result['alerts_returned']);
+        $this->assertIsBool($result['truncated']);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_command_summary_flag_returns_empty_alerts(): void
+    {
+        Carbon::setTestNow('2026-06-26 10:00:00');
+        $this->seedConversation(62, now()->subMinutes(30), 'captacion_agendar', null, 'high');
+        $this->seedInbound(62, now()->subMinutes(20));
+
+        Artisan::call('whatsapp:operational-alerts', [
+            '--date'    => '2026-06-26',
+            '--json'    => true,
+            '--summary' => true,
+        ]);
+        $json = json_decode(Artisan::output(), true);
+
+        $this->assertIsArray($json);
+        $this->assertSame([], $json['alerts'] ?? ['notempty'], '--summary must return empty alerts[]');
+        $this->assertSame(0, $json['alerts_returned'] ?? -1);
+        $this->assertArrayHasKey('summary', $json);
 
         Carbon::setTestNow();
     }

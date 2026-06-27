@@ -651,22 +651,26 @@ Artisan::command('whatsapp:handoff-auto-assign
 Artisan::command('whatsapp:operational-alerts
     {--date= : Fecha YYYY-MM-DD (por defecto hoy)}
     {--json : Emite resultado completo como JSON}
-    {--summary : Emite solo resumen por severidad y tipo}
+    {--summary : Emite solo resumen por severidad y tipo (sin alerts[])}
+    {--include-items : Incluir todos los items en alerts[] sin truncar}
     {--limit=200 : Máximo de alertas a evaluar}
     {--category=all : Filtrar por categoría: all|captacion|operacion|ambiguo}
     {--severity=all : Filtrar por severidad: all|critical|high|medium|low}', function (): int {
     /** @var \App\Modules\Whatsapp\Services\WhatsappOperationalAlertService $service */
     $service = app(\App\Modules\Whatsapp\Services\WhatsappOperationalAlertService::class);
 
-    $dateOption = trim((string) ($this->option('date') ?? ''));
-    $date = $dateOption !== '' ? $dateOption : now()->toDateString();
+    $dateOption  = trim((string) ($this->option('date') ?? ''));
+    $date        = $dateOption !== '' ? $dateOption : now()->toDateString();
+    $summaryOnly = (bool) $this->option('summary');
 
     try {
         $result = $service->alerts([
-            'date'     => $date,
-            'category' => (string) ($this->option('category') ?? 'all'),
-            'severity' => (string) ($this->option('severity') ?? 'all'),
-            'limit'    => (int) $this->option('limit'),
+            'date'          => $date,
+            'category'      => (string) ($this->option('category') ?? 'all'),
+            'severity'      => (string) ($this->option('severity') ?? 'all'),
+            'limit'         => (int) $this->option('limit'),
+            'summary_only'  => $summaryOnly,
+            'include_items' => (bool) $this->option('include-items'),
         ]);
 
         if ((bool) $this->option('json')) {

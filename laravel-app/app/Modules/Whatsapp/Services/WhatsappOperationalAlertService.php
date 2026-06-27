@@ -21,16 +21,21 @@ class WhatsappOperationalAlertService
     ) {
     }
 
+    // Maximum alerts returned in alerts[] by default (avoids noisy payloads)
+    private const DEFAULT_ALERTS_PAGE = 50;
+
     /**
-     * @param array{date?:string,category?:string,severity?:string,limit?:int} $filters
-     * @return array{ok:bool,mode:string,read_only:bool,db_writes:int,date:string,category:string,severity:string,evaluated:int,alerts_total:int,summary:array<string,int>,by_type:array<string,int>,alerts:array<int,array<string,mixed>>}
+     * @param array{date?:string,category?:string,severity?:string,limit?:int,include_items?:bool,summary_only?:bool} $filters
+     * @return array<string,mixed>
      */
     public function alerts(array $filters = []): array
     {
-        $date     = (string) ($filters['date'] ?? CarbonImmutable::now()->toDateString());
-        $category = (string) ($filters['category'] ?? 'all');
-        $severity = (string) ($filters['severity'] ?? 'all');
-        $limit    = max(1, min(500, (int) ($filters['limit'] ?? 200)));
+        $date        = (string) ($filters['date'] ?? CarbonImmutable::now()->toDateString());
+        $category    = (string) ($filters['category'] ?? 'all');
+        $severity    = (string) ($filters['severity'] ?? 'all');
+        $limit       = max(1, min(500, (int) ($filters['limit'] ?? 200)));
+        $summaryOnly = (bool) ($filters['summary_only'] ?? false);
+        $includeAll  = (bool) ($filters['include_items'] ?? false);
 
         $asOf      = CarbonImmutable::parse($date)->endOfDay();
         $evaluated = $this->decisionService->evaluate($asOf);
@@ -39,7 +44,7 @@ class WhatsappOperationalAlertService
         $agentNames = $this->loadAgentNames($decisions);
         $repeatMap  = $this->buildRepeatMap();
 
-        $alerts = [];
+        $allAlerts = [];
         foreach ($decisions as $decision) {
             $alert = $this->buildAlert($decision, $agentNames, $repeatMap);
             if ($alert === null) {
@@ -54,39 +59,46 @@ class WhatsappOperationalAlertService
                 continue;
             }
 
-            $alerts[] = $alert;
+            $allAlerts[] = $alert;
 
-            if (count($alerts) >= $limit) {
+            if (count($allAlerts) >= $limit) {
                 break;
             }
         }
 
-        usort($alerts, static fn (array $a, array $b): int =>
+        usort($allAlerts, static fn (array $a, array $b): int =>
             (self::SEVERITY_ORDER[$a['severity']] ?? 9) <=> (self::SEVERITY_ORDER[$b['severity']] ?? 9)
         );
 
         $summary = ['critical' => 0, 'high' => 0, 'medium' => 0, 'low' => 0];
         $byType  = [];
-        foreach ($alerts as $a) {
+        foreach ($allAlerts as $a) {
             $sev = (string) ($a['severity'] ?? 'low');
             $typ = (string) ($a['alert_type'] ?? 'unknown');
             $summary[$sev] = ($summary[$sev] ?? 0) + 1;
             $byType[$typ]  = ($byType[$typ] ?? 0) + 1;
         }
 
+        $alertsTotal    = count($allAlerts);
+        $pageSize       = $includeAll ? $alertsTotal : self::DEFAULT_ALERTS_PAGE;
+        $alertsReturned = $summaryOnly ? [] : array_slice($allAlerts, 0, $pageSize);
+        $truncated      = !$summaryOnly && $alertsTotal > $pageSize;
+
         return [
-            'ok'           => true,
-            'mode'         => 'read_only',
-            'read_only'    => true,
-            'db_writes'    => 0,
-            'date'         => $date,
-            'category'     => $category,
-            'severity'     => $severity,
-            'evaluated'    => count($decisions),
-            'alerts_total' => count($alerts),
-            'summary'      => $summary,
-            'by_type'      => $byType,
-            'alerts'       => $alerts,
+            'ok'               => true,
+            'mode'             => 'read_only',
+            'read_only'        => true,
+            'db_writes'        => 0,
+            'date'             => $date,
+            'category'         => $category,
+            'severity'         => $severity,
+            'evaluated'        => count($decisions),
+            'alerts_total'     => $alertsTotal,
+            'alerts_returned'  => count($alertsReturned),
+            'truncated'        => $truncated,
+            'summary'          => $summary,
+            'by_type'          => $byType,
+            'alerts'           => $alertsReturned,
         ];
     }
 
@@ -103,6 +115,11 @@ class WhatsappOperationalAlertService
         $topic           = (string) ($decision['topic'] ?? '');
         $handoffPriority = (string) ($decision['handoff_priority'] ?? 'normal');
         $waitingMinutes  = (int) ($decision['waiting_minutes'] ?? 0);
+
+        // Global guard: no_action_* decisions are never actionable
+        if (str_starts_with($action, 'no_action_')) {
+            return null;
+        }
 
         // Rule 1 — hot_unassigned: hot_open + assign_now + no agent
         if ($bucket === 'hot_open' && $action === WhatsappOperationalDecisionService::ACTION_ASSIGN_NOW) {
@@ -124,16 +141,22 @@ class WhatsappOperationalAlertService
                 'Supervisor debe revisar y reasignar si aplica.');
         }
 
-        // Rule 3 — rescue_aging: rescue bucket
-        if ($bucket === 'rescue') {
-            $sev = $waitingMinutes >= 5 * 24 * 60 ? 'high' : 'medium';
+        // Rule 3 — rescue_aging: only rescue_followup action (not converted/backlog)
+        if ($bucket === 'rescue' && $action === WhatsappOperationalDecisionService::ACTION_RESCUE_FOLLOWUP) {
+            $sev = match (true) {
+                $waitingMinutes >= 5 * 24 * 60 => 'critical',
+                $waitingMinutes >= 3 * 24 * 60 => 'high',
+                default                        => 'medium',
+            };
             return $this->makeAlert($decision, self::ALERT_RESCUE_AGING, $sev, $agentNames,
                 'Conversación en seguimiento pendiente.',
                 'Enviar seguimiento o cerrar si ya no aplica.');
         }
 
-        // Rule 4 — no_availability_repeated: agenda_sin_disponibilidad
-        if ($topic === 'agenda_sin_disponibilidad') {
+        // Rule 4 — no_availability_repeated: only for active buckets, repeat_count >= 2 required
+        if ($topic === 'agenda_sin_disponibilidad'
+            && in_array($bucket, ['hot_open', 'hot_needs_template', 'rescue'], true)
+        ) {
             $convId      = (int) ($decision['conversation_id'] ?? 0);
             $repeatCount = $repeatMap[$convId] ?? 0;
             if ($repeatCount >= 2) {
@@ -141,14 +164,9 @@ class WhatsappOperationalAlertService
                     'Paciente no encontró disponibilidad (repetido ' . $repeatCount . ' veces).',
                     'Ofrecer fecha, médico o sede alternativa.');
             }
-            if (in_array($handoffPriority, ['urgent', 'high', 'critical'], true)) {
-                return $this->makeAlert($decision, self::ALERT_NO_AVAILABILITY, 'medium', $agentNames,
-                    'Paciente no encontró disponibilidad y requiere alternativa.',
-                    'Ofrecer fecha, médico o sede alternativa.');
-            }
         }
 
-        // Rule 5 — ambiguous_urgent_faq: faq_escalada + urgent/high priority
+        // Rule 5 — ambiguous_urgent_faq: faq_escalada + urgent/critical handoff priority
         if ($topic === 'faq_escalada' && in_array($handoffPriority, ['urgent', 'critical'], true)) {
             return $this->makeAlert($decision, self::ALERT_AMBIGUOUS_FAQ, 'medium', $agentNames,
                 'Consulta escalada urgente requiere revisión de intención.',
