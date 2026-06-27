@@ -105,7 +105,9 @@ class WhatsappOperationalAlertServiceTest extends TestCase
 
     public function test_hot_open_unassigned_generates_hot_unassigned_alert(): void
     {
-        Carbon::setTestNow('2026-06-26 10:00:00');
+        // asOf = endOfDay('2026-06-26') = 23:59:59; align now() so subMinutes arithmetic matches
+        Carbon::setTestNow('2026-06-26 23:59:59');
+        // queued 30 min before asOf → waiting = 30 min < 60 → high
         $this->seedConversation(1, now()->subMinutes(30), 'captacion_agendar', null, 'high');
         $this->seedInbound(1, now()->subMinutes(20));
 
@@ -123,7 +125,8 @@ class WhatsappOperationalAlertServiceTest extends TestCase
 
     public function test_hot_open_unassigned_60min_is_critical(): void
     {
-        Carbon::setTestNow('2026-06-26 10:00:00');
+        Carbon::setTestNow('2026-06-26 23:59:59');
+        // queued 90 min before asOf → waiting = 90 min ≥ 60 → critical
         $this->seedConversation(1, now()->subMinutes(90), 'captacion_agendar', null, 'high');
         $this->seedInbound(1, now()->subMinutes(60));
 
@@ -138,12 +141,11 @@ class WhatsappOperationalAlertServiceTest extends TestCase
 
     public function test_supervisor_review_generates_supervisor_sla_breach_alert(): void
     {
-        Carbon::setTestNow('2026-06-26 10:00:00');
-        // Assigned agent but no human outbound response past SLA (120 min)
-        // waiting_minutes = 150 ≥ 120 → triggers supervisor_review, severity = high (≥120, <240)
+        Carbon::setTestNow('2026-06-26 23:59:59');
+        // queued 150 min before asOf → waiting = 150 ≥ 120, < 240 → high severity
+        // assigned agent + no outbound → supervisor_review fires
         $this->seedConversation(2, now()->subMinutes(150), 'operacion_cita_vigente', agentId: 5, priority: 'high');
         $this->seedInbound(2, now()->subMinutes(120));
-        // No outbound message → supervisor_review
 
         $result = $this->runAlerts();
 
@@ -156,7 +158,8 @@ class WhatsappOperationalAlertServiceTest extends TestCase
 
     public function test_supervisor_review_240min_is_critical(): void
     {
-        Carbon::setTestNow('2026-06-26 10:00:00');
+        Carbon::setTestNow('2026-06-26 23:59:59');
+        // queued 300 min before asOf → waiting = 300 ≥ 240 → critical
         $this->seedConversation(3, now()->subMinutes(300), 'captacion_agendar', agentId: 5, priority: 'high');
         $this->seedInbound(3, now()->subMinutes(250));
 
@@ -171,7 +174,7 @@ class WhatsappOperationalAlertServiceTest extends TestCase
 
     public function test_rescue_bucket_with_rescue_followup_generates_rescue_aging_alert(): void
     {
-        Carbon::setTestNow('2026-06-26 10:00:00');
+        Carbon::setTestNow('2026-06-26 23:59:59');
         // queued 2 days ago → rescue bucket, inbound stale → rescue_followup action
         // 2 days = 2880 min: < 3*1440=4320 → medium severity
         $this->seedConversation(4, now()->subDays(2), 'captacion_agendar', null, 'normal');
@@ -189,7 +192,7 @@ class WhatsappOperationalAlertServiceTest extends TestCase
 
     public function test_rescue_3days_is_high_severity(): void
     {
-        Carbon::setTestNow('2026-06-26 10:00:00');
+        Carbon::setTestNow('2026-06-26 23:59:59');
         // 3 days = 4320 min ≥ 3*1440 → high
         $this->seedConversation(40, now()->subDays(3), 'captacion_agendar', null, 'normal');
         $this->seedInbound(40, now()->subDays(3));
@@ -205,7 +208,7 @@ class WhatsappOperationalAlertServiceTest extends TestCase
 
     public function test_rescue_5days_is_critical_severity(): void
     {
-        Carbon::setTestNow('2026-06-26 10:00:00');
+        Carbon::setTestNow('2026-06-26 23:59:59');
         // 6 days = 8640 min ≥ 5*1440 → critical
         $this->seedConversation(5, now()->subDays(6), 'captacion_agendar', null, 'normal');
         $this->seedInbound(5, now()->subDays(6));
@@ -221,31 +224,35 @@ class WhatsappOperationalAlertServiceTest extends TestCase
 
     public function test_agenda_sin_disponibilidad_urgent_without_repeat_does_not_generate_alert(): void
     {
-        Carbon::setTestNow('2026-06-26 10:00:00');
-        // urgent priority but repeat_count = 1 (only current handoff) → no alert in v1
+        Carbon::setTestNow('2026-06-26 23:59:59');
+        // hot_needs_template (inbound outside 24h window) → send_template_or_review → Rule 4 checked
+        // but repeat_count = 1 (only current handoff) → no alert
         $this->seedConversation(6, now()->subMinutes(30), 'agenda_sin_disponibilidad', null, 'urgent');
-        $this->seedInbound(6, now()->subMinutes(20));
+        $this->seedInbound(6, now()->subDays(2)); // outside 24h window → hot_needs_template
 
         $result = $this->runAlerts();
 
         $alert = $this->findAlert($result, 6, WhatsappOperationalAlertService::ALERT_NO_AVAILABILITY);
-        $this->assertNull($alert, 'no_availability requires repeat_count >= 2 in v1');
+        $this->assertNull($alert, 'no_availability requires repeat_count >= 2');
 
         Carbon::setTestNow();
     }
 
     public function test_agenda_sin_disponibilidad_repeated_is_high(): void
     {
-        Carbon::setTestNow('2026-06-26 10:00:00');
+        Carbon::setTestNow('2026-06-26 23:59:59');
+        // hot_needs_template: queued 30 min ago, inbound 2 days ago (outside 24h window)
+        // → send_template_or_review → Rule 1 does NOT fire → Rule 4 is evaluated
         $this->seedConversation(7, now()->subMinutes(30), 'agenda_sin_disponibilidad', null, 'normal');
-        $this->seedInbound(7, now()->subMinutes(20));
+        $this->seedInbound(7, now()->subDays(2));
 
-        // Seed a second handoff for same conversation → repeat_count = 2
+        // Extra handoff with status='closed' so conversationRows subquery (status IN queued/assigned/expired)
+        // selects the main handoff (id=7), not this one. Still counted by buildRepeatMap.
         DB::table('whatsapp_handoffs')->insert([
             'id'              => 70,
             'conversation_id' => 7,
             'wa_number'       => '5930007',
-            'status'          => 'expired',
+            'status'          => 'closed',
             'topic'           => 'agenda_sin_disponibilidad',
             'priority'        => 'normal',
             'queued_at'       => now()->subDays(3),
@@ -256,7 +263,7 @@ class WhatsappOperationalAlertServiceTest extends TestCase
         $result = $this->runAlerts();
 
         $alert = $this->findAlert($result, 7, WhatsappOperationalAlertService::ALERT_NO_AVAILABILITY);
-        $this->assertNotNull($alert);
+        $this->assertNotNull($alert, 'repeat_count >= 2 in hot_needs_template must generate no_availability_repeated');
         $this->assertSame('high', $alert['severity'], 'repeat ≥ 2 → high');
 
         Carbon::setTestNow();
@@ -264,9 +271,11 @@ class WhatsappOperationalAlertServiceTest extends TestCase
 
     public function test_faq_escalada_urgent_generates_ambiguous_faq_alert(): void
     {
-        Carbon::setTestNow('2026-06-26 10:00:00');
+        Carbon::setTestNow('2026-06-26 23:59:59');
+        // hot_needs_template: inbound outside 24h window → send_template_or_review
+        // → Rule 1 (assign_now) does NOT fire → Rule 5 (ambiguous_faq) is evaluated
         $this->seedConversation(8, now()->subMinutes(30), 'faq_escalada', null, 'urgent');
-        $this->seedInbound(8, now()->subMinutes(20));
+        $this->seedInbound(8, now()->subDays(2)); // outside 24h → hot_needs_template
 
         $result = $this->runAlerts();
 
@@ -281,7 +290,7 @@ class WhatsappOperationalAlertServiceTest extends TestCase
 
     public function test_alert_service_does_not_write_conversations(): void
     {
-        Carbon::setTestNow('2026-06-26 10:00:00');
+        Carbon::setTestNow('2026-06-26 23:59:59');
         $this->seedConversation(10, now()->subMinutes(30), 'captacion_agendar', null, 'high');
         $this->seedInbound(10, now()->subMinutes(20));
         $before = DB::table('whatsapp_conversations')->where('id', 10)->value('assigned_user_id');
@@ -298,7 +307,7 @@ class WhatsappOperationalAlertServiceTest extends TestCase
 
     public function test_alert_service_does_not_write_handoffs(): void
     {
-        Carbon::setTestNow('2026-06-26 10:00:00');
+        Carbon::setTestNow('2026-06-26 23:59:59');
         $this->seedConversation(11, now()->subMinutes(30), 'captacion_agendar', null, 'high');
         $this->seedInbound(11, now()->subMinutes(20));
 
@@ -311,7 +320,7 @@ class WhatsappOperationalAlertServiceTest extends TestCase
 
     public function test_alert_service_does_not_insert_handoff_events(): void
     {
-        Carbon::setTestNow('2026-06-26 10:00:00');
+        Carbon::setTestNow('2026-06-26 23:59:59');
         $this->seedConversation(12, now()->subMinutes(30), 'captacion_agendar', null, 'high');
         $this->seedInbound(12, now()->subMinutes(20));
         $before = DB::table('whatsapp_handoff_events')->count();
@@ -325,7 +334,7 @@ class WhatsappOperationalAlertServiceTest extends TestCase
 
     public function test_alert_service_does_not_insert_operational_events(): void
     {
-        Carbon::setTestNow('2026-06-26 10:00:00');
+        Carbon::setTestNow('2026-06-26 23:59:59');
         $this->seedConversation(13, now()->subMinutes(30), 'captacion_agendar', null, 'high');
         $this->seedInbound(13, now()->subMinutes(20));
         $before = DB::table('whatsapp_operational_events')->count();
@@ -341,7 +350,7 @@ class WhatsappOperationalAlertServiceTest extends TestCase
 
     public function test_json_command_returns_read_only_true_and_zero_db_writes(): void
     {
-        Carbon::setTestNow('2026-06-26 10:00:00');
+        Carbon::setTestNow('2026-06-26 23:59:59');
         $this->seedConversation(20, now()->subMinutes(30), 'captacion_agendar', null, 'high');
         $this->seedInbound(20, now()->subMinutes(20));
 
@@ -368,7 +377,7 @@ class WhatsappOperationalAlertServiceTest extends TestCase
 
     public function test_no_action_converted_does_not_generate_rescue_aging_alert(): void
     {
-        Carbon::setTestNow('2026-06-26 10:00:00');
+        Carbon::setTestNow('2026-06-26 23:59:59');
         // rescue bucket (2 days old) but has booking attribution → no_action_converted → no alert
         $this->seedConversation(50, now()->subDays(2), 'captacion_agendar', null, 'normal');
         $this->seedInbound(50, now()->subDays(2));
@@ -396,7 +405,7 @@ class WhatsappOperationalAlertServiceTest extends TestCase
 
     public function test_no_action_already_handled_does_not_generate_alert(): void
     {
-        Carbon::setTestNow('2026-06-26 10:00:00');
+        Carbon::setTestNow('2026-06-26 23:59:59');
         // hot_open + assigned + has human response → no_action_already_handled → no alert
         $this->seedConversation(51, now()->subMinutes(30), 'captacion_agendar', 5, 'high');
         $this->seedInbound(51, now()->subMinutes(20));
@@ -419,7 +428,7 @@ class WhatsappOperationalAlertServiceTest extends TestCase
 
     public function test_hold_backlog_does_not_generate_rescue_aging_alert(): void
     {
-        Carbon::setTestNow('2026-06-26 10:00:00');
+        Carbon::setTestNow('2026-06-26 23:59:59');
         // backlog bucket (8-30 days) → hold_backlog action, not rescue_followup → no rescue_aging
         $this->seedConversation(52, now()->subDays(10), 'captacion_agendar', null, 'normal');
         $this->seedInbound(52, now()->subDays(10));
@@ -434,7 +443,7 @@ class WhatsappOperationalAlertServiceTest extends TestCase
 
     public function test_agenda_sin_disponibilidad_in_backlog_does_not_generate_no_availability_alert(): void
     {
-        Carbon::setTestNow('2026-06-26 10:00:00');
+        Carbon::setTestNow('2026-06-26 23:59:59');
         // backlog bucket (10 days old) → not in allowed buckets for no_availability_repeated
         $this->seedConversation(53, now()->subDays(10), 'agenda_sin_disponibilidad', null, 'normal');
         $this->seedInbound(53, now()->subDays(10));
@@ -464,7 +473,7 @@ class WhatsappOperationalAlertServiceTest extends TestCase
 
     public function test_summary_only_returns_no_alerts_array_items(): void
     {
-        Carbon::setTestNow('2026-06-26 10:00:00');
+        Carbon::setTestNow('2026-06-26 23:59:59');
         $this->seedConversation(60, now()->subMinutes(30), 'captacion_agendar', null, 'high');
         $this->seedInbound(60, now()->subMinutes(20));
 
@@ -483,7 +492,7 @@ class WhatsappOperationalAlertServiceTest extends TestCase
 
     public function test_json_response_contains_alerts_returned_and_truncated(): void
     {
-        Carbon::setTestNow('2026-06-26 10:00:00');
+        Carbon::setTestNow('2026-06-26 23:59:59');
         $this->seedConversation(61, now()->subMinutes(30), 'captacion_agendar', null, 'high');
         $this->seedInbound(61, now()->subMinutes(20));
 
@@ -499,7 +508,7 @@ class WhatsappOperationalAlertServiceTest extends TestCase
 
     public function test_command_summary_flag_returns_empty_alerts(): void
     {
-        Carbon::setTestNow('2026-06-26 10:00:00');
+        Carbon::setTestNow('2026-06-26 23:59:59');
         $this->seedConversation(62, now()->subMinutes(30), 'captacion_agendar', null, 'high');
         $this->seedInbound(62, now()->subMinutes(20));
 
@@ -522,7 +531,7 @@ class WhatsappOperationalAlertServiceTest extends TestCase
 
     public function test_category_filter_excludes_non_matching(): void
     {
-        Carbon::setTestNow('2026-06-26 10:00:00');
+        Carbon::setTestNow('2026-06-26 23:59:59');
         // captacion topic → category = captacion
         $this->seedConversation(30, now()->subMinutes(30), 'captacion_agendar', null, 'high');
         $this->seedInbound(30, now()->subMinutes(20));
@@ -539,7 +548,7 @@ class WhatsappOperationalAlertServiceTest extends TestCase
 
     public function test_severity_filter_excludes_non_matching(): void
     {
-        Carbon::setTestNow('2026-06-26 10:00:00');
+        Carbon::setTestNow('2026-06-26 23:59:59');
         // 30-min wait → high severity, not critical
         $this->seedConversation(31, now()->subMinutes(30), 'captacion_agendar', null, 'high');
         $this->seedInbound(31, now()->subMinutes(20));
@@ -558,7 +567,7 @@ class WhatsappOperationalAlertServiceTest extends TestCase
 
     private function runAlerts(): array
     {
-        return app(WhatsappOperationalAlertService::class)->alerts(['date' => now()->toDateString()]);
+        return app(WhatsappOperationalAlertService::class)->alerts(['date' => '2026-06-26', 'include_items' => true]);
     }
 
     /**
