@@ -101,7 +101,15 @@ class Paciente360Service
                 [':hc' => $hcNumber]
             ),
             'consultas' => $this->safeCount(
-                'SELECT COUNT(*) FROM consulta_data WHERE hc_number = :hc',
+                "SELECT COUNT(*)
+                 FROM consulta_data
+                 WHERE hc_number = :hc
+                   AND (
+                     TRIM(COALESCE(motivo_consulta, '')) <> ''
+                     OR TRIM(COALESCE(enfermedad_actual, '')) <> ''
+                     OR TRIM(COALESCE(examen_fisico, '')) <> ''
+                     OR TRIM(COALESCE(plan, '')) <> ''
+                   )",
                 [':hc' => $hcNumber]
             ),
             'protocolos' => $this->safeCount(
@@ -280,6 +288,12 @@ class Paciente360Service
             SELECT *
             FROM consulta_data
             WHERE hc_number = :hc
+              AND (
+                TRIM(COALESCE(motivo_consulta, '')) <> ''
+                OR TRIM(COALESCE(enfermedad_actual, '')) <> ''
+                OR TRIM(COALESCE(examen_fisico, '')) <> ''
+                OR TRIM(COALESCE(plan, '')) <> ''
+              )
             ORDER BY fecha DESC, form_id DESC
             LIMIT :limit
         SQL;
@@ -287,13 +301,14 @@ class Paciente360Service
         $rows = $this->selectRows($sql, ['hc' => $hcNumber, 'limit' => $limit]);
 
         return array_map(
-            static fn(array $row): array => [
+            fn(array $row): array => [
                 'form_id' => (string)($row['form_id'] ?? ''),
                 'fecha' => (string)($row['fecha'] ?? ($row['created_at'] ?? '')),
                 'motivo_consulta' => (string)($row['motivo_consulta'] ?? ''),
                 'enfermedad_actual' => (string)($row['enfermedad_actual'] ?? ''),
+                'examen_fisico' => (string)($row['examen_fisico'] ?? ''),
                 'plan' => (string)($row['plan'] ?? ''),
-                'diagnosticos' => (string)($row['diagnosticos'] ?? ''),
+                'diagnosticos' => $this->formatDiagnosticos((string)($row['diagnosticos'] ?? '')),
             ],
             $rows
         );
@@ -785,7 +800,7 @@ class Paciente360Service
     private function buildLinks(string $section, string $hcNumber, string $formId, string $recordId): array
     {
         $links = [
-            'paciente' => '/pacientes/detalles?hc_number=' . rawurlencode($hcNumber),
+            'paciente' => '/v2/pacientes?hc_number=' . rawurlencode($hcNumber),
         ];
 
         if (in_array($section, ['solicitudes', 'prefacturas'], true)) {
@@ -794,14 +809,21 @@ class Paciente360Service
                 $links['derivacion'] = '/v2/solicitudes/derivacion?hc_number=' . rawurlencode($hcNumber) . '&form_id=' . rawurlencode($formId);
             }
         } elseif ($section === 'examenes') {
-            $links['modulo'] = '/examenes';
+            $links['modulo'] = '/v2/imagenes/examenes-realizados';
             if ($formId !== '') {
-                $links['derivacion'] = '/examenes/derivacion?hc_number=' . rawurlencode($hcNumber) . '&form_id=' . rawurlencode($formId);
-                $links['imagenes'] = '/imagenes/examenes-realizados?hc_number=' . rawurlencode($hcNumber);
-                $links['archivos_list'] = '/imagenes/examenes-realizados/nas/list?hc_number=' . rawurlencode($hcNumber) . '&form_id=' . rawurlencode($formId);
+                $links['derivacion'] = '/v2/examenes/derivacion?hc_number=' . rawurlencode($hcNumber) . '&form_id=' . rawurlencode($formId);
+                $links['imagenes'] = '/v2/imagenes/examenes-realizados?hc_number=' . rawurlencode($hcNumber);
+                $links['archivos_list'] = '/v2/imagenes/examenes-realizados/nas/list?hc_number=' . rawurlencode($hcNumber) . '&form_id=' . rawurlencode($formId);
             }
         } elseif ($section === 'agenda') {
             $links['modulo'] = '/agenda';
+        } elseif ($section === 'protocolos') {
+            $links['modulo'] = '/v2/cirugias';
+            if ($formId !== '') {
+                $links['cirugia'] = '/v2/cirugias?form_id=' . rawurlencode($formId);
+                $links['editar'] = '/v2/cirugias/wizard?form_id=' . rawurlencode($formId) . '&hc_number=' . rawurlencode($hcNumber);
+                $links['pdf'] = '/v2/reports/protocolo/pdf?form_id=' . rawurlencode($formId) . '&hc_number=' . rawurlencode($hcNumber);
+            }
         } elseif ($section === 'derivaciones') {
             $links['modulo'] = '/derivaciones';
             if ($formId !== '') {
@@ -851,6 +873,41 @@ class Paciente360Service
         }
 
         return $result;
+    }
+
+    /**
+     * @return array<int,string>
+     */
+    private function formatDiagnosticos(string $raw): array
+    {
+        $raw = trim($raw);
+        if ($raw === '') {
+            return [];
+        }
+
+        $decoded = json_decode($raw, true);
+        if (!is_array($decoded)) {
+            return [$raw];
+        }
+
+        $items = array_is_list($decoded) ? $decoded : [$decoded];
+
+        return array_values(array_filter(array_map(static function (mixed $item): string {
+            if (!is_array($item)) {
+                return trim((string) $item);
+            }
+
+            $diagnostico = trim((string) ($item['idDiagnostico']
+                ?? $item['diagnostico']
+                ?? $item['descripcion']
+                ?? $item['desc']
+                ?? $item['cie']
+                ?? $item['codigo']
+                ?? ''));
+            $ojo = trim((string) ($item['ojo'] ?? $item['lateralidad'] ?? ''));
+
+            return trim($diagnostico . ($ojo !== '' ? ' · ' . $ojo : ''));
+        }, $items)));
     }
 
     /**

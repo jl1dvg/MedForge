@@ -4,6 +4,13 @@ import { initials } from './utils';
 
 const csrfToken = (): string => (window as any).csrfToken || '';
 
+function mergeDateAndTime(fecha: string | null | undefined, hora: string | null | undefined): string {
+  const date = String(fecha || '').trim();
+  const time = String(hora || '').trim();
+  if (!date || /[T ]\d{2}:\d{2}/.test(date) || !time) return date;
+  return `${date}T${time}`;
+}
+
 function buildTimeline(p: any): any[] {
   const ev: any[] = [];
   (p.citas || []).forEach((c: any) => {
@@ -44,20 +51,23 @@ function normalizePatient(raw: any, id: number): Patient {
   }
 
   // Resolve sede from list endpoint (id_sede field) or detail
-  const sedeRaw = String(raw.sede || raw.sede_id || raw.id_sede || '').toLowerCase().trim();
+  const sedeRaw = String(raw.sede || raw.sede_id || raw.id_sede || raw.sede_principal || '').toLowerCase().trim();
   const sede = sedeRaw;
 
   // Resolve medico: list endpoint returns medico_nombre (raw doctor name), detail has medico_id
-  const medico = String(raw.medico || raw.medico_id || raw.doctor_id || raw.medico_nombre || '');
+  const medico = String(raw.medico || raw.medico_tratante_id || raw.medico_id || raw.doctor_id || raw.medico_nombre || '');
 
   // Próxima cita: list endpoint returns proxima_fecha/hora/tipo, detail has proxima_cita object
   let proximaCita = raw.proxima_cita || null;
-  if (!proximaCita && raw.proxima_fecha) {
-    const fechaStr = raw.proxima_hora
-      ? `${raw.proxima_fecha}T${raw.proxima_hora}`
-      : raw.proxima_fecha;
+  if (proximaCita?.fecha) {
     proximaCita = {
-      fecha: fechaStr,
+      ...proximaCita,
+      fecha: mergeDateAndTime(proximaCita.fecha, proximaCita.hora),
+    };
+  }
+  if (!proximaCita && raw.proxima_fecha) {
+    proximaCita = {
+      fecha: mergeDateAndTime(raw.proxima_fecha, raw.proxima_hora),
       medico: raw.proxima_doctor || medico,
       tipo: raw.proxima_tipo || 'consulta',
     };
@@ -93,9 +103,9 @@ function normalizePatient(raw: any, id: number): Patient {
     medico,
     medico_tratante: raw.medico_tratante || null,
     afiliacion: String(raw.afiliacion || ''),
-    tipo_afiliacion: String(raw.tipo_afiliacion || raw.afiliacion_info?.tipo || 'otros'),
+    tipo_afiliacion: String(raw.tipo_afiliacion || raw.afiliacion_info?.categoria || raw.afiliacion_info?.tipo || 'otros'),
     afiliacion_info: raw.afiliacion_info || null,
-    aseguradora: raw.aseguradora || null,
+    aseguradora: raw.aseguradora || raw.afiliacion_info?.empresa_seguro || null,
     poliza: raw.poliza || raw.num_poliza || null,
     titular: raw.titular || null,
     emergencia: raw.emergencia || { nombre: '—', rel: '—', tel: '—' },

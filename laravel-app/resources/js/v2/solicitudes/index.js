@@ -752,7 +752,7 @@
                     <span class="sol-v2-tag sol-v2-tag-ops"><i class="mdi mdi-format-list-checks"></i> ${pendingTasks}/${totalTasks}</span>
                 </div>
                 <div class="sol-v2-card-actions">
-                    <a class="btn btn-xs btn-light" href="/v2/pacientes/detalles?hc_number=${encodeURIComponent(hcNumber)}">Paciente</a>
+                    <a class="btn btn-xs btn-light" href="/v2/pacientes?hc_number=${encodeURIComponent(hcNumber)}">Paciente</a>
                     <button class="btn btn-xs btn-outline-secondary btn-open-crm" data-action="open-crm" data-id="${escapeHtml(requestIdValue)}" data-paciente="${escapeHtml(fullName)}" data-solicitud-id="${escapeHtml(requestIdValue)}" data-paciente-nombre="${escapeHtml(fullName)}">CRM</button>
                     <button class="btn btn-xs btn-outline-primary" data-action="refresh-detalle" data-id="${escapeHtml(requestIdValue)}" data-hc="${escapeHtml(hcNumber)}" data-form="${escapeHtml(formId)}">Detalle</button>
                     ${

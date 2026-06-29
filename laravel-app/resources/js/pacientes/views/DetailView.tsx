@@ -65,6 +65,21 @@ function vigenciaClass(fecha: string): string {
   return 'vigencia-ok';
 }
 
+function afiliacionTipoLabel(p: Patient): string {
+  const tipo = String(p.tipo_afiliacion || p.afiliacion_info?.categoria || '').toLowerCase().trim();
+  if (tipo === 'privado') return 'Privada';
+  if (tipo === 'publico') return 'Pública';
+  if (tipo === 'particular') return 'Particular';
+  if (tipo === 'fundacional') return 'Fundacional';
+  if (tipo && AFIL_MAP[tipo]?.label) return AFIL_MAP[tipo].label;
+  if (tipo) return tipo.charAt(0).toUpperCase() + tipo.slice(1);
+  return '—';
+}
+
+function aseguradoraLabel(p: Patient): string {
+  return String(p.aseguradora || p.afiliacion_info?.empresa_seguro || '').trim();
+}
+
 function SectionSkeleton() {
   return (
     <div className="sec-skeleton">
@@ -217,41 +232,70 @@ function SecSolicitudes({ rows, onNueva, onOpenCRM }: { rows: any[]; onNueva: ()
 /* ---- Exámenes ---- */
 function SecExamenes({ rows }: { rows: any[] }) {
   const [lightbox, setLightbox] = useState<{ items: any[]; index: number } | null>(null);
+  const [filesByRow, setFilesByRow] = useState<Record<string, any[]>>({});
+  const [loadingFiles, setLoadingFiles] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    rows.forEach((row, i) => {
+      const key = String(row.form_id || row.id || i);
+      const listUrl = row.links?.archivos_list;
+      if (!listUrl || filesByRow[key] || loadingFiles[key]) return;
+
+      setLoadingFiles(prev => ({ ...prev, [key]: true }));
+      fetch(listUrl, { credentials: 'same-origin', headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
+        .then(res => res.ok ? res.json() : { files: [] })
+        .then(data => setFilesByRow(prev => ({ ...prev, [key]: Array.isArray(data.files) ? data.files : [] })))
+        .catch(() => setFilesByRow(prev => ({ ...prev, [key]: [] })))
+        .finally(() => setLoadingFiles(prev => ({ ...prev, [key]: false })));
+    });
+  }, [rows, filesByRow, loadingFiles]);
 
   if (!rows.length) return <EmptyMini icon="mdi-image-off-outline">Sin exámenes solicitados.</EmptyMini>;
 
-  const withUrls = rows.filter(r => r.url || r.archivo);
-  const lbItems = withUrls.map(r => ({
-    url: r.url || r.archivo || '',
-    nombre: r.examen || r.nombre || 'Archivo',
-    tipo: r.tipo_archivo || (r.url?.toLowerCase().endsWith('.pdf') ? 'pdf' : 'img'),
-  }));
+  const fileItems = rows.flatMap((row, i) => {
+    const key = String(row.form_id || row.id || i);
+    return (filesByRow[key] || []).map((file: any) => ({
+      url: file.url || '',
+      nombre: file.name || row.examen || row.nombre || 'Archivo',
+      tipo: file.type || file.ext || (String(file.url || '').toLowerCase().endsWith('.pdf') ? 'pdf' : 'img'),
+      rowKey: key,
+    }));
+  }).filter(item => item.url);
 
   return (
     <>
       <div className="exam-grid">
         {rows.map((row, i) => {
-          const isPdf = (row.tipo_archivo || '').toLowerCase() === 'pdf' || (row.url || '').toLowerCase().endsWith('.pdf');
-          const hasFile = !!(row.url || row.archivo);
-          const lbIdx = withUrls.indexOf(row);
+          const key = String(row.form_id || row.id || i);
+          const rowFiles = filesByRow[key] || [];
+          const firstFile = rowFiles.find((file: any) => file.url) || null;
+          const fileUrl = firstFile?.url || row.url || row.archivo || '';
+          const isPdf = String(firstFile?.type || firstFile?.ext || row.tipo_archivo || fileUrl).toLowerCase().includes('pdf');
+          const hasFile = !!fileUrl;
+          const lbIdx = fileItems.findIndex(item => item.rowKey === key);
 
           return (
             <div
               className={`exam-card ${hasFile ? 'has-file' : ''}`}
               key={row.id || i}
-              onClick={() => hasFile && lbIdx >= 0 && setLightbox({ items: lbItems, index: lbIdx })}
+              onClick={() => hasFile && lbIdx >= 0 && setLightbox({ items: fileItems, index: lbIdx })}
             >
               <div className="ec-thumb">
                 <span className={`ec-type-badge ${isPdf ? 'pdf' : 'img'}`}>{isPdf ? 'PDF' : 'IMG'}</span>
-                {hasFile && row.url && !isPdf
-                  ? <img src={row.url} alt={row.examen} className="ec-img" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-                  : <i className={`mdi ${isPdf ? 'mdi-file-pdf-box' : 'mdi-image-outline'} ec-placeholder-ic`} />
+                {loadingFiles[key]
+                  ? <i className="mdi mdi-loading mdi-spin ec-placeholder-ic" />
+                  : hasFile && fileUrl && !isPdf
+                    ? <img src={fileUrl} alt={row.examen} className="ec-img" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                    : <i className={`mdi ${isPdf ? 'mdi-file-pdf-box' : 'mdi-image-outline'} ec-placeholder-ic`} />
                 }
                 {hasFile && <span className="ec-overlay"><i className="mdi mdi-magnify-plus-outline" /></span>}
               </div>
               <div className="ec-info">
                 <div className="ec-name">{row.examen || row.nombre || '—'}</div>
-                <div className="ec-meta">{fmtDateShort(row.fecha)}{row.doctor ? ` · ${row.doctor}` : ''}</div>
+                <div className="ec-meta">
+                  {fmtDateShort(row.fecha)}{row.doctor ? ` · ${row.doctor}` : ''}
+                  {rowFiles.length > 0 ? ` · ${rowFiles.length} archivo${rowFiles.length > 1 ? 's' : ''}` : ''}
+                </div>
               </div>
               {row.estado && <span className={`badge ${statusBadgeClass(row.estado)}`} style={{ position: 'absolute', top: 6, right: 6, fontSize: 10 }}>{row.estado}</span>}
             </div>
@@ -278,26 +322,32 @@ function SecConsultas({ rows, onAddNote, patientId }: { rows: any[]; onAddNote: 
             {rows.map((row, i) => {
               const key = row.form_id || String(i);
               const isOpen = expanded === key;
+              const title = row.motivo_consulta || row.enfermedad_actual || row.examen_fisico || row.plan || 'Consulta clínica';
+              const diagnosticos = Array.isArray(row.diagnosticos)
+                ? row.diagnosticos.filter(Boolean)
+                : (row.diagnosticos ? [String(row.diagnosticos)] : []);
               return (
                 <div className="consulta-card" key={key}>
                   <div className="consulta-head" onClick={() => setExpanded(isOpen ? null : key)}>
                     <span className="consulta-ic"><i className="mdi mdi-stethoscope" /></span>
                     <div className="consulta-head-txt">
-                      <div className="consulta-motivo">{row.motivo_consulta || 'Sin motivo registrado'}</div>
+                      <div className="consulta-motivo">{title}</div>
                       <div className="consulta-fecha-doc">{row.doctor || ''}{row.doctor ? ' · ' : ''}{fmtDateShort(row.fecha)}</div>
                     </div>
                     <i className={`mdi ${isOpen ? 'mdi-chevron-up' : 'mdi-chevron-down'} consulta-chev`} />
                   </div>
                   {isOpen && (
                     <div className="consulta-body">
+                      {row.motivo_consulta && <div className="consulta-field"><div className="cf-label">Motivo de consulta</div><div className="cf-val">{row.motivo_consulta}</div></div>}
                       {row.enfermedad_actual && <div className="consulta-field"><div className="cf-label">Enfermedad actual</div><div className="cf-val">{row.enfermedad_actual}</div></div>}
+                      {row.examen_fisico && <div className="consulta-field"><div className="cf-label">Examen físico</div><div className="cf-val">{row.examen_fisico}</div></div>}
                       {row.plan && <div className="consulta-field"><div className="cf-label">Plan de tratamiento</div><div className="cf-val">{row.plan}</div></div>}
-                      {row.diagnosticos && (
+                      {diagnosticos.length > 0 && (
                         <div className="consulta-field">
                           <div className="cf-label">Diagnósticos</div>
-                          <div className="cf-val" style={{ fontFamily: 'monospace', fontSize: 12 }}>
-                            {typeof row.diagnosticos === 'string' ? row.diagnosticos : JSON.stringify(row.diagnosticos, null, 2)}
-                          </div>
+                          <ul className="cf-val consulta-dx-list">
+                            {diagnosticos.map((dx: string, dxIndex: number) => <li key={dxIndex}>{dx}</li>)}
+                          </ul>
                         </div>
                       )}
                     </div>
@@ -336,6 +386,18 @@ function SecProtocolos({ rows }: { rows: any[] }) {
           <span className={`badge ${String(row.status) === '1' || row.status === 'firmado' ? 'badge-green' : 'badge-warn'}`}>
             {String(row.status) === '1' || row.status === 'firmado' ? 'Firmado' : 'Pendiente'}
           </span>
+          <div className="ag-card-acts">
+            {row.links?.pdf && (
+              <button className="icon-btn" title="Ver PDF" onClick={() => window.open(row.links.pdf, '_blank', 'noopener')}>
+                <i className="mdi mdi-file-pdf-box" />
+              </button>
+            )}
+            {row.links?.cirugia && (
+              <button className="icon-btn" title="Abrir en cirugías" onClick={() => { window.location.href = row.links.cirugia; }}>
+                <i className="mdi mdi-open-in-new" />
+              </button>
+            )}
+          </div>
         </div>
       ))}
     </div>
@@ -498,10 +560,10 @@ function SecPersonales({ p }: { p: Patient }) {
       <div className="dp-item"><div className="k">Correo electrónico</div><div className="v">{p.email || '—'}</div></div>
 
       <div className="dp-subhead"><i className="mdi mdi-shield-account-outline" />Afiliación y seguro</div>
-      <div className="dp-item"><div className="k">Tipo de afiliación</div><div className="v">{AFIL_MAP[p.afiliacion]?.label || p.afiliacion}</div></div>
-      <div className="dp-item"><div className="k">Aseguradora</div><div className="v">{p.aseguradora || '—'}</div></div>
+      <div className="dp-item"><div className="k">Tipo de afiliación</div><div className="v">{afiliacionTipoLabel(p)}</div></div>
+      <div className="dp-item"><div className="k">Aseguradora</div><div className="v">{aseguradoraLabel(p) || '—'}</div></div>
       <div className="dp-item"><div className="k">N.º de póliza</div><div className="v mono">{p.poliza || '—'}</div></div>
-      <div className="dp-item span2"><div className="k">Titular de la póliza</div><div className="v">{p.titular || (p.afiliacion === 'privado' ? 'No aplica (paciente privado)' : '—')}</div></div>
+      <div className="dp-item span2"><div className="k">Titular de la póliza</div><div className="v">{p.titular || (p.tipo_afiliacion === 'privado' ? 'No aplica (paciente privado)' : '—')}</div></div>
 
       <div className="dp-subhead"><i className="mdi mdi-account-heart-outline" />Contacto de emergencia</div>
       <div className="dp-item"><div className="k">Nombre</div><div className="v">{e?.nombre || '—'}</div></div>
@@ -595,7 +657,9 @@ export default function DetailView({ p, onBack, onAgendar, onWhats, onNuevaSolic
     return sd.rows.length || undefined;
   };
 
-  const m = MEDICO_MAP[p.medico];
+  const m = p.medico_tratante
+    ? { full: p.medico_tratante.nombre, esp: p.medico_tratante.especialidad }
+    : MEDICO_MAP[p.medico];
 
   function renderBody(id: string): React.ReactNode {
     if (id === 'personales')     return <SecPersonales p={p} />;
@@ -668,7 +732,7 @@ export default function DetailView({ p, onBack, onAgendar, onWhats, onNuevaSolic
           </div>
           <div className="ms tone-afil">
             <span className="ms-ic"><i className="mdi mdi-shield-account-outline" /></span>
-            <div><div className="k">Afiliación</div><div className="v">{AFIL_MAP[p.afiliacion]?.label || p.afiliacion}{p.aseguradora ? ` · ${p.aseguradora}` : ''}</div></div>
+            <div><div className="k">Afiliación</div><div className="v">{afiliacionTipoLabel(p)}{aseguradoraLabel(p) ? ` · ${aseguradoraLabel(p)}` : ''}</div></div>
           </div>
           <div className="ms tone-cita">
             <span className="ms-ic"><i className="mdi mdi-calendar-clock" /></span>

@@ -2,7 +2,8 @@
 
 namespace App\Modules\Pacientes\Services;
 
-use PDO;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class PacientesFlujoService
 {
@@ -11,10 +12,6 @@ class PacientesFlujoService
 
     /** @var array<string, bool> */
     private array $tableCache = [];
-
-    public function __construct(private readonly PDO $db)
-    {
-    }
 
     /**
      * @return array<int, array<string, mixed>>
@@ -48,9 +45,7 @@ class PacientesFlujoService
         }
 
         $sql .= ' ORDER BY v.hora_llegada ASC';
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute($params);
-        $visitas = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $visitas = $this->selectRows($sql, $params);
 
         $visitaIds = array_values(array_filter(array_map(
             static fn($row) => (string)($row['visita_id'] ?? ''),
@@ -106,9 +101,7 @@ class PacientesFlujoService
               AND COALESCE(pp.sigcenter_present, 1) = 1
             ORDER BY pp.hora ASC
             SQL;
-        $stmtTrayectos = $this->db->prepare($sqlTrayectos);
-        $stmtTrayectos->execute($paramsTrayectos);
-        $trayectos = $stmtTrayectos->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $trayectos = $this->selectRows($sqlTrayectos, $paramsTrayectos);
 
         $formIds = array_values(array_unique(array_filter(array_map(static fn($row) => (string)($row['form_id'] ?? ''), $trayectos))));
         $historiales = $this->obtenerHistorialesPorFormId($formIds);
@@ -230,9 +223,7 @@ class PacientesFlujoService
         }
 
         $sql .= ' ORDER BY pp.fecha DESC';
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute($params);
-        $solicitudes = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $solicitudes = $this->selectRows($sql, $params);
 
         $formIds = array_values(array_unique(array_filter(array_map(static fn($row) => (string)($row['form_id'] ?? ''), $solicitudes))));
         $historiales = $this->obtenerHistorialesPorFormId($formIds);
@@ -269,12 +260,12 @@ class PacientesFlujoService
         $desde = trim((string)($desde ?? ''));
 
         if ($desde !== '' && $this->tableHasColumn('procedimiento_proyectado', 'updated_at')) {
-            $stmt = $this->db->prepare('SELECT * FROM procedimiento_proyectado WHERE COALESCE(sigcenter_present, 1) = 1 AND updated_at > ?');
-            $stmt->execute([$desde]);
-            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            $rows = $this->selectRows(
+                'SELECT * FROM procedimiento_proyectado WHERE COALESCE(sigcenter_present, 1) = 1 AND updated_at > ?',
+                [$desde]
+            );
         } else {
-            $stmt = $this->db->query('SELECT * FROM procedimiento_proyectado WHERE COALESCE(sigcenter_present, 1) = 1');
-            $rows = $stmt ? ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
+            $rows = $this->selectRows('SELECT * FROM procedimiento_proyectado WHERE COALESCE(sigcenter_present, 1) = 1');
         }
 
         return [
@@ -298,14 +289,13 @@ class PacientesFlujoService
             ];
         }
 
-        $stmt = $this->db->prepare(
+        $current = DB::selectOne(
             'SELECT form_id, estado_agenda
              FROM procedimiento_proyectado
-             WHERE form_id = :form_id AND COALESCE(sigcenter_present, 1) = 1
-             LIMIT 1'
+             WHERE form_id = ? AND COALESCE(sigcenter_present, 1) = 1
+             LIMIT 1',
+            [$formId]
         );
-        $stmt->execute([':form_id' => $formId]);
-        $current = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if (!$current) {
             return [
@@ -315,36 +305,27 @@ class PacientesFlujoService
         }
 
         try {
-            $this->db->beginTransaction();
+            DB::transaction(function () use ($formId, $estado): void {
+                DB::update(
+                    'UPDATE procedimiento_proyectado
+                     SET estado_agenda = ?
+                     WHERE form_id = ?',
+                    [$estado, $formId]
+                );
 
-            $update = $this->db->prepare(
-                'UPDATE procedimiento_proyectado
-                 SET estado_agenda = :estado
-                 WHERE form_id = :form_id'
-            );
-            $update->execute([
-                ':estado' => $estado,
-                ':form_id' => $formId,
-            ]);
-
-            $this->registrarHistorialProcedimientoSiCambio($formId, $estado);
-
-            $this->db->commit();
+                $this->registrarHistorialProcedimientoSiCambio($formId, $estado);
+            });
 
             return [
                 'success' => true,
                 'message' => 'Estado actualizado.',
                 'data' => [
                     'form_id' => $formId,
-                    'previous_state' => $current['estado_agenda'] ?? null,
+                    'previous_state' => data_get($current, 'estado_agenda'),
                     'current_state' => $estado,
                 ],
             ];
         } catch (\Throwable $e) {
-            if ($this->db->inTransaction()) {
-                $this->db->rollBack();
-            }
-
             return [
                 'success' => false,
                 'message' => 'No se pudo actualizar el trayecto: ' . $e->getMessage(),
@@ -364,16 +345,16 @@ class PacientesFlujoService
         }
 
         $placeholders = implode(',', array_fill(0, count($formIds), '?'));
-        $stmt = $this->db->prepare(
+        $rows = $this->selectRows(
             "SELECT form_id, estado, fecha_hora_cambio
              FROM procedimiento_proyectado_estado
              WHERE form_id IN ($placeholders)
-             ORDER BY form_id ASC, fecha_hora_cambio ASC"
+             ORDER BY form_id ASC, fecha_hora_cambio ASC",
+            $formIds
         );
-        $stmt->execute($formIds);
 
         $historiales = [];
-        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        foreach ($rows as $row) {
             $formId = (string)($row['form_id'] ?? '');
             if ($formId === '') {
                 continue;
@@ -414,27 +395,24 @@ class PacientesFlujoService
             return;
         }
 
-        $ultimo = $this->db->prepare(
+        $ultimo = DB::selectOne(
             'SELECT estado FROM procedimiento_proyectado_estado
-             WHERE form_id = :form_id
+             WHERE form_id = ?
              ORDER BY fecha_hora_cambio DESC
-             LIMIT 1'
+             LIMIT 1',
+            [$formId]
         );
-        $ultimo->execute([':form_id' => $formId]);
-        $ultimoEstado = $ultimo->fetchColumn();
+        $ultimoEstado = data_get($ultimo, 'estado');
 
-        if ($ultimoEstado !== false && $this->slugEstado((string)$ultimoEstado) === $this->slugEstado($estado)) {
+        if ($ultimoEstado !== null && $this->slugEstado((string)$ultimoEstado) === $this->slugEstado($estado)) {
             return;
         }
 
-        $insert = $this->db->prepare(
+        DB::insert(
             'INSERT INTO procedimiento_proyectado_estado (form_id, estado, fecha_hora_cambio)
-             VALUES (:form_id, :estado, NOW())'
+             VALUES (?, ?, NOW())',
+            [$formId, $estado]
         );
-        $insert->execute([
-            ':form_id' => $formId,
-            ':estado' => $estado,
-        ]);
     }
 
     /**
@@ -538,9 +516,7 @@ class PacientesFlujoService
         }
 
         try {
-            $stmt = $this->db->prepare("SHOW COLUMNS FROM `{$table}` LIKE :column");
-            $stmt->execute([':column' => $column]);
-            $exists = (bool)$stmt->fetch(PDO::FETCH_ASSOC);
+            $exists = Schema::hasColumn($table, $column);
         } catch (\Throwable) {
             $exists = false;
         }
@@ -557,9 +533,7 @@ class PacientesFlujoService
         }
 
         try {
-            $stmt = $this->db->prepare('SHOW TABLES LIKE :table');
-            $stmt->execute([':table' => $table]);
-            $exists = (bool)$stmt->fetchColumn();
+            $exists = Schema::hasTable($table);
         } catch (\Throwable) {
             $exists = false;
         }
@@ -567,5 +541,17 @@ class PacientesFlujoService
         $this->tableCache[$table] = $exists;
 
         return $exists;
+    }
+
+    /**
+     * @param array<int|string, mixed> $bindings
+     * @return array<int, array<string, mixed>>
+     */
+    private function selectRows(string $sql, array $bindings = []): array
+    {
+        return array_map(
+            static fn(object|array $row): array => (array) $row,
+            DB::select($sql, $bindings)
+        );
     }
 }

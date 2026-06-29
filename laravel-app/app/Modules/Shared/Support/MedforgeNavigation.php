@@ -229,7 +229,6 @@ class MedforgeNavigation
             $canAccessPacientes
                 ? $link('Lista de Pacientes', '/v2/pacientes', 'mdi mdi-account-multiple-outline', [
                 'exact' => ['/v2/pacientes'],
-                'prefix' => ['/v2/pacientes/detalles'],
             ])
                 : null,
             $canAccessDerivaciones

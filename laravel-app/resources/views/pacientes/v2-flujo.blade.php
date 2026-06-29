@@ -281,13 +281,5 @@
 
 @push('scripts')
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
-    @if (\App\Modules\Shared\Support\MedforgeAssets::hasViteBuild())
-        @vite('resources/js/v2/pacientes-flujo.js')
-    @else
-        <script src="/assets/vendor_components/moment/moment.js"></script>
-        <script src="/assets/vendor_components/sweetalert2/sweetalert2.all.min.js"></script>
-        <script src="/assets/vendor_components/bootstrap-datepicker/dist/js/bootstrap-datepicker.min.js"></script>
-        <script src="/assets/vendor_components/bootstrap-datepicker/dist/locales/bootstrap-datepicker.es.min.js"></script>
-        <script src="/js/pages/pacientes/flujo.js"></script>
-    @endif
+    @vite('resources/js/v2/pacientes-flujo.js')
 @endpush

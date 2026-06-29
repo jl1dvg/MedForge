@@ -14,7 +14,6 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use PDO;
 
 class PacientesReadController
 {
@@ -26,10 +25,8 @@ class PacientesReadController
 
     public function __construct()
     {
-        /** @var PDO $pdo */
-        $pdo = DB::connection()->getPdo();
         $this->paciente360Service = new Paciente360Service();
-        $this->flujoService = new PacientesFlujoService($pdo);
+        $this->flujoService = new PacientesFlujoService();
         $this->detailService = new PacienteDetailService();
         $this->writeService = new PacienteWriteService();
         $this->readService = new PacienteReadService();
@@ -112,7 +109,11 @@ class PacientesReadController
 
         if ($request->isMethod('post') && $request->has('actualizar_paciente')) {
             $this->writeService->actualizarPaciente($hcNumber, $request->all(), $this->legacyUserId($request));
-            return redirect('/v2/pacientes/detalles?hc_number=' . urlencode($hcNumber));
+            return redirect('/v2/pacientes?hc_number=' . urlencode($hcNumber));
+        }
+
+        if (!$request->expectsJson()) {
+            return redirect('/v2/pacientes?hc_number=' . urlencode($hcNumber));
         }
 
         try {
@@ -134,17 +135,6 @@ class PacientesReadController
             }
 
             return redirect('/v2/pacientes?not_found=1');
-        }
-
-        if (!$request->expectsJson()) {
-            return view('pacientes.v2-detalles', array_merge(
-                [
-                    'pageTitle' => 'Paciente ' . $hcNumber,
-                    'currentUser' => LegacyCurrentUser::resolve($request),
-                    'hc_number' => $hcNumber,
-                ],
-                $context
-            ));
         }
 
         return response()->json([

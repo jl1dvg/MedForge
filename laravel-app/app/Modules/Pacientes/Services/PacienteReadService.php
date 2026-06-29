@@ -217,7 +217,7 @@ class PacienteReadService
                     (string) ($row->lname2 ?? ''),
                 ])) ?: ''),
                 'afiliacion' => $this->normalizarAfiliacionListado((string) ($row->afiliacion ?? '')),
-                'acciones_html' => "<a href='/v2/pacientes/detalles?hc_number=" . urlencode($hcNumber) . "' class='btn btn-sm btn-primary'>Ver</a>",
+                'acciones_html' => "<a href='/v2/pacientes?hc_number=" . urlencode($hcNumber) . "' class='btn btn-sm btn-primary'>Ver</a>",
             ];
         }
 
@@ -358,7 +358,7 @@ class PacienteReadService
         }
 
         try {
-            return (new MedicoTratanteResolver(DB::connection()->getPdo()))->resolveMany($hcNumbers);
+            return (new MedicoTratanteResolver())->resolveMany($hcNumbers);
         } catch (\Throwable) {
             return [];
         }
