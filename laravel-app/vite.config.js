@@ -40,6 +40,7 @@ export default defineConfig({
                 'resources/js/v2/settings-index.js',
                 'resources/js/pacientes/main.tsx',
                 'resources/js/examenes-realizados/main.jsx',
+                'resources/js/cirugias/main.jsx',
                 'resources/js/crm/main.tsx',
                 'resources/js/solicitudes-v3/main.tsx',
                 'resources/js/agenda/main.tsx',
