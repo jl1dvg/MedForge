@@ -227,16 +227,14 @@
           <span class="mdi mdi-refresh"></span> Actualizar reporte
         </button>
         <a id="report-export-csv-btn"
-           href="#"
-           class="oa-btn"
-           style="padding:4px 12px;font-size:12px;text-decoration:none;background:#0369a1;color:#fff;border-radius:6px;border:none;display:inline-flex;align-items:center;gap:4px"
+           href="{{ $exportApiUrl ?? '' }}?date={{ date('Y-m-d') }}&format=csv"
+           style="padding:4px 12px;font-size:12px;text-decoration:none;background:#0369a1;color:#fff;border-radius:6px;display:inline-flex;align-items:center;gap:4px"
            download>
           <span class="mdi mdi-download"></span> Descargar CSV
         </a>
         <a id="report-export-xlsx-btn"
-           href="#"
-           class="oa-btn"
-           style="padding:4px 12px;font-size:12px;text-decoration:none;background:#166534;color:#fff;border-radius:6px;border:none;display:inline-flex;align-items:center;gap:4px"
+           href="{{ $exportApiUrl ?? '' }}?date={{ date('Y-m-d') }}&format=xlsx"
+           style="padding:4px 12px;font-size:12px;text-decoration:none;background:#166534;color:#fff;border-radius:6px;display:inline-flex;align-items:center;gap:4px"
            download>
           <span class="mdi mdi-microsoft-excel"></span> Descargar Excel
         </a>
@@ -631,7 +629,7 @@
 
   // ── Daily Report (read-only) ──────────────────────────────────────────────
   const REPORT_API_URL    = '{{ $reportApiUrl }}';
-  const EXPORT_API_URL    = '{{ $exportApiUrl }}';
+  const EXPORT_API_URL    = '{{ $exportApiUrl ?? '' }}';
   const reportSection     = document.getElementById('section-daily-report');
   const reportBody        = document.getElementById('report-body');
   const reportRefreshBtn  = document.getElementById('report-refresh-btn');

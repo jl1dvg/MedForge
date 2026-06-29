@@ -382,6 +382,114 @@ class OperationalDailyReportExportTest extends TestCase
         Carbon::setTestNow();
     }
 
+    // ── XLSX tests ───────────────────────────────────────────────────────────
+
+    public function test_export_xlsx_returns_200(): void
+    {
+        Carbon::setTestNow('2026-06-27 10:00:00');
+        $this->seedHotUnassigned(30);
+
+        $response = $this->callExport(['format' => 'xlsx', 'date' => '2026-06-27']);
+
+        $this->assertSame(200, $response->getStatusCode());
+
+        Carbon::setTestNow();
+    }
+
+    public function test_export_xlsx_does_not_throw_500(): void
+    {
+        Carbon::setTestNow('2026-06-27 10:00:00');
+        $this->seedHotUnassigned(31);
+
+        $response = $this->callExport(['format' => 'xlsx', 'date' => '2026-06-27']);
+
+        $this->assertNotSame(500, $response->getStatusCode());
+        $this->assertSame(200, $response->getStatusCode());
+
+        Carbon::setTestNow();
+    }
+
+    public function test_export_xlsx_has_correct_content_disposition(): void
+    {
+        Carbon::setTestNow('2026-06-27 10:00:00');
+        $this->seedHotUnassigned(32);
+
+        $response = $this->callExport(['format' => 'xlsx', 'date' => '2026-06-27']);
+
+        $disposition = $response->headers->get('Content-Disposition') ?? '';
+        $this->assertStringContainsString('attachment', $disposition);
+        $this->assertStringContainsString('whatsapp-alert-engine-daily-report-2026-06-27.xlsx', $disposition);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_export_xlsx_has_correct_content_type(): void
+    {
+        Carbon::setTestNow('2026-06-27 10:00:00');
+        $this->seedHotUnassigned(33);
+
+        $response = $this->callExport(['format' => 'xlsx', 'date' => '2026-06-27']);
+
+        $contentType = $response->headers->get('Content-Type') ?? '';
+        $this->assertStringContainsString('spreadsheetml', $contentType);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_export_xlsx_does_not_modify_conversations(): void
+    {
+        Carbon::setTestNow('2026-06-27 10:00:00');
+        $this->seedHotUnassigned(34);
+
+        $before = DB::table('whatsapp_conversations')->where('id', 34)->value('assigned_user_id');
+        $this->callExport(['format' => 'xlsx', 'date' => '2026-06-27']);
+        $after  = DB::table('whatsapp_conversations')->where('id', 34)->value('assigned_user_id');
+
+        $this->assertSame($before, $after);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_export_xlsx_does_not_modify_handoffs(): void
+    {
+        Carbon::setTestNow('2026-06-27 10:00:00');
+        $this->seedHotUnassigned(35);
+
+        $this->callExport(['format' => 'xlsx', 'date' => '2026-06-27']);
+
+        $this->assertDatabaseHas('whatsapp_handoffs', ['conversation_id' => 35, 'status' => 'queued']);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_export_xlsx_does_not_insert_handoff_events(): void
+    {
+        Carbon::setTestNow('2026-06-27 10:00:00');
+        $this->seedHotUnassigned(36);
+
+        $before = DB::table('whatsapp_handoff_events')->count();
+        $this->callExport(['format' => 'xlsx', 'date' => '2026-06-27']);
+        $after  = DB::table('whatsapp_handoff_events')->count();
+
+        $this->assertSame($before, $after);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_export_xlsx_does_not_insert_operational_events(): void
+    {
+        Carbon::setTestNow('2026-06-27 10:00:00');
+        $this->seedHotUnassigned(37);
+
+        $before = DB::table('whatsapp_operational_events')->count();
+        $this->callExport(['format' => 'xlsx', 'date' => '2026-06-27']);
+        $after  = DB::table('whatsapp_operational_events')->count();
+
+        $this->assertSame($before, $after);
+
+        Carbon::setTestNow();
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────────
 
     private function callExport(array $params = []): \Symfony\Component\HttpFoundation\Response
