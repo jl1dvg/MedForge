@@ -240,6 +240,14 @@ export default function App({ config }) {
     }).then((r) => r.json());
   }, []);
 
+  // MODELO DEFINITIVO (refactorización futura — NO implementar aún):
+  // Los campos duplicados en el payload son TEMPORALES para mantener compatibilidad
+  // con el backend actual mientras se normaliza el modelo de datos:
+  //   - procedimientos → guardar solo el código y resolver nombre desde tarifario_2014
+  //   - medicamentos   → guardar solo el ID del medicamento
+  //   - insumos        → guardar solo el ID del insumo
+  //   - staff          → guardar solo el ID del usuario (no el nombre como string)
+  // Mientras tanto, se envían ambos formatos simultáneamente (ver comentarios B-1/B-4/B-5 abajo).
   const saveProtocol = useCallback((form, meta) => {
     const staff = form.staff || {};
     const payload = {
