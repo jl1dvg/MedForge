@@ -142,7 +142,7 @@ class WhatsappOperationalDailyReportExportService
             $sheet->getColumnDimension($this->columnLetter($col))->setAutoSize(true);
         }
 
-        $sheet->getProperties()->setTitle("Reporte Diario {$date}");
+        $spreadsheet->getProperties()->setTitle("Reporte Diario {$date}");
 
         $writer = new Xlsx($spreadsheet);
         ob_start();
