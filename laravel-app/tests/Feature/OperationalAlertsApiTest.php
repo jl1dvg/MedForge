@@ -286,7 +286,44 @@ class OperationalAlertsApiTest extends TestCase
         Carbon::setTestNow();
     }
 
-    // ── 4. Invalid params ─────────────────────────────────────────────────────
+    // ── 4. API contract ───────────────────────────────────────────────────────
+
+    public function test_api_contract_has_required_top_level_keys(): void
+    {
+        $data = $this->callApi(['date' => '2026-06-26']);
+
+        foreach (['ok', 'read_only', 'db_writes', 'mode', 'summary', 'by_type', 'alerts', 'filters_applied'] as $key) {
+            $this->assertArrayHasKey($key, $data, "Response missing key: {$key}");
+        }
+        $this->assertTrue($data['ok']);
+        $this->assertTrue($data['read_only']);
+        $this->assertSame(0, $data['db_writes']);
+        $this->assertSame('read_only', $data['mode']);
+        $this->assertIsArray($data['summary']);
+        $this->assertIsArray($data['by_type']);
+        $this->assertIsArray($data['alerts']);
+        $this->assertIsArray($data['filters_applied']);
+    }
+
+    public function test_api_contract_summary_has_all_severity_keys(): void
+    {
+        $data = $this->callApi(['date' => '2026-06-26']);
+
+        foreach (['critical', 'high', 'medium', 'low'] as $sev) {
+            $this->assertArrayHasKey($sev, $data['summary'], "summary missing key: {$sev}");
+        }
+    }
+
+    public function test_api_contract_filters_applied_has_expected_keys(): void
+    {
+        $data = $this->callApi(['date' => '2026-06-26']);
+
+        foreach (['date', 'severity', 'category', 'type', 'agent', 'limit', 'summary'] as $key) {
+            $this->assertArrayHasKey($key, $data['filters_applied'], "filters_applied missing key: {$key}");
+        }
+    }
+
+    // ── 5. Invalid params ─────────────────────────────────────────────────────
 
     public function test_api_rejects_invalid_severity(): void
     {

@@ -216,9 +216,9 @@
     </summary>
     <div style="padding:0 16px 16px">
       <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:6px;padding:10px 14px;margin:12px 0;font-size:12px;color:#856404">
-        <strong>Modo dry-run — no se envía ninguna notificación.</strong><br>
-        Esta sección muestra qué alertas serían candidatas si coordinación aprueba la Fase 4C.
-        Canal: <strong>no configurado</strong>. Estado: <strong>dry-run</strong>.
+        <strong>🚫 DRY-RUN — no se envía ninguna notificación.</strong><br>
+        Esta sección solo muestra qué se notificaría si coordinación aprueba la Fase 4C. No envía mensajes ni activa canales.<br>
+        Canal: <strong>none</strong>. Estado: <strong>dry-run</strong>. DB writes: <strong>0</strong>.
       </div>
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
         <div style="font-size:13px">

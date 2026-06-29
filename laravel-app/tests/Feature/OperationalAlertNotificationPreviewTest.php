@@ -327,6 +327,92 @@ class OperationalAlertNotificationPreviewTest extends TestCase
         $this->assertSame('none', $data['channel']);
     }
 
+    // ── 4. API contract ───────────────────────────────────────────────────────
+
+    public function test_response_has_all_contract_keys(): void
+    {
+        $data = $this->callPreview();
+
+        foreach (['ok', 'mode', 'read_only', 'db_writes', 'channel', 'would_notify', 'evaluated', 'notifications'] as $key) {
+            $this->assertArrayHasKey($key, $data, "Response missing key: {$key}");
+        }
+        $this->assertTrue($data['ok']);
+        $this->assertSame('dry_run', $data['mode']);
+        $this->assertTrue($data['read_only']);
+        $this->assertSame(0, $data['db_writes']);
+        $this->assertSame('none', $data['channel']);
+        $this->assertIsInt($data['would_notify']);
+        $this->assertIsArray($data['notifications']);
+    }
+
+    public function test_notification_item_has_all_contract_fields(): void
+    {
+        Carbon::setTestNow('2026-06-26 23:59:59');
+        $this->seedHotCritical(30);
+
+        $data = $this->callPreview();
+
+        if (!empty($data['notifications'])) {
+            $n = $data['notifications'][0];
+            foreach (['conversation_id', 'wa_number', 'display_name', 'alert_type', 'severity', 'topic_label', 'waiting_minutes', 'chat_url', 'message_preview'] as $field) {
+                $this->assertArrayHasKey($field, $n, "Notification item missing field: {$field}");
+            }
+        }
+
+        Carbon::setTestNow();
+    }
+
+    // ── 5. Guardrails ─────────────────────────────────────────────────────────
+
+    public function test_rejects_send_true_param(): void
+    {
+        $request  = Request::create('/v2/whatsapp/api/operational-alerts/notification-preview', 'GET', ['send' => 'true']);
+        $response = app(OperationalAlertNotificationPreviewController::class)->index($request);
+
+        $this->assertSame(422, $response->getStatusCode());
+        $data = json_decode((string) $response->getContent(), true);
+        $this->assertFalse($data['ok']);
+        $this->assertSame('none', $data['channel']);
+    }
+
+    public function test_rejects_channel_param(): void
+    {
+        $request  = Request::create('/v2/whatsapp/api/operational-alerts/notification-preview', 'GET', ['channel' => 'telegram']);
+        $response = app(OperationalAlertNotificationPreviewController::class)->index($request);
+
+        $this->assertSame(422, $response->getStatusCode());
+        $data = json_decode((string) $response->getContent(), true);
+        $this->assertFalse($data['ok']);
+        $this->assertSame('none', $data['channel']);
+    }
+
+    public function test_channel_remains_none_regardless_of_params(): void
+    {
+        $data = $this->callPreview();
+        $this->assertSame('none', $data['channel']);
+    }
+
+    public function test_mode_remains_dry_run(): void
+    {
+        $data = $this->callPreview();
+        $this->assertSame('dry_run', $data['mode']);
+    }
+
+    public function test_no_events_written_on_guardrail_rejection(): void
+    {
+        Carbon::setTestNow('2026-06-26 23:59:59');
+        $beforeEvents = DB::table('whatsapp_operational_events')->count();
+        $beforeHandoff = DB::table('whatsapp_handoff_events')->count();
+
+        $request = Request::create('/v2/whatsapp/api/operational-alerts/notification-preview', 'GET', ['send' => 'true']);
+        app(OperationalAlertNotificationPreviewController::class)->index($request);
+
+        $this->assertSame($beforeEvents, DB::table('whatsapp_operational_events')->count());
+        $this->assertSame($beforeHandoff, DB::table('whatsapp_handoff_events')->count());
+
+        Carbon::setTestNow();
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     /** @return array<string,mixed> */
