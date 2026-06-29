@@ -908,7 +908,7 @@ class FlowSigcenterAgendaService
 
             $value = $action[$key];
             if (is_array($value)) {
-                $aliases = [];
+                $aliases = $default;
                 foreach ($value as $id => $label) {
                     if (is_scalar($label)) {
                         $aliases[trim((string) $id)] = trim((string) $label);
@@ -2080,7 +2080,7 @@ class FlowSigcenterAgendaService
                 ->all();
         }
 
-        return DB::table('users')
+        $rows = DB::table('users')
             ->select(['sede'])
             ->where('id_trabajador', $trabajadorId)
             ->get()
@@ -2094,6 +2094,20 @@ class FlowSigcenterAgendaService
             ->unique('sede_id')
             ->values()
             ->all();
+
+        if ($rows !== []) {
+            return $rows;
+        }
+
+        $doctorExists = DB::table('users')->where('id_trabajador', $trabajadorId)->exists();
+        if (!$doctorExists) {
+            return [];
+        }
+
+        return array_map(static fn (string $sedeId): array => [
+            'sede_id' => $sedeId,
+            'nombre' => self::DEFAULT_SEDE_LABELS[$sedeId] ?? $sedeId,
+        ], self::DEFAULT_ALLOWED_SEDE_IDS);
     }
 
     /**

@@ -1406,7 +1406,7 @@
                                             <span>Estado del flujo</span>
                                             <button type="button" class="btn btn-xs btn-outline-dark" id="wa-flow-shadow-refresh-btn">Actualizar</button>
                                         </div>
-                                        <div class="wa-flow-preview" id="wa-flow-readiness-output">Pendiente de evaluación.</div>
+                                        <div class="wa-flow-preview" id="wa-flow-readiness-output">Fase 6 está lista para cierre. Pendiente de evaluación dinámica.</div>
                                     </div>
                                     <div class="wa-flow-soft-panel">
                                         <div class="wa-flow-section-title">Paridad del shadow runtime</div>
@@ -1558,7 +1558,7 @@
                         <div class="wa-flow-panel">
                             <div class="wa-flow-panel__head d-flex justify-content-between align-items-center gap-10">
                                 <div>
-                                    <div class="wa-flow-sideheading__title">AI Agent</div>
+                                    <div class="wa-flow-sideheading__title">AI Agent preview</div>
                                     <div class="wa-flow-sideheading__meta">Historial de runs del nodo en modo preview — confianza, grounding y handoff.</div>
                                 </div>
                                 <a href="/v2/whatsapp/ai-agent" class="btn btn-sm btn-primary">
