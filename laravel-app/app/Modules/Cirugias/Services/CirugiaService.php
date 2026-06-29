@@ -919,7 +919,7 @@ class CirugiaService
                 'primer_ayudante' => $this->normalizeNullableString($data['primer_ayudante'] ?? null),
                 'segundo_ayudante' => $this->normalizeNullableString($data['segundo_ayudante'] ?? null),
                 'tercer_ayudante' => $this->normalizeNullableString($data['tercer_ayudante'] ?? null),
-                'ayudante_anestesia' => $this->normalizeNullableString($data['ayudanteAnestesia'] ?? null),
+                'ayudante_anestesia' => $this->normalizeNullableString($data['ayudante_anestesia'] ?? $data['ayudanteAnestesia'] ?? null),
                 'anestesiologo' => $this->normalizeNullableString($data['anestesiologo'] ?? null),
                 'instrumentista' => $this->normalizeNullableString($data['instrumentista'] ?? null),
                 'circulante' => $this->normalizeNullableString($data['circulante'] ?? null),
