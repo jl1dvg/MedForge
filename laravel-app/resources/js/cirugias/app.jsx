@@ -267,9 +267,17 @@ export default function App({ config }) {
       ayudante_anestesia:       staff.ayudante_anestesia || '',
       instrumentista:           staff.instrumentista || '',
       circulante:               staff.circulante || '',
-      // Procedimientos: keep {codigo, nombre} — backend persists as-is in protocolo_data.procedimientos
-      // NOTE (mejora pendiente): codigo should be the canonical key from tarifario_2014
-      procedimientos: JSON.stringify(form.procedimientos || []),
+      // B-1 compat: PDF/sync expect {procInterno: "CODIGO - Nombre"}.
+      // React works internally with {codigo, nombre}; both keys are sent for the transition.
+      procedimientos: JSON.stringify(
+        (form.procedimientos || []).map((p) => ({
+          procInterno: p.codigo && p.nombre
+            ? `${p.codigo} - ${p.nombre}`
+            : (p.nombre || p.codigo || ''),
+          codigo:  p.codigo || '',
+          nombre:  p.nombre || '',
+        }))
+      ),
       // Diagnosticos: backend guardar() parses idDiagnostico = "CIE10 - detalle" for diagnosticos_asignados table
       diagnosticos: JSON.stringify(
         (form.diagnosticos || []).map((d) => ({
@@ -288,7 +296,20 @@ export default function App({ config }) {
         }))
       ),
       insumos:                  JSON.stringify(form.insumos || {}),
-      medicamentos:             JSON.stringify(form.medicamentos || []),
+      // B-4/B-5 compat: PDF/legacy expect {medicamento, via_administracion}.
+      // React works with {nombre, via}; both keys are sent for the transition.
+      medicamentos: JSON.stringify(
+        (form.medicamentos || []).map((m) => ({
+          id:                 m.id || '',
+          nombre:             m.nombre || m.medicamento || '',
+          medicamento:        m.nombre || m.medicamento || '',
+          dosis:              m.dosis || '',
+          via:                m.via || m.via_administracion || '',
+          via_administracion: m.via || m.via_administracion || '',
+          responsable:        m.responsable || '',
+          frecuencia:         m.frecuencia || '',
+        }))
+      ),
       status:                   String(meta.status ?? 0),
     };
 
