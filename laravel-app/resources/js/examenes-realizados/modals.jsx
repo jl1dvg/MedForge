@@ -83,9 +83,9 @@ function NasViewer({ row }) {
           <i className="mdi mdi-chevron-left"></i>
         </button>
         {fileUrl && !isPdf ? (
-          <img src={fileUrl} alt={cur.name} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 6 }} />
+          <img className="imr-nas-media" src={fileUrl} alt={cur.name} />
         ) : fileUrl && isPdf ? (
-          <iframe src={fileUrl} title={cur.name} style={{ width: '100%', height: '100%', border: 'none', borderRadius: 6 }} />
+          <iframe className="imr-nas-media imr-nas-frame" src={fileUrl} title={cur.name} />
         ) : (
           <div className="imr-nas-doc">
             <span className={`imr-nas-ftag ${isPdf ? 'pdf' : 'img'}`}>{isPdf ? 'PDF' : 'IMAGEN'}</span>
@@ -217,10 +217,10 @@ function ChecksGrid({ checks, vkey, textKey, vals, setVals, readOnly }) {
 
 // Build the legacy payload that the backend construirHallazgosInforme expects.
 // Each template defines legacyMap: { reactKey: legacyKeyBase }
-// For bilateral exams: legacyKeyBase + 'OD' / 'OI'. For single eye: legacyKeyBase + 'OD'.
-function buildLegacyPayload(vals, tpl, tipoKey, eyes, showBilateral) {
+// For bilateral exams: legacyKeyBase + 'OD' / 'OI'. For single eye: use the detected suffix.
+function buildLegacyPayload(vals, tpl, tipoKey, eyes, showBilateral, singleEyeSuffix = 'OD') {
   const p = {};
-  const suf = (prefix) => !showBilateral ? 'OD' : (prefix === 'od' ? 'OD' : 'OI');
+  const suf = (prefix) => !showBilateral ? singleEyeSuffix : (prefix === 'od' ? 'OD' : 'OI');
   const legMap = tpl.legacyMap || {};
 
   eyes.forEach((prefix) => {
@@ -268,8 +268,9 @@ function CampoField({ c, prefix, vals, setVals, readOnly }) {
 // ---- Modal: Informar examen ----------------------------------------
 export function InformarModal({ row, readOnly, onClose, onSave, showToast, doctores }) {
   const tpl = TEMPLATES[row.tipo_key] || { titulo: row.tipo_label, campos: [], bilateral: false };
+  const isCorrection = Boolean(row.informado) && !readOnly;
   const [vals, setVals] = useState({});
-  const [notify, setNotify] = useState(true);
+  const [notify, setNotify] = useState(!row.informado);
   const [auto, setAuto] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -277,12 +278,13 @@ export function InformarModal({ row, readOnly, onClose, onSave, showToast, docto
   const showBilateral = tpl.bilateral && isAmbosOjos;
   const eyes = showBilateral ? ['od', 'oi'] : [null];
   const eyeLabels = { od: 'OD — Ojo Derecho', oi: 'OI — Ojo Izquierdo' };
+  const singleEyeSuffix = /izquierdo|\boi\b/i.test(row.ojo || '') ? 'OI' : 'OD';
 
   // Load existing informe on open and reverse-map legacy field names → React field names
   useEffect(() => {
     setVals({});  // always reset first so previous exam data doesn't bleed through
     if (!row.form_id) return;
-    const params = new URLSearchParams({ form_id: String(row.form_id), tipo_examen: row.tipo_label || '' });
+    const params = new URLSearchParams({ form_id: String(row.form_id), tipo_examen: row.tipo_examen || row.tipo_label || '' });
     fetch(`/v2/imagenes/informes/datos?${params}`, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
       .then((r) => r.json())
       .then((data) => {
@@ -292,7 +294,7 @@ export function InformarModal({ row, readOnly, onClose, onSave, showToast, docto
         // Build reverse map: legacyKeyBase → reactKey
         const rev = Object.fromEntries(Object.entries(legMap).map(([rk, lb]) => [lb, rk]));
         const mapped = {};
-        const eyePairs = showBilateral ? [['OD', 'od'], ['OI', 'oi']] : [['OD', null]];
+        const eyePairs = showBilateral ? [['OD', 'od'], ['OI', 'oi']] : [[singleEyeSuffix, null]];
         eyePairs.forEach(([suf, prefix]) => {
           Object.entries(rev).forEach(([legBase, reactKey]) => {
             const legKey = legBase + suf;
@@ -307,7 +309,7 @@ export function InformarModal({ row, readOnly, onClose, onSave, showToast, docto
         setVals(mapped);
       })
       .catch(() => {});
-  }, [row.form_id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [row.form_id, singleEyeSuffix]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-calculate astigmatism = |K2 - K1| for topography
   useEffect(() => {
@@ -365,8 +367,8 @@ export function InformarModal({ row, readOnly, onClose, onSave, showToast, docto
   const handleSave = () => {
     setSaving(true);
     const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
-    const legacyPayload = buildLegacyPayload(vals, tpl, row.tipo_key, eyes, showBilateral);
-    const tipoExamen = row.tipo_label || '';
+    const legacyPayload = buildLegacyPayload(vals, tpl, row.tipo_key, eyes, showBilateral, singleEyeSuffix);
+    const tipoExamen = row.tipo_examen || row.tipo_label || '';
     fetch('/v2/imagenes/informes/guardar', {
       method: 'POST',
       credentials: 'same-origin',
@@ -392,6 +394,8 @@ export function InformarModal({ row, readOnly, onClose, onSave, showToast, docto
       <span className="imr-foot-note">
         {readOnly
           ? `Informado por ${row.informado_por} · ${fmtDate(row.informado_fecha)}`
+          : isCorrection
+            ? 'Al guardar se actualizará el informe existente.'
           : 'El informe quedará disponible para impresión y descarga.'}
       </span>
       <div className="imr-modal-spacer"></div>
@@ -418,7 +422,7 @@ export function InformarModal({ row, readOnly, onClose, onSave, showToast, docto
     <ModalShell size="xl"
       icon={readOnly ? 'mdi-file-eye-outline' : 'mdi-file-document-edit-outline'}
       iconTone={readOnly ? 'success' : 'primary'}
-      title={readOnly ? 'Informe del examen' : 'Informar examen'}
+      title={readOnly ? 'Informe del examen' : isCorrection ? 'Corregir informe' : 'Informar examen'}
       sub={`${row.tipo_label} · ${row.ojo}`}
       onClose={onClose} footer={footer}>
       <PatientStrip row={row} />

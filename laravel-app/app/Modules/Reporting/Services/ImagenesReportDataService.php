@@ -1437,7 +1437,12 @@ class ImagenesReportDataService
         if (str_contains($texto, 'angio')) {
             return 'angio';
         }
-        if (str_contains($texto, 'angulo')) {
+        if (
+            str_contains($texto, 'angulo')
+            || str_contains($texto, 'anterior chamber')
+            || str_contains($texto, 'pruebas provocativas')
+            || str_contains($texto, 'tomografia con pruebas')
+        ) {
             return 'angulo';
         }
         if (str_contains($texto, 'auto') || str_contains($texto, 'autorefrac')) {

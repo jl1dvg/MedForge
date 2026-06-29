@@ -1,31 +1,60 @@
 const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 const MESES_LARGO = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 
+function parseDateLocal(value: string | null | undefined): Date | null {
+  if (!value) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+
+  const dateOnly = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dateOnly) {
+    return new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]));
+  }
+
+  const dateTime = raw.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/);
+  if (dateTime && !/[zZ]|[+-]\d{2}:?\d{2}$/.test(raw)) {
+    return new Date(
+      Number(dateTime[1]),
+      Number(dateTime[2]) - 1,
+      Number(dateTime[3]),
+      Number(dateTime[4]),
+      Number(dateTime[5]),
+      Number(dateTime[6] || 0)
+    );
+  }
+
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 export function fmtMoney(v: number | null | undefined): string {
   if (v == null) return '—';
   return '$' + v.toLocaleString('es-EC', { minimumFractionDigits: v % 1 ? 2 : 0, maximumFractionDigits: 2 });
 }
 
 export function fmtDate(iso: string | null | undefined): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
+  const d = parseDateLocal(iso);
+  if (!d) return '—';
   return `${d.getDate()} ${MESES[d.getMonth()]} ${d.getFullYear()}`;
 }
 
 export function fmtDateShort(iso: string | null | undefined): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
+  const d = parseDateLocal(iso);
+  if (!d) return '—';
   return `${d.getDate()} ${MESES[d.getMonth()]}`;
 }
 
 export function fmtDateLong(iso: string | null | undefined): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
+  const d = parseDateLocal(iso);
+  if (!d) return '—';
   return `${d.getDate()} de ${MESES_LARGO[d.getMonth()]} de ${d.getFullYear()}`;
 }
 
 export function fmtTime(iso: string): string {
-  const d = new Date(iso);
+  const timeOnly = String(iso || '').trim().match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (timeOnly) return `${timeOnly[1].padStart(2, '0')}:${timeOnly[2]}`;
+  const d = parseDateLocal(iso);
+  if (!d) return '—';
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
@@ -35,13 +64,16 @@ export function fmtDateTime(iso: string | null | undefined): string {
 }
 
 export function hasTime(iso: string): boolean {
-  const d = new Date(iso);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(iso || '').trim())) return false;
+  const d = parseDateLocal(iso);
+  if (!d) return false;
   return d.getHours() !== 0 || d.getMinutes() !== 0;
 }
 
 export function relDays(iso: string | null | undefined): string {
-  if (!iso) return '—';
-  const a = new Date(iso); a.setHours(0, 0, 0, 0);
+  const a = parseDateLocal(iso);
+  if (!a) return '—';
+  a.setHours(0, 0, 0, 0);
   const b = new Date(); b.setHours(0, 0, 0, 0);
   const d = Math.round((a.getTime() - b.getTime()) / 86400000);
   if (d === 0) return 'hoy';
@@ -55,10 +87,14 @@ export function relDays(iso: string | null | undefined): string {
   return `hace ${Math.round(ad / 365)} año${Math.round(ad / 365) > 1 ? 's' : ''}`;
 }
 
-export function isFuture(iso: string): boolean { return new Date(iso) > new Date(); }
+export function isFuture(iso: string): boolean {
+  const d = parseDateLocal(iso);
+  return !!d && d > new Date();
+}
 
 export function isToday(iso: string): boolean {
-  const a = new Date(iso), b = new Date();
+  const a = parseDateLocal(iso), b = new Date();
+  if (!a) return false;
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
@@ -88,7 +124,8 @@ export function waHref(t: string | null): string {
 
 export function edadDe(iso: string): number {
   if (!iso) return 0;
-  const b = new Date(iso);
+  const b = parseDateLocal(iso);
+  if (!b) return 0;
   const hoy = new Date();
   let e = hoy.getFullYear() - b.getFullYear();
   const mo = hoy.getMonth() - b.getMonth();

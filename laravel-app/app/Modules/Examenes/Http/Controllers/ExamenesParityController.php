@@ -24,6 +24,7 @@ use DateTimeImmutable;
 use Helpers\JsonLogger;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -583,6 +584,10 @@ class ExamenesParityController
                 $claim = $this->storeImagenesFileClaim($payload, $result);
             }
 
+            if ($found || $claim !== null) {
+                ImagenesUiService::bumpImagenesRealizadasCacheVersion();
+            }
+
             return response()->json([
                 'success' => ($result['error'] ?? null) === null,
                 'found' => $found,
@@ -797,6 +802,27 @@ class ExamenesParityController
             return response()->json(['success' => false, 'error' => 'Parámetros incompletos'], 400);
         }
 
+        $cacheTtl = (int) config('nas-imagenes.informe_datos_cache_ttl', 300);
+        $cacheKey = $this->informeDatosCacheKey($formId, $tipoExamen);
+        $compute = fn(): array => $this->buildInformeDatosPayload($formId, $tipoExamen);
+
+        try {
+            $result = $cacheTtl > 0 ? Cache::remember($cacheKey, $cacheTtl, $compute) : $compute();
+        } catch (Throwable) {
+            $result = $compute();
+        }
+
+        $status = (int) ($result['_status'] ?? 200);
+        unset($result['_status']);
+
+        return response()->json($result, $status);
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private function buildInformeDatosPayload(string $formId, string $tipoExamen): array
+    {
         try {
             $informe = $this->legacyExamenModel()->obtenerInformeImagen($formId);
         } catch (Throwable $e) {
@@ -808,24 +834,24 @@ class ExamenesParityController
 
             $plantilla = (string) ($this->mapearPlantillaInforme($tipoExamen) ?? '');
             if ($plantilla === '') {
-                return response()->json(['success' => false, 'error' => 'No hay plantilla para este examen'], 404);
+                return ['success' => false, 'error' => 'No hay plantilla para este examen', '_status' => 404];
             }
 
-            return response()->json([
+            return [
                 'success' => true,
                 'plantilla' => $plantilla,
                 'payload' => null,
                 'exists' => false,
                 'updated_at' => null,
                 'warning' => 'No se pudo leer un informe guardado previamente.',
-            ]);
+            ];
         }
         $plantilla = is_array($informe) ? trim((string) ($informe['plantilla'] ?? '')) : '';
         if ($plantilla === '') {
             $plantilla = (string) ($this->mapearPlantillaInforme($tipoExamen) ?? '');
         }
         if ($plantilla === '') {
-            return response()->json(['success' => false, 'error' => 'No hay plantilla para este examen'], 404);
+            return ['success' => false, 'error' => 'No hay plantilla para este examen', '_status' => 404];
         }
 
         $payload = null;
@@ -839,13 +865,48 @@ class ExamenesParityController
             $payload['firmante_id'] = (int) $informe['firmado_por'];
         }
 
-        return response()->json([
+        return [
             'success' => true,
             'plantilla' => $plantilla,
             'payload' => $payload,
             'exists' => $informe !== null,
             'updated_at' => $informe['updated_at'] ?? null,
-        ]);
+        ];
+    }
+
+    private function informeDatosCacheKey(string $formId, string $tipoExamen): string
+    {
+        $version = 1;
+        try {
+            $version = (int) Cache::get($this->informeDatosVersionKey($formId), 1);
+        } catch (Throwable) {
+            $version = 1;
+        }
+
+        return 'imagenes_informe_datos:' . md5(json_encode([
+            'form_id' => $formId,
+            'tipo_examen' => $tipoExamen,
+            'version' => $version,
+        ]));
+    }
+
+    private function forgetInformeDatosCache(string $formId, string $tipoExamen): void
+    {
+        try {
+            Cache::forget($this->informeDatosCacheKey($formId, $tipoExamen));
+            $versionKey = $this->informeDatosVersionKey($formId);
+            if (!Cache::has($versionKey)) {
+                Cache::forever($versionKey, 1);
+            }
+            Cache::increment($versionKey);
+        } catch (Throwable) {
+            // Cache no disponible: guardar informe no debe fallar por invalidación.
+        }
+    }
+
+    private function informeDatosVersionKey(string $formId): string
+    {
+        return 'imagenes.informe_datos.version.' . md5($formId);
     }
 
     public function informePlantilla(Request $request): Response
@@ -959,6 +1020,8 @@ class ExamenesParityController
 
             if ($ok) {
                 $this->autoFacturarInformeImagen($formId, $hcNumber !== '' ? $hcNumber : null, $userId);
+                $this->forgetInformeDatosCache($formId, $tipoExamen);
+                ImagenesUiService::bumpImagenesRealizadasCacheVersion();
             }
 
             return response()->json(['success' => (bool) $ok]);
@@ -2744,7 +2807,12 @@ class ExamenesParityController
         if (str_contains($texto, 'angio')) {
             return 'angio';
         }
-        if (str_contains($texto, 'angulo')) {
+        if (
+            str_contains($texto, 'angulo')
+            || str_contains($texto, 'anterior chamber')
+            || str_contains($texto, 'pruebas provocativas')
+            || str_contains($texto, 'tomografia con pruebas')
+        ) {
             return 'angulo';
         }
         if (str_contains($texto, 'auto') || str_contains($texto, 'autorefrac')) {

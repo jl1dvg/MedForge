@@ -22,6 +22,8 @@ return [
     'cache_dir' => env('NAS_IMAGES_CACHE_DIR', env('IMAGENES_CACHE_DIR')),
     'cache_ttl' => (int) env('NAS_IMAGES_CACHE_TTL', env('IMAGENES_CACHE_TTL', 1800)),
     'list_cache_ttl' => (int) env('NAS_IMAGES_LIST_CACHE_TTL', env('IMAGENES_LIST_CACHE_TTL', 90)),
+    'realizadas_cache_ttl' => (int) env('IMAGENES_REALIZADAS_CACHE_SECONDS', 60),
+    'informe_datos_cache_ttl' => (int) env('IMAGENES_INFORME_DATOS_CACHE_SECONDS', 300),
     'enable_fallback' => (bool) env('IMAGENES_ENABLE_NAS_FALLBACK', true),
 
 ];

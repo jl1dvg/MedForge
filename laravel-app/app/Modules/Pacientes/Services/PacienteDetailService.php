@@ -72,8 +72,164 @@ class PacienteDetailService
         $data['telefono_alt'] = $data['telefono_alt'] ?? '';
         $data['medico_tratante_id'] = $data['medico_tratante_id'] ?? '';
         $data['sede_principal'] = $data['sede_principal'] ?? '';
+        $data['medico_tratante'] = $this->resolveMedicoTratante($hcNumber, (string) $data['medico_tratante_id']);
+        $data['sede_info'] = $this->normalizeSedePrincipal((string) $data['sede_principal'])
+            ?? (new SedePacienteResolver())->resolve($hcNumber);
+        $data['sede'] = $data['sede_info']['id'] ?? '';
+        $data['proxima_cita'] = $this->getProximaCita($hcNumber);
+        $data['afiliacion_info'] = $this->resolveAfiliacionInfo((string) ($data['afiliacion'] ?? ''));
+        if (is_array($data['afiliacion_info'])) {
+            $data['tipo_afiliacion'] = $data['afiliacion_info']['categoria'];
+            $data['aseguradora'] = $data['afiliacion_info']['empresa_seguro'];
+        }
 
         return $data;
+    }
+
+    /**
+     * @return array<string,mixed>|null
+     */
+    private function resolveMedicoTratante(string $hcNumber, string $manualId): ?array
+    {
+        $manualId = trim($manualId);
+        if ($manualId !== '' && Schema::hasTable('users')) {
+            $columns = ['id'];
+            foreach (['nombre', 'full_name', 'especialidad', 'subespecialidad'] as $column) {
+                if (Schema::hasColumn('users', $column)) {
+                    $columns[] = $column;
+                }
+            }
+
+            $row = DB::table('users')->select($columns)->where('id', $manualId)->first();
+            if ($row) {
+                $nombre = trim((string) (($row->nombre ?? '') ?: ($row->full_name ?? '')));
+                $especialidad = trim((string) (($row->especialidad ?? '') ?: ($row->subespecialidad ?? '')));
+                if ($nombre !== '') {
+                    return [
+                        'id' => (int) ($row->id ?? 0),
+                        'nombre' => $nombre,
+                        'especialidad' => $especialidad,
+                        'procedimientos_count' => 0,
+                        'ultima_fecha' => null,
+                        'confirmado' => true,
+                        'origen' => 'manual',
+                    ];
+                }
+            }
+        }
+
+        return (new MedicoTratanteResolver())->resolve($hcNumber);
+    }
+
+    /**
+     * @return array{fecha:string,hora:string,tipo:string,medico:string}|null
+     */
+    private function getProximaCita(string $hcNumber): ?array
+    {
+        if (!Schema::hasTable('procedimiento_proyectado')) {
+            return null;
+        }
+
+        $row = DB::table('procedimiento_proyectado')
+            ->where('hc_number', $hcNumber)
+            ->where(function ($query): void {
+                $query->whereNull('sigcenter_present')->orWhere('sigcenter_present', 1);
+            })
+            ->whereDate('fecha', '>=', date('Y-m-d'))
+            ->orderBy('fecha')
+            ->orderBy('hora')
+            ->first();
+
+        if (!$row || empty($row->fecha)) {
+            return null;
+        }
+
+        return [
+            'fecha' => (string) ($row->fecha ?? ''),
+            'hora' => (string) ($row->hora ?? ''),
+            'tipo' => (string) ($row->procedimiento_proyectado ?? 'consulta'),
+            'medico' => trim((string) ($row->doctor ?? '')),
+        ];
+    }
+
+    /**
+     * @return array{id:string,nombre:string,origen:string}|null
+     */
+    private function normalizeSedePrincipal(string $sede): ?array
+    {
+        $value = strtolower(trim($sede));
+        if ($value === '') {
+            return null;
+        }
+
+        $plain = strtr($value, ['á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u']);
+        $plain = preg_replace('/[^a-z0-9]+/', '', $plain) ?? $plain;
+
+        if (str_contains($plain, 'ceibos') || $plain === '16') {
+            return ['id' => 'ceibos', 'nombre' => 'CEIBOS', 'origen' => 'manual'];
+        }
+
+        if (str_contains($plain, 'matriz') || $plain === '1') {
+            return ['id' => 'matriz', 'nombre' => 'MATRIZ', 'origen' => 'manual'];
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{categoria:string,empresa_seguro:string,afiliacion_raw:string,afiliacion_norm:string}|null
+     */
+    private function resolveAfiliacionInfo(string $afiliacion): ?array
+    {
+        $value = trim($afiliacion);
+        if ($value === '' || !Schema::hasTable('afiliacion_categoria_map')) {
+            return null;
+        }
+
+        $columns = ['afiliacion_raw', 'afiliacion_norm', 'categoria'];
+        if (Schema::hasColumn('afiliacion_categoria_map', 'empresa_seguro')) {
+            $columns[] = 'empresa_seguro';
+        }
+
+        $needle = $this->normalizeAffiliationKey($value);
+        $rows = DB::table('afiliacion_categoria_map')->select($columns)->get();
+        foreach ($rows as $row) {
+            $raw = trim((string) ($row->afiliacion_raw ?? ''));
+            $norm = trim((string) ($row->afiliacion_norm ?? ''));
+            $empresa = trim((string) ($row->empresa_seguro ?? ''));
+            $candidates = array_filter([$raw, $norm, $empresa], static fn(string $candidate): bool => trim($candidate) !== '');
+
+            foreach ($candidates as $candidate) {
+                if ($this->normalizeAffiliationKey($candidate) !== $needle) {
+                    continue;
+                }
+
+                $categoria = strtolower(trim((string) ($row->categoria ?? '')));
+                return [
+                    'categoria' => $categoria !== '' ? $categoria : 'otros',
+                    'empresa_seguro' => $empresa !== '' ? $empresa : $raw,
+                    'afiliacion_raw' => $raw !== '' ? $raw : $value,
+                    'afiliacion_norm' => $norm,
+                ];
+            }
+        }
+
+        return null;
+    }
+
+    private function normalizeAffiliationKey(string $value): string
+    {
+        $value = mb_strtolower(trim($value), 'UTF-8');
+        $value = strtr($value, [
+            'á' => 'a',
+            'é' => 'e',
+            'í' => 'i',
+            'ó' => 'o',
+            'ú' => 'u',
+            'ñ' => 'n',
+        ]);
+
+        return preg_replace('/[^a-z0-9]+/', '', $value) ?? $value;
     }
 
     /**

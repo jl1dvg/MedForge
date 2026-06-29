@@ -1,8 +1,8 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import type { PacientesCatalogos, Patient, AppRoute, Toast as ToastType, WizardFormData } from './types';
-import { TIPO_CITA, MEDICO_MAP } from './data';
+import { MEDICO_MAP } from './data';
 import { fetchPatientList, fetchPatientDetail, fetchPatientCatalogos, createPatient, updatePatient } from './api';
-import { Toast, AgendarModal } from './components';
+import { Toast } from './components';
 import ListView from './views/ListView';
 import DetailView from './views/DetailView';
 import WizardView from './views/WizardView';
@@ -17,7 +17,6 @@ export default function App() {
   const [, setDetailLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [toast, setToast] = useState<ToastType | null>(null);
-  const [agendar, setAgendar] = useState<{ patient: Patient | null; open: boolean }>({ patient: null, open: false });
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -54,6 +53,38 @@ export default function App() {
       .catch(() => {})
       .finally(() => setDetailLoading(false));
   }, [patients]);
+
+  useEffect(() => {
+    if (loading || route !== 'list') return;
+
+    const params = new URLSearchParams(window.location.search);
+    const hcNumber = String(params.get('hc_number') || '').trim();
+    if (!hcNumber) return;
+
+    const target = patients.find(p => p.hc_number === hcNumber);
+    if (target) {
+      openPatient(target.id);
+      return;
+    }
+
+    setSelectedHc(hcNumber);
+    setRoute('detail');
+    setDetailLoading(true);
+    fetchPatientDetail(hcNumber)
+      .then(full => {
+        if (full) {
+          setDetailPatient(full);
+        } else {
+          showToast('Paciente no encontrado', 'mdi-account-alert-outline', 'warn');
+          setRoute('list');
+        }
+      })
+      .catch(() => {
+        showToast('Error cargando paciente', 'mdi-alert-circle-outline', 'err');
+        setRoute('list');
+      })
+      .finally(() => setDetailLoading(false));
+  }, [loading, openPatient, patients, route, showToast]);
 
   const goCreate = useCallback(() => {
     setRoute('create');
@@ -106,39 +137,6 @@ export default function App() {
   const onAgendar = useCallback((p: Patient) => {
     openAgendaForPatient(p);
   }, [openAgendaForPatient]);
-
-  const confirmAgendar = useCallback((patientId: number, data: { fecha: string; hora: string; tipo: string }) => {
-    const iso = new Date(`${data.fecha}T${data.hora || '09:00'}:00`).toISOString();
-    const tipoCita = TIPO_CITA[data.tipo];
-    setPatients(list => list.map(p => {
-      if (p.id !== patientId) return p;
-      const cita = { fecha: iso, medico: p.medico, tipo: data.tipo, estado: 'agendada', det: tipoCita?.label || data.tipo };
-      const nowDate = new Date(iso);
-      const existDate = p.proxima_cita ? new Date(p.proxima_cita.fecha) : null;
-      const newProx = (!existDate || nowDate < existDate) && nowDate >= new Date()
-        ? { fecha: iso, medico: p.medico, tipo: data.tipo }
-        : p.proxima_cita;
-      const newTimeline = [
-        { at: new Date().toISOString(), tipo: 'cita', icon: tipoCita?.icon || 'mdi-calendar', txt: `Cita agendada: ${tipoCita?.label || data.tipo}`, by: 'Recepción' },
-        ...p.timeline,
-      ];
-      return { ...p, citas: [cita, ...p.citas], proxima_cita: newProx, timeline: newTimeline };
-    }));
-    if (detailPatient?.id === patientId) {
-      setDetailPatient(prev => {
-        if (!prev) return prev;
-        const cita = { fecha: iso, medico: prev.medico, tipo: data.tipo, estado: 'agendada', det: tipoCita?.label || data.tipo };
-        const nowDate = new Date(iso);
-        const existDate = prev.proxima_cita ? new Date(prev.proxima_cita.fecha) : null;
-        const newProx = (!existDate || nowDate < existDate) && nowDate >= new Date()
-          ? { fecha: iso, medico: prev.medico, tipo: data.tipo }
-          : prev.proxima_cita;
-        return { ...prev, citas: [cita, ...prev.citas], proxima_cita: newProx };
-      });
-    }
-    setAgendar({ patient: null, open: false });
-    showToast('Cita agendada correctamente', 'mdi-calendar-check');
-  }, [detailPatient, showToast]);
 
   const onAddNote = useCallback((patientId: number, txt: string) => {
     const nowIso = new Date().toISOString();
@@ -340,13 +338,6 @@ export default function App() {
           onOpenExisting={openPatient}
         />
       )}
-
-      <AgendarModal
-        patient={agendar.patient}
-        open={agendar.open}
-        onClose={() => setAgendar({ patient: null, open: false })}
-        onConfirm={confirmAgendar}
-      />
 
       <Toast toast={toast} />
     </div>

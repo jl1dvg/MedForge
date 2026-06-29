@@ -340,7 +340,7 @@ class PacientesReadServiceTest extends TestCase
         $this->assertSame(1, $payload['recordsFiltered']);
         $this->assertSame('100', $payload['data'][0]['hc_number']);
         $this->assertSame('10/06/2026', $payload['data'][0]['ultima_fecha']);
-        $this->assertStringContainsString('/v2/pacientes/detalles?hc_number=100', $payload['data'][0]['acciones_html']);
+        $this->assertStringContainsString('/v2/pacientes?hc_number=100', $payload['data'][0]['acciones_html']);
     }
 
     private function createMinimalPatientDataTable(): void

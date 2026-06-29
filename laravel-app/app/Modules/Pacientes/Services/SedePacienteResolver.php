@@ -2,15 +2,10 @@
 
 namespace App\Modules\Pacientes\Services;
 
-use PDO;
-use PDOException;
+use Illuminate\Support\Facades\DB;
 
 class SedePacienteResolver
 {
-    public function __construct(private readonly PDO $db)
-    {
-    }
-
     public function resolve(string $hcNumber): ?array
     {
         return $this->resolveMany([$hcNumber])[$hcNumber] ?? null;
@@ -30,21 +25,20 @@ class SedePacienteResolver
         $placeholders = implode(',', array_fill(0, count($hcNumbers), '?'));
 
         try {
-            $stmt = $this->db->prepare(<<<SQL
+            $rows = $this->selectRows(<<<SQL
                 SELECT hc_number, id_sede, sede_departamento
                 FROM procedimiento_proyectado
                 WHERE hc_number IN ({$placeholders})
                   AND COALESCE(sigcenter_present, 1) = 1
                   AND COALESCE(NULLIF(TRIM(id_sede), ''), NULLIF(TRIM(sede_departamento), '')) IS NOT NULL
                 ORDER BY hc_number ASC, fecha ASC, hora ASC, id ASC
-            SQL);
-            $stmt->execute($hcNumbers);
-        } catch (PDOException) {
+            SQL, $hcNumbers);
+        } catch (\Throwable) {
             return [];
         }
 
         $resolved = [];
-        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        foreach ($rows as $row) {
             $hcNumber = (string) ($row['hc_number'] ?? '');
             if ($hcNumber === '' || isset($resolved[$hcNumber])) {
                 continue;
@@ -89,5 +83,17 @@ class SedePacienteResolver
         }
 
         return null;
+    }
+
+    /**
+     * @param array<int|string, mixed> $bindings
+     * @return array<int, array<string, mixed>>
+     */
+    private function selectRows(string $sql, array $bindings = []): array
+    {
+        return array_map(
+            static fn(object|array $row): array => (array) $row,
+            DB::select($sql, $bindings)
+        );
     }
 }

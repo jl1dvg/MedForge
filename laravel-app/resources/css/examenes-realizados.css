@@ -208,7 +208,7 @@ table.imr-table tbody tr.imr-patient-group-row:hover { background: var(--bg-soft
 .imr-pt-v { font-size: 13.5px; font-weight: 600; color: var(--fg-1); }
 
 /* ---- Informe form ------------------------------------------- */
-.imr-informe-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.imr-informe-grid { display: grid; grid-template-columns: minmax(280px, .85fr) minmax(420px, 1.15fr); gap: 20px; }
 .imr-section-title { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--fg-mute); font-weight: 700; margin: 0 0 12px; display: flex; align-items: center; gap: 8px; }
 .imr-section-ln { flex: 1; height: 1px; background: var(--border); }
 .imr-eye-section-label { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--accent); background: var(--primary-fade); border-radius: 6px; padding: 4px 10px; margin-bottom: 10px; display: inline-block; }
@@ -227,7 +227,9 @@ table.imr-table tbody tr.imr-patient-group-row:hover { background: var(--bg-soft
 
 /* ---- NAS viewer --------------------------------------------- */
 .imr-nas-panel { display: flex; flex-direction: column; gap: 10px; }
-.imr-nas-stage { background: #0e1726; border-radius: 12px; min-height: 260px; max-height: 440px; display: grid; place-items: center; position: relative; overflow: auto; overflow-x: hidden; border: 1px solid var(--border-strong); }
+.imr-nas-stage { background: #0e1726; border-radius: 12px; height: clamp(320px, 52vh, 560px); display: grid; place-items: center; position: relative; overflow: hidden; border: 1px solid var(--border-strong); }
+.imr-nas-media { width: 100%; height: 100%; max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 6px; display: block; }
+.imr-nas-frame { border: 0; background: #fff; }
 .imr-nas-empty { color: rgba(255,255,255,.7); text-align: center; padding: 20px; }
 .imr-nas-empty .mdi { font-size: 48px; opacity: .5; display: block; margin-bottom: 8px; }
 .imr-nas-doc { width: 78%; height: 86%; border-radius: 8px; position: relative; overflow: hidden; background: repeating-linear-gradient(135deg, rgba(255,255,255,.04) 0 12px, rgba(255,255,255,.07) 12px 24px), #16233a; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: rgba(255,255,255,.85); }

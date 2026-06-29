@@ -2,15 +2,10 @@
 
 namespace App\Modules\Pacientes\Services;
 
-use PDO;
-use PDOException;
+use Illuminate\Support\Facades\DB;
 
 class MedicoTratanteResolver
 {
-    public function __construct(private readonly PDO $db)
-    {
-    }
-
     public function resolve(string $hcNumber): ?array
     {
         return $this->resolveMany([$hcNumber])[$hcNumber] ?? null;
@@ -34,7 +29,7 @@ class MedicoTratanteResolver
         }
 
         try {
-            $stmt = $this->db->prepare(<<<SQL
+            $rows = $this->selectRows(<<<SQL
                 SELECT
                     pp.hc_number,
                     pp.id AS procedimiento_id,
@@ -46,14 +41,13 @@ class MedicoTratanteResolver
                   AND COALESCE(pp.sigcenter_present, 1) = 1
                   AND pp.doctor IS NOT NULL
                   AND TRIM(pp.doctor) <> ''
-            SQL);
-            $stmt->execute($hcNumbers);
-        } catch (PDOException) {
+            SQL, $hcNumbers);
+        } catch (\Throwable) {
             return [];
         }
 
         $groups = [];
-        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        foreach ($rows as $row) {
             $hcNumber = (string) ($row['hc_number'] ?? '');
             $doctor = trim((string) ($row['doctor'] ?? ''));
             $user = $this->matchUser($doctor, $users);
@@ -112,18 +106,18 @@ class MedicoTratanteResolver
     private function validUsersByNameTokens(): array
     {
         try {
-            $stmt = $this->db->query(<<<'SQL'
+            $rows = $this->selectRows(<<<'SQL'
                 SELECT id, nombre, full_name, especialidad, subespecialidad
                 FROM users
                 WHERE ((nombre IS NOT NULL AND TRIM(nombre) <> '')
                     OR (full_name IS NOT NULL AND TRIM(full_name) <> ''))
             SQL);
-        } catch (PDOException) {
+        } catch (\Throwable) {
             return [];
         }
 
         $users = [];
-        foreach (($stmt?->fetchAll(PDO::FETCH_ASSOC) ?: []) as $row) {
+        foreach ($rows as $row) {
             $especialidad = trim((string) ($row['especialidad'] ?? ''));
             $subespecialidad = trim((string) ($row['subespecialidad'] ?? ''));
             if (!$this->isEspecialidadTratante($especialidad . ' ' . $subespecialidad)) {
@@ -225,6 +219,18 @@ class MedicoTratanteResolver
             (string) ($row['fecha'] ?? ''),
             (string) ($row['hora'] ?? ''),
             (int) ($row['procedimiento_id'] ?? 0)
+        );
+    }
+
+    /**
+     * @param array<int|string, mixed> $bindings
+     * @return array<int, array<string, mixed>>
+     */
+    private function selectRows(string $sql, array $bindings = []): array
+    {
+        return array_map(
+            static fn(object|array $row): array => (array) $row,
+            DB::select($sql, $bindings)
         );
     }
 }
