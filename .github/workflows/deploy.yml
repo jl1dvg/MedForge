@@ -126,6 +126,10 @@ jobs:
             mkdir -p "$PROJECT/public/css"
             rsync -a "$PROJECT/laravel-app/public/css/" "$PROJECT/public/css/"
 
+            # Copiar JS estático al public raíz (app.js compilados, React apps, etc.)
+            mkdir -p "$PROJECT/public/js"
+            rsync -a "$PROJECT/laravel-app/public/js/" "$PROJECT/public/js/"
+
             # Dependencias Python para scrapers
             cd "$PROJECT"
             python3 -m pip install -q -r scrapping/requirements.txt 2>/dev/null || true

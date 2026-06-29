@@ -375,6 +375,8 @@ class WhatsappAppointmentReminderService
                     ]),
                 ])->save();
 
+                $this->recordReminderOperationalEvent($reminder, 'reminder_sent', 'sent');
+
                 $sent++;
                 $rows[] = [
                     'form_id' => $formId,
@@ -385,11 +387,20 @@ class WhatsappAppointmentReminderService
                     'patient_name' => $recipient['patient_name'],
                 ];
             } catch (\Throwable $e) {
+                $failureReason = $this->classifyReminderFailure($e->getMessage());
+
                 $reminder->fill([
                     'status' => 'failed',
                     'failed_at' => now(),
+                    'payload' => array_merge($payload, [
+                        'failure_reason' => $failureReason,
+                    ]),
                     'notes' => mb_substr($e->getMessage(), 0, 2000),
                 ])->save();
+
+                $this->recordReminderOperationalEvent($reminder, 'reminder_failed', 'dispatch_failed', [
+                    'error' => $e->getMessage(),
+                ]);
 
                 $failed++;
                 $rows[] = [
@@ -398,6 +409,7 @@ class WhatsappAppointmentReminderService
                     'source_type' => $sourceType,
                     'status' => 'failed',
                     'wa_number' => $targetWaNumber,
+                    'failure_reason' => $failureReason,
                     'reason' => $e->getMessage(),
                 ];
             }
@@ -496,6 +508,8 @@ class WhatsappAppointmentReminderService
                 'responded_at' => now(),
             ])->save();
 
+            $this->recordReminderOperationalEvent($reminder, 'reminder_confirmed', 'patient_confirmed');
+
             $this->dispatchService->sendSystemText(
                 $conversation,
                 '✅ Gracias por confirmar tu asistencia. Si necesitas algo más, escribe AYUDA o MENU.'
@@ -515,6 +529,8 @@ class WhatsappAppointmentReminderService
                 'response_value' => 'agente',
                 'responded_at' => now(),
             ])->save();
+
+            $this->recordReminderOperationalEvent($reminder, 'reminder_agent_requested', 'patient_requested_agent');
 
             $payload = is_array($reminder->payload) ? $reminder->payload : [];
             $note = sprintf(
@@ -547,6 +563,49 @@ class WhatsappAppointmentReminderService
         }
 
         return null;
+    }
+
+    /**
+     * @param array<string,mixed> $extraPayload
+     */
+    private function recordReminderOperationalEvent(
+        WhatsappAppointmentReminder $reminder,
+        string $eventType,
+        string $reason,
+        array $extraPayload = [],
+    ): void {
+        try {
+            if (!Schema::hasTable('whatsapp_operational_events') || (int) ($reminder->conversation_id ?? 0) <= 0) {
+                return;
+            }
+
+            app(WhatsappOperationalEventService::class)->record([
+                'conversation_id' => (int) $reminder->conversation_id,
+                'reminder_id' => (int) $reminder->id,
+                'event_type' => $eventType,
+                'event_at' => match ($eventType) {
+                    'reminder_sent' => $reminder->sent_at ?? now(),
+                    'reminder_failed' => $reminder->failed_at ?? now(),
+                    default => $reminder->responded_at ?? now(),
+                },
+                'actor_type' => $eventType === 'reminder_confirmed' || $eventType === 'reminder_agent_requested'
+                    ? 'patient'
+                    : 'system',
+                'producer' => 'whatsapp_appointment_reminder_service',
+                'wa_number' => $reminder->wa_number,
+                'patient_hc_number' => $reminder->hc_number,
+                'reason' => $reason,
+                'payload' => array_merge([
+                    'source_type' => $reminder->source_type,
+                    'reminder_window' => $reminder->reminder_window,
+                    'template_code' => $reminder->template_code,
+                    'status' => $reminder->status,
+                ], $extraPayload),
+                'idempotency_key' => "{$eventType}:reminder:{$reminder->id}",
+            ]);
+        } catch (\Throwable) {
+            // Operational events are observability; reminder delivery must remain the source behavior.
+        }
     }
 
     private function classifySourceType(string $procedimiento): ?string
@@ -1212,6 +1271,33 @@ class WhatsappAppointmentReminderService
             ->where('wm.direction', 'outbound')
             ->where('wm.created_at', '>=', now($this->reminderTimezone())->subHours($hours))
             ->exists();
+    }
+
+    private function classifyReminderFailure(string $message): string
+    {
+        $normalized = $this->normalizeText($message);
+
+        if (in_array($normalized, ['reminder_location_header_missing_coordinates', 'template_location_header_missing_coordinates'], true)) {
+            return 'location_header_missing_coordinates';
+        }
+
+        if (
+            str_contains($normalized, 'template_header_location_mismatch')
+            || (str_contains($normalized, 'expected') && str_contains($normalized, 'location') && str_contains($normalized, 'unknown'))
+            || str_contains($normalized, '132012')
+        ) {
+            return 'template_header_location_mismatch';
+        }
+
+        if (str_contains($normalized, 'whatsapp_messages') && str_contains($normalized, 'doesn') && str_contains($normalized, 'exist')) {
+            return 'whatsapp_messages_table_missing';
+        }
+
+        if (str_contains($normalized, 'whatsapp cloud api error')) {
+            return 'cloud_api_error';
+        }
+
+        return 'unexpected_error';
     }
 
     private function hasReachedPatientDailyLimit(string $hcNumber): bool

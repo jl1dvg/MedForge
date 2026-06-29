@@ -272,6 +272,25 @@ class WhatsappUiController
         return $this->dashboard($request, 'whatsapp.v3-dashboard');
     }
 
+    public function hotOpportunities(Request $request): View
+    {
+        return view('whatsapp.v3-hot-opportunities', [
+            'apiUrl'  => url('/v2/whatsapp/api/operational-queues'),
+            'chatUrl' => url('/v2/whatsapp/chat'),
+        ]);
+    }
+
+    public function operationalAlerts(Request $request): View
+    {
+        return view('whatsapp.v2-operational-alerts', [
+            'apiUrl'        => url('/v2/whatsapp/api/operational-alerts'),
+            'previewApiUrl' => url('/v2/whatsapp/api/operational-alerts/notification-preview'),
+            'reportApiUrl'  => url('/v2/whatsapp/api/operational-alerts/daily-report'),
+            'chatUrl'       => url('/v2/whatsapp/chat'),
+        ]);
+    }
+
+
     public function dashboardV3Live(Request $request): \Illuminate\Http\JsonResponse
     {
         $slaMeta = (int) ($request->query('sla_target_minutes', 15));
