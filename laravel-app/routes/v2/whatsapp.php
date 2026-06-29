@@ -4,6 +4,7 @@ use App\Modules\Whatsapp\Http\Controllers\ConversationReadController;
 use App\Modules\Whatsapp\Http\Controllers\ConversationOpsController;
 use App\Modules\Whatsapp\Http\Controllers\OperationalAlertsController;
 use App\Modules\Whatsapp\Http\Controllers\OperationalAlertDailyReportController;
+use App\Modules\Whatsapp\Http\Controllers\OperationalAlertDailyReportExportController;
 use App\Modules\Whatsapp\Http\Controllers\OperationalAlertNotificationPreviewController;
 use App\Modules\Whatsapp\Http\Controllers\OperationalQueuesController;
 use App\Modules\Whatsapp\Http\Controllers\ConversationWriteController;
@@ -98,6 +99,8 @@ Route::middleware([
     Route::get('/operational-alerts/notification-preview', [OperationalAlertNotificationPreviewController::class, 'index'])
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.supervise,settings.manage');
     Route::get('/operational-alerts/daily-report', [OperationalAlertDailyReportController::class, 'index'])
+        ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.supervise,settings.manage');
+    Route::get('/operational-alerts/daily-report/export', [OperationalAlertDailyReportExportController::class, 'index'])
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.supervise,settings.manage');
 });
 
