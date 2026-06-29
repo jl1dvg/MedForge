@@ -204,6 +204,36 @@
     <div id="body-other"></div>
   </div>
 
+  {{-- Section: Notification Preview (dry-run) --}}
+  <details class="oa-section" id="section-preview" style="margin-top:12px;border:2px dashed #adb5bd">
+    <summary style="cursor:pointer;padding:12px 16px;display:flex;align-items:center;gap:10px;list-style:none;user-select:none">
+      <span style="font-size:18px">🔔</span>
+      <div style="flex:1">
+        <strong style="font-size:14px">Preview de notificaciones internas</strong>
+        <span id="preview-count-badge" style="background:#6c757d;color:#fff;border-radius:10px;padding:1px 8px;font-size:11px;margin-left:8px">—</span>
+      </div>
+      <span style="font-size:11px;color:#6c757d;font-style:italic">▾ expandir</span>
+    </summary>
+    <div style="padding:0 16px 16px">
+      <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:6px;padding:10px 14px;margin:12px 0;font-size:12px;color:#856404">
+        <strong>Modo dry-run — no se envía ninguna notificación.</strong><br>
+        Esta sección muestra qué alertas serían candidatas si coordinación aprueba la Fase 4C.
+        Canal: <strong>no configurado</strong>. Estado: <strong>dry-run</strong>.
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+        <div style="font-size:13px">
+          Candidatas a notificar: <strong id="preview-would-notify">—</strong>
+          &nbsp;·&nbsp; Canal: <strong>none</strong>
+          &nbsp;·&nbsp; Estado: <strong>dry-run</strong>
+        </div>
+        <button id="preview-refresh-btn" class="oa-refresh-btn" style="padding:4px 12px;font-size:12px">
+          <span class="mdi mdi-refresh"></span> Actualizar preview
+        </button>
+      </div>
+      <div id="preview-body"><em style="color:#6c757d;font-size:12px">Expande para cargar…</em></div>
+    </div>
+  </details>
+
 </div>
 @endsection
 
@@ -212,8 +242,9 @@
 (function () {
   'use strict';
 
-  const API_URL  = '{{ $apiUrl }}';
-  const CHAT_URL = '{{ $chatUrl }}';
+  const API_URL         = '{{ $apiUrl }}';
+  const CHAT_URL        = '{{ $chatUrl }}';
+  const PREVIEW_API_URL = '{{ $previewApiUrl }}';
 
   // ── State ─────────────────────────────────────────────────────────────────
   let allAlerts = [];
@@ -494,6 +525,67 @@
 
   // Initial load
   load();
+
+  // ── Notification Preview (dry-run) ────────────────────────────────────────
+  const previewSection    = document.getElementById('section-preview');
+  const previewBody       = document.getElementById('preview-body');
+  const previewRefreshBtn = document.getElementById('preview-refresh-btn');
+  const previewCountBadge = document.getElementById('preview-count-badge');
+  const previewWouldNotify= document.getElementById('preview-would-notify');
+  let previewLoaded = false;
+
+  async function loadPreview() {
+    previewBody.innerHTML = '<em style="color:#6c757d;font-size:12px"><span class="oa-spinner" style="width:12px;height:12px;border-width:2px;vertical-align:middle"></span> Cargando preview…</em>';
+    const params = new URLSearchParams({ date: dateInput.value || new Date().toISOString().slice(0,10) });
+    try {
+      const resp = await fetch(`${PREVIEW_API_URL}?${params}`, {
+        headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+        credentials: 'same-origin',
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+
+      const n = data.would_notify ?? 0;
+      previewCountBadge.textContent = n;
+      previewCountBadge.style.background = n > 0 ? '#dc3545' : '#6c757d';
+      previewWouldNotify.textContent = n;
+
+      if (!n) {
+        previewBody.innerHTML = '<em style="color:#6c757d;font-size:12px">Sin candidatas para esta fecha.</em>';
+        return;
+      }
+
+      const rows = (data.notifications || []).map(n => `
+        <tr>
+          <td>${esc(n.display_name || '—')}<br><small style="color:var(--fg-3);font-size:10px">Conv #${esc(n.conversation_id)}</small></td>
+          <td><code style="font-size:11px">${esc(n.wa_number || '—')}</code></td>
+          <td>${n.hc_number ? `<small>HC ${esc(n.hc_number)}</small>` : '<span style="color:var(--fg-3)">—</span>'}</td>
+          <td style="font-size:11px">${esc(n.topic_label || '—')}</td>
+          <td style="font-weight:600">${fmtMinutes(n.waiting_minutes)}</td>
+          <td style="font-size:10px;max-width:260px;white-space:pre-wrap;font-family:monospace;color:#495057">${esc(n.message_preview)}</td>
+        </tr>`).join('');
+
+      previewBody.innerHTML = `
+        <table class="oa-table">
+          <thead><tr>
+            <th>Paciente / Contacto</th><th>WhatsApp</th><th>HC</th>
+            <th>Motivo</th><th>Esperando</th><th>Mensaje preview</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <p style="font-size:11px;color:#6c757d;margin-top:8px">
+          ⚠ Dry-run — ninguno de estos mensajes fue enviado. Canal: none.
+        </p>`;
+      previewLoaded = true;
+    } catch (e) {
+      previewBody.innerHTML = `<em style="color:#dc3545;font-size:12px">Error al cargar preview: ${esc(e.message)}</em>`;
+    }
+  }
+
+  previewSection.addEventListener('toggle', () => {
+    if (previewSection.open && !previewLoaded) loadPreview();
+  });
+  previewRefreshBtn.addEventListener('click', (e) => { e.stopPropagation(); loadPreview(); });
 })();
 </script>
 @endpush
