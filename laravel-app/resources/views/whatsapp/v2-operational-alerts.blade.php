@@ -219,10 +219,27 @@
         <strong>📋 Solo lectura.</strong>
         Este reporte es solo lectura. No envía notificaciones, no asigna agentes y no modifica conversaciones.
       </div>
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+      <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:6px;padding:8px 14px;margin-bottom:10px;font-size:12px;color:#856404">
+        <strong>Exportación manual read-only.</strong> No envía notificaciones, no asigna agentes y no modifica conversaciones.
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap">
         <button id="report-refresh-btn" class="oa-btn" style="padding:4px 12px;font-size:12px">
           <span class="mdi mdi-refresh"></span> Actualizar reporte
         </button>
+        <a id="report-export-csv-btn"
+           href="#"
+           class="oa-btn"
+           style="padding:4px 12px;font-size:12px;text-decoration:none;background:#0369a1;color:#fff;border-radius:6px;border:none;display:inline-flex;align-items:center;gap:4px"
+           download>
+          <span class="mdi mdi-download"></span> Descargar CSV
+        </a>
+        <a id="report-export-xlsx-btn"
+           href="#"
+           class="oa-btn"
+           style="padding:4px 12px;font-size:12px;text-decoration:none;background:#166534;color:#fff;border-radius:6px;border:none;display:inline-flex;align-items:center;gap:4px"
+           download>
+          <span class="mdi mdi-microsoft-excel"></span> Descargar Excel
+        </a>
         <span style="font-size:11px;color:#6c757d">Última actualización: <span id="report-updated-at">—</span></span>
       </div>
       <div id="report-body"><em style="color:#6c757d;font-size:12px">Expande para cargar…</em></div>
@@ -614,11 +631,22 @@
 
   // ── Daily Report (read-only) ──────────────────────────────────────────────
   const REPORT_API_URL    = '{{ $reportApiUrl }}';
+  const EXPORT_API_URL    = '{{ $exportApiUrl }}';
   const reportSection     = document.getElementById('section-daily-report');
   const reportBody        = document.getElementById('report-body');
   const reportRefreshBtn  = document.getElementById('report-refresh-btn');
   const reportUpdatedAt   = document.getElementById('report-updated-at');
+  const exportCsvBtn      = document.getElementById('report-export-csv-btn');
+  const exportXlsxBtn     = document.getElementById('report-export-xlsx-btn');
   let reportLoaded = false;
+
+  function updateExportLinks() {
+    const date = dateInput.value || new Date().toISOString().slice(0, 10);
+    exportCsvBtn.href  = `${EXPORT_API_URL}?date=${date}&format=csv`;
+    exportXlsxBtn.href = `${EXPORT_API_URL}?date=${date}&format=xlsx`;
+  }
+  updateExportLinks();
+  dateInput.addEventListener('change', updateExportLinks);
 
   async function loadReport() {
     reportBody.innerHTML = '<em style="color:#6c757d;font-size:12px"><span class="oa-spinner" style="width:12px;height:12px;border-width:2px;vertical-align:middle"></span> Cargando reporte…</em>';
