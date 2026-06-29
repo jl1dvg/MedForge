@@ -4,6 +4,7 @@ use App\Modules\Consultas\Http\Controllers\ConsultasReadController;
 use App\Modules\Consultas\Http\Controllers\ConsultasWriteController;
 use App\Modules\Cirugias\Http\Controllers\CirugiasWriteController;
 use App\Modules\Pacientes\Services\PacientesFlujoService;
+use App\Modules\Pharmacy\Http\Controllers\PharmacyApiController;
 use App\Modules\Procedimientos\Http\Controllers\ProcedimientosReadController;
 use App\Modules\Agenda\Http\Controllers\AgendaV3Controller;
 use App\Modules\Solicitudes\Http\Controllers\SolicitudesWriteController;
@@ -30,6 +31,9 @@ Route::middleware([
     Route::delete('/v3/api/agenda/bloqueos/{id}',      [AgendaV3Controller::class, 'deleteBloqueo'])->whereNumber('id');
     Route::post('/v3/api/agenda/sync',                 [AgendaV3Controller::class, 'forceSync']);
 });
+
+// Pharmacy API routes (token-less, internal use)
+Route::post('/api/pharmacy/prescriptions', [PharmacyApiController::class, 'storePrescription']);
 
 Route::prefix('v2')->group(function (): void {
     require __DIR__ . '/v2/health.php';

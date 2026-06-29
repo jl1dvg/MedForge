@@ -123,6 +123,10 @@ Route::middleware(['app.auth', 'app.permission:administrativo,farmacia.view,insu
     Route::get('/v2/farmacia/export/excel', [FarmaciaUiController::class, 'exportExcel']);
 });
 
+Route::middleware(['app.auth', 'app.permission:administrativo,farmacia.view,insumos.view,insumos.manage'])->group(function (): void {
+    require __DIR__ . '/v2/pharmacy.php';
+});
+
 $registerUsuariosReadRoutes = static function (string $basePath): void {
     Route::get($basePath, [UsuariosUiController::class, 'index']);
 };
