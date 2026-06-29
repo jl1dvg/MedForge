@@ -153,6 +153,10 @@ class MedforgeNavigation
             $permissions,
             ['administrativo', 'whatsapp.manage', 'whatsapp.chat.supervise', 'settings.manage']
         );
+        $canAccessWhatsAppOperationalAlerts = LegacyPermissionCatalog::containsAny(
+            $permissions,
+            ['administrativo', 'whatsapp.manage', 'whatsapp.chat.supervise', 'settings.manage']
+        );
         $canAccessCronManager = LegacyPermissionCatalog::containsAny(
             $permissions,
             ['administrativo', 'settings.manage']
@@ -351,6 +355,11 @@ class MedforgeNavigation
             $canAccessWhatsAppHotOpps
                 ? $link('Colas Operacionales', '/v2/whatsapp/hot-opportunities', 'mdi mdi-lightning-bolt-outline', [
                 'prefix' => ['/v2/whatsapp/hot-opportunities', '/v2/whatsapp/operational-queues'],
+            ])
+                : null,
+            $canAccessWhatsAppOperationalAlerts
+                ? $link('Alertas Operacionales', '/v2/whatsapp/operational-alerts', 'mdi mdi-bell-alert-outline', [
+                'prefix' => ['/v2/whatsapp/operational-alerts'],
             ])
                 : null,
             $canAccessWhatsAppCampaigns
