@@ -204,6 +204,31 @@
     <div id="body-other"></div>
   </div>
 
+  {{-- Section: Daily Report (read-only) --}}
+  <details class="oa-section" id="section-daily-report" style="margin-top:12px;border:2px dashed #bee3f8">
+    <summary style="cursor:pointer;padding:12px 16px;display:flex;align-items:center;gap:10px;list-style:none;user-select:none">
+      <span style="font-size:18px">📊</span>
+      <div style="flex:1">
+        <strong style="font-size:14px">Reporte diario — solo lectura</strong>
+        <span style="background:#0369a1;color:#fff;border-radius:10px;padding:1px 8px;font-size:11px;margin-left:8px">READ-ONLY</span>
+      </div>
+      <span style="font-size:11px;color:#6c757d;font-style:italic">▾ expandir</span>
+    </summary>
+    <div style="padding:0 16px 16px">
+      <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:10px 14px;margin:12px 0;font-size:12px;color:#1e40af">
+        <strong>📋 Solo lectura.</strong>
+        Este reporte es solo lectura. No envía notificaciones, no asigna agentes y no modifica conversaciones.
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+        <button id="report-refresh-btn" class="oa-btn" style="padding:4px 12px;font-size:12px">
+          <span class="mdi mdi-refresh"></span> Actualizar reporte
+        </button>
+        <span style="font-size:11px;color:#6c757d">Última actualización: <span id="report-updated-at">—</span></span>
+      </div>
+      <div id="report-body"><em style="color:#6c757d;font-size:12px">Expande para cargar…</em></div>
+    </div>
+  </details>
+
   {{-- Section: Notification Preview (dry-run) --}}
   <details class="oa-section" id="section-preview" style="margin-top:12px;border:2px dashed #adb5bd">
     <summary style="cursor:pointer;padding:12px 16px;display:flex;align-items:center;gap:10px;list-style:none;user-select:none">
@@ -586,6 +611,109 @@
     if (previewSection.open && !previewLoaded) loadPreview();
   });
   previewRefreshBtn.addEventListener('click', (e) => { e.stopPropagation(); loadPreview(); });
+
+  // ── Daily Report (read-only) ──────────────────────────────────────────────
+  const REPORT_API_URL    = '{{ $reportApiUrl }}';
+  const reportSection     = document.getElementById('section-daily-report');
+  const reportBody        = document.getElementById('report-body');
+  const reportRefreshBtn  = document.getElementById('report-refresh-btn');
+  const reportUpdatedAt   = document.getElementById('report-updated-at');
+  let reportLoaded = false;
+
+  async function loadReport() {
+    reportBody.innerHTML = '<em style="color:#6c757d;font-size:12px"><span class="oa-spinner" style="width:12px;height:12px;border-width:2px;vertical-align:middle"></span> Cargando reporte…</em>';
+    const params = new URLSearchParams({ date: dateInput.value || new Date().toISOString().slice(0,10) });
+    try {
+      const resp = await fetch(`${REPORT_API_URL}?${params}`, {
+        headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+        credentials: 'same-origin',
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const d = await resp.json();
+
+      reportUpdatedAt.textContent = new Date().toLocaleTimeString('es-EC', { hour:'2-digit', minute:'2-digit' });
+
+      const s  = d.summary  || {};
+      const np = d.notification_preview || {};
+
+      const byTypeRows = Object.entries(d.by_type || {}).map(([t, c]) =>
+        `<tr><td style="font-family:monospace;font-size:11px">${esc(t)}</td><td style="font-weight:600">${c}</td></tr>`).join('');
+
+      const byCatRows = Object.entries(d.by_category || {}).map(([cat, c]) =>
+        `<tr><td>${esc(cat)}</td><td style="font-weight:600">${c}</td></tr>`).join('');
+
+      const topTopicRows = (d.top_topics || []).slice(0, 10).map(t =>
+        `<tr><td>${esc(t.topic_label || t.topic)}</td><td style="font-weight:600">${t.count}</td></tr>`).join('');
+
+      const byAgentRows = (d.by_agent || []).map(ag =>
+        `<tr><td>${esc(ag.assigned_user_name)}</td><td>${ag.alerts_total}</td><td>${ag.critical || 0}</td><td>${ag.medium || 0}</td></tr>`).join('');
+
+      const recHtml = (d.recommendations || []).map(r => `<li style="margin-bottom:4px">${esc(r)}</li>`).join('');
+
+      reportBody.innerHTML = `
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;margin-bottom:16px">
+          ${[
+            ['Evaluadas', s.evaluated ?? '—'],
+            ['Total alertas', s.alerts_total ?? 0],
+            ['Críticas', s.critical ?? 0, 'var(--danger)'],
+            ['Altas', s.high ?? 0, 'var(--orange)'],
+            ['Medias', s.medium ?? 0, 'var(--warning)'],
+            ['Bajas', s.low ?? 0],
+            ['Candidatas 🔔', np.would_notify ?? 0, np.would_notify > 0 ? 'var(--danger)' : undefined],
+          ].map(([label, val, color]) => `
+            <div style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:10px 12px">
+              <div style="font-size:10px;color:var(--fg-3);font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px">${esc(label)}</div>
+              <div style="font-size:22px;font-weight:800;color:${color || 'var(--fg-1)'}">${val}</div>
+            </div>`).join('')}
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px">
+          ${byTypeRows ? `
+          <div>
+            <div style="font-size:11px;font-weight:700;color:var(--fg-3);margin-bottom:6px;text-transform:uppercase">Por tipo</div>
+            <table class="oa-table"><tbody>${byTypeRows}</tbody></table>
+          </div>` : ''}
+          ${byCatRows ? `
+          <div>
+            <div style="font-size:11px;font-weight:700;color:var(--fg-3);margin-bottom:6px;text-transform:uppercase">Por categoría</div>
+            <table class="oa-table"><tbody>${byCatRows}</tbody></table>
+          </div>` : ''}
+          ${topTopicRows ? `
+          <div>
+            <div style="font-size:11px;font-weight:700;color:var(--fg-3);margin-bottom:6px;text-transform:uppercase">Top motivos</div>
+            <table class="oa-table"><tbody>${topTopicRows}</tbody></table>
+          </div>` : ''}
+          ${byAgentRows ? `
+          <div style="grid-column:1/-1">
+            <div style="font-size:11px;font-weight:700;color:var(--fg-3);margin-bottom:6px;text-transform:uppercase">Por agente</div>
+            <table class="oa-table">
+              <thead><tr><th>Agente</th><th>Total</th><th>Críticas</th><th>Medias</th></tr></thead>
+              <tbody>${byAgentRows}</tbody>
+            </table>
+          </div>` : ''}
+        </div>
+        <div style="margin-top:12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:10px 14px">
+          <div style="font-size:11px;font-weight:700;color:#1e40af;margin-bottom:4px">🔔 Notification Preview</div>
+          <div style="font-size:12px;color:#1e40af">
+            Candidatas: <strong>${np.would_notify ?? 0}</strong> &nbsp;·&nbsp;
+            Canal: <strong>${esc(np.channel ?? 'none')}</strong> &nbsp;·&nbsp;
+            Estado: <strong>${esc(np.mode ?? 'dry_run')}</strong> &nbsp;·&nbsp;
+            Política: <em>${esc(np.policy ?? '')}</em>
+          </div>
+        </div>
+        ${recHtml ? `<ul style="font-size:12px;color:#6c757d;margin-top:10px;padding-left:18px">${recHtml}</ul>` : ''}
+        <p style="font-size:11px;color:#6c757d;margin-top:8px">
+          ✔ Read-only — DB writes: 0 — No se enviaron notificaciones.
+        </p>`;
+      reportLoaded = true;
+    } catch (e) {
+      reportBody.innerHTML = `<em style="color:#dc3545;font-size:12px">Error al cargar reporte: ${esc(e.message)}</em>`;
+    }
+  }
+
+  reportSection.addEventListener('toggle', () => {
+    if (reportSection.open && !reportLoaded) loadReport();
+  });
+  reportRefreshBtn.addEventListener('click', (e) => { e.stopPropagation(); loadReport(); });
 })();
 </script>
 @endpush

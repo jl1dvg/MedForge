@@ -285,6 +285,7 @@ class WhatsappUiController
         return view('whatsapp.v2-operational-alerts', [
             'apiUrl'        => url('/v2/whatsapp/api/operational-alerts'),
             'previewApiUrl' => url('/v2/whatsapp/api/operational-alerts/notification-preview'),
+            'reportApiUrl'  => url('/v2/whatsapp/api/operational-alerts/daily-report'),
             'chatUrl'       => url('/v2/whatsapp/chat'),
         ]);
     }
