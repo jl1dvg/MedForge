@@ -374,8 +374,8 @@ class MedforgeNavigation
             ])
                 : null,
             $canAccessWhatsAppFlowmaker
-                ? $link('Flowmaker', '/v2/whatsapp/flowmaker', 'mdi mdi-robot-outline', [
-                'prefix' => ['/v2/whatsapp/flowmaker'],
+                ? $link('Flowmaker', '/v3/whatsapp/flowmaker', 'mdi mdi-robot-outline', [
+                'prefix' => ['/v3/whatsapp/flowmaker'],
             ])
                 : null,
             $canAccessWhatsAppTemplates
