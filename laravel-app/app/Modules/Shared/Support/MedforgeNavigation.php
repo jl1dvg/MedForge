@@ -401,6 +401,12 @@ class MedforgeNavigation
             $canAccessFarmacia
                 ? $link('Dashboard farmacia', '/v2/farmacia', 'mdi mdi-medical-bag', [
                 'prefix' => ['/farmacia', '/v2/farmacia'],
+                'exclude_prefix' => ['/v2/pharmacy'],
+            ])
+                : null,
+            $canAccessFarmacia
+                ? $link('Farmacia Pro', '/v2/pharmacy/dashboard', 'mdi mdi-pill', [
+                'prefix' => ['/v2/pharmacy'],
             ])
                 : null,
         ]));

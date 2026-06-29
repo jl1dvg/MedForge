@@ -47,6 +47,7 @@ export default defineConfig({
                 'resources/js/v2/reportes-v2/cirugias/app.tsx',
                 'resources/js/v2/reportes-v2/imagenes/app.tsx',
                 'resources/js/v2/reportes-v2/whatsapp/app.tsx',
+                'resources/js/pharmacy/main.tsx',
             ],
             refresh: true,
         }),
