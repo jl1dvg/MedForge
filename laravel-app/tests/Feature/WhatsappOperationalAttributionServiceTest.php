@@ -29,6 +29,8 @@ class WhatsappOperationalAttributionServiceTest extends TestCase
             $table->id();
             $table->string('wa_number', 32)->index();
             $table->string('patient_hc_number', 64)->nullable()->index();
+            $table->string('display_name', 191)->nullable();
+            $table->string('patient_full_name', 191)->nullable();
             $table->boolean('needs_human')->default(false);
             $table->unsignedBigInteger('assigned_user_id')->nullable();
             $table->timestamp('assigned_at')->nullable();

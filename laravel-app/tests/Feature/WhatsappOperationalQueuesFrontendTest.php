@@ -46,6 +46,7 @@ class WhatsappOperationalQueuesFrontendTest extends TestCase
             $table->unsignedBigInteger('role_id')->nullable();
             $table->string('whatsapp_number')->nullable();
             $table->boolean('whatsapp_notify')->default(false);
+            $table->string('profile_photo')->nullable();
         });
 
         DB::table('users')->insert([

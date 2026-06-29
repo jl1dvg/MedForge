@@ -30,6 +30,8 @@ class WhatsappOperationalQueueAuditCommandTest extends TestCase
         Schema::create('whatsapp_conversations', function (Blueprint $table): void {
             $table->id();
             $table->string('wa_number', 32)->unique();
+            $table->string('display_name', 191)->nullable();
+            $table->string('patient_full_name', 191)->nullable();
             $table->string('patient_hc_number', 64)->nullable();
             $table->boolean('needs_human')->default(true);
             $table->unsignedBigInteger('assigned_user_id')->nullable();

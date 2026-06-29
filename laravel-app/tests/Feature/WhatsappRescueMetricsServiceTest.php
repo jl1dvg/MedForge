@@ -27,6 +27,8 @@ class WhatsappRescueMetricsServiceTest extends TestCase
             $table->id();
             $table->string('wa_number', 32)->unique();
             $table->string('patient_hc_number', 64)->nullable();
+            $table->string('display_name', 191)->nullable();
+            $table->string('patient_full_name', 191)->nullable();
             $table->boolean('needs_human')->default(false);
             $table->unsignedBigInteger('assigned_user_id')->nullable();
             $table->timestamps();

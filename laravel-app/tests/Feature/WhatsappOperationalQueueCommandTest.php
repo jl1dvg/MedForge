@@ -30,6 +30,8 @@ class WhatsappOperationalQueueCommandTest extends TestCase
         Schema::create('whatsapp_conversations', function (Blueprint $table): void {
             $table->id();
             $table->string('wa_number', 32)->unique();
+            $table->string('display_name', 191)->nullable();
+            $table->string('patient_full_name', 191)->nullable();
             $table->string('patient_hc_number', 64)->nullable();
             $table->boolean('needs_human')->default(true);
             $table->unsignedBigInteger('assigned_user_id')->nullable();
@@ -116,6 +118,7 @@ class WhatsappOperationalQueueCommandTest extends TestCase
         // Two HOT_OPEN assigned without response → supervisor_review
         foreach ([1, 2, 3] as $i) {
             $this->seedConversation($i, now()->subHours(3), 'captacion_agendar', agentId: 9);
+            $this->seedInbound($i, now()->subHours(2));
         }
 
         Artisan::call('whatsapp:operational-queues', [
@@ -211,7 +214,7 @@ class WhatsappOperationalQueueCommandTest extends TestCase
 
         $this->assertSame('assignment', $payload['queue']);
         $this->assertIsArray($payload['items']);
-        $this->assertArrayHasKey('assignment_queue', $payload['summary']);
+        $this->assertArrayHasKey('total', $payload['summary']);
 
         Carbon::setTestNow();
     }

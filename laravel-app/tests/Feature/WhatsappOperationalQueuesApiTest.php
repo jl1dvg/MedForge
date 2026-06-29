@@ -29,6 +29,8 @@ class WhatsappOperationalQueuesApiTest extends TestCase
         Schema::create('whatsapp_conversations', function (Blueprint $table): void {
             $table->id();
             $table->string('wa_number', 32)->unique();
+            $table->string('display_name', 191)->nullable();
+            $table->string('patient_full_name', 191)->nullable();
             $table->string('patient_hc_number', 64)->nullable();
             $table->boolean('needs_human')->default(true);
             $table->unsignedBigInteger('assigned_user_id')->nullable();
@@ -135,6 +137,7 @@ class WhatsappOperationalQueuesApiTest extends TestCase
     {
         Carbon::setTestNow('2026-06-25 10:00:00');
         $this->seedConversation(1, now()->subHours(3), 'captacion_agendar', agentId: 9);
+        $this->seedInbound(1, now()->subHours(2));
 
         $response = $this->withoutMiddleware()
             ->getJson('/v2/whatsapp/api/operational-queues?queue=supervisor');
@@ -171,6 +174,7 @@ class WhatsappOperationalQueuesApiTest extends TestCase
     {
         Carbon::setTestNow('2026-06-25 10:00:00');
         $this->seedConversation(1, now()->subHour(), 'captacion_agendar', agentId: 9);
+        $this->seedInbound(1, now()->subMinutes(30));
 
         $response = $this->withoutMiddleware()
             ->getJson('/v2/whatsapp/api/operational-queues?queue=all');
@@ -270,6 +274,7 @@ class WhatsappOperationalQueuesApiTest extends TestCase
         Carbon::setTestNow('2026-06-25 10:00:00');
         foreach ([1, 2, 3] as $i) {
             $this->seedConversation($i, now()->subHours(3), 'captacion_agendar', agentId: 9);
+            $this->seedInbound($i, now()->subHours(2));
         }
 
         $response = $this->withoutMiddleware()
