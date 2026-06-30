@@ -40,11 +40,13 @@ function NasViewer({ row }) {
   const [files, setFiles] = useState(null); // null = loading, [] = empty
   const [idx, setIdx] = useState(0);
   const [error, setError] = useState(null);
+  const [zoom, setZoom] = useState(1);
 
   useEffect(() => {
     setFiles(null);
     setIdx(0);
     setError(null);
+    setZoom(1);
     if (!row?.form_id || !row?.hc_number) { setFiles([]); return; }
     const params = new URLSearchParams({ hc_number: row.hc_number, form_id: row.form_id });
     fetch(`/v2/imagenes/examenes-realizados/nas/list?${params}`, { credentials: 'same-origin' })
@@ -52,6 +54,10 @@ function NasViewer({ row }) {
       .then((data) => { setFiles(data.files || []); if (!data.success) setError(data.error || null); })
       .catch(() => { setFiles([]); setError('Error al cargar archivos del NAS.'); });
   }, [row?.form_id, row?.hc_number]);
+
+  useEffect(() => {
+    setZoom(1);
+  }, [idx]);
 
   if (files === null) {
     return (
@@ -75,15 +81,33 @@ function NasViewer({ row }) {
   const cur = files[idx];
   const isPdf = (cur.type || cur.name || '').toLowerCase().includes('pdf');
   const fileUrl = cur.url || '';
+  const zoomPercent = Math.round(zoom * 100);
+  const zoomOut = () => setZoom((value) => Math.max(0.75, Math.round((value - 0.25) * 100) / 100));
+  const zoomIn = () => setZoom((value) => Math.min(3, Math.round((value + 0.25) * 100) / 100));
 
   return (
     <div className="imr-nas-panel">
-      <div className="imr-nas-stage" style={isPdf ? { overflow: 'hidden' } : {}}>
+      <div className={`imr-nas-stage ${fileUrl && !isPdf ? 'imr-nas-image-stage' : ''}`} style={isPdf ? { overflow: 'hidden' } : {}}>
         <button className="imr-nas-nav imr-nas-prev" disabled={idx <= 0} onClick={() => setIdx((i) => Math.max(0, i - 1))} aria-label="Anterior">
           <i className="mdi mdi-chevron-left"></i>
         </button>
         {fileUrl && !isPdf ? (
-          <img className="imr-nas-media" src={fileUrl} alt={cur.name} />
+          <>
+            <div className="imr-nas-scroll-inner">
+              <img className="imr-nas-media imr-nas-image" src={fileUrl} alt={cur.name} style={{ width: `${zoomPercent}%` }} />
+            </div>
+            <div className="imr-nas-zoom" aria-label="Controles de zoom">
+              <button type="button" onClick={zoomOut} disabled={zoom <= 0.75} title="Alejar">
+                <i className="mdi mdi-magnify-minus-outline"></i>
+              </button>
+              <button type="button" onClick={() => setZoom(1)} title="Ajustar a 100%">
+                {zoomPercent}%
+              </button>
+              <button type="button" onClick={zoomIn} disabled={zoom >= 3} title="Acercar">
+                <i className="mdi mdi-magnify-plus-outline"></i>
+              </button>
+            </div>
+          </>
         ) : fileUrl && isPdf ? (
           <iframe className="imr-nas-media imr-nas-frame" src={fileUrl} title={cur.name} />
         ) : (
@@ -127,12 +151,13 @@ function NasViewer({ row }) {
 // ---- Patient data strip --------------------------------------------
 function PatientStrip({ row }) {
   const afil = AFILIACIONES.find((a) => a.value === row.afiliacion);
+  const ojoLabel = row.ojo || 'Ambos ojos';
   return (
     <div className="imr-pt-strip">
       <div className="imr-pt-item"><span className="imr-pt-k">Paciente</span><span className="imr-pt-v">{row.full_name}</span></div>
       <div className="imr-pt-item"><span className="imr-pt-k">Cédula / HC</span><span className="imr-pt-v" style={{ fontFamily: 'var(--font-mono)' }}>{row.cedula} · {row.hc_number}</span></div>
       <div className="imr-pt-item"><span className="imr-pt-k">Examen</span><span className="imr-pt-v">{row.tipo_label}</span></div>
-      <div className="imr-pt-item"><span className="imr-pt-k">Ojo</span><span className="imr-pt-v">{row.ojo}</span></div>
+      <div className="imr-pt-item"><span className="imr-pt-k">Ojo</span><span className="imr-pt-v">{ojoLabel}</span></div>
       <div className="imr-pt-item"><span className="imr-pt-k">Fecha</span><span className="imr-pt-v">{fmtDate(row.fecha_examen)}</span></div>
       <div className="imr-pt-item"><span className="imr-pt-k">Afiliación</span><span className="imr-pt-v">{afil ? afil.label : row.afiliacion}</span></div>
       {row.equipo && <div className="imr-pt-item"><span className="imr-pt-k">Equipo</span><span className="imr-pt-v">{row.equipo}</span></div>}
@@ -274,11 +299,12 @@ export function InformarModal({ row, readOnly, onClose, onSave, showToast, docto
   const [auto, setAuto] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const isAmbosOjos = /ambos/i.test(row.ojo || '');
+  const ojoLabel = row.ojo || 'Ambos ojos';
+  const isAmbosOjos = ojoLabel.trim() === '' || /ambos|\bao\b/i.test(ojoLabel);
   const showBilateral = tpl.bilateral && isAmbosOjos;
   const eyes = showBilateral ? ['od', 'oi'] : [null];
   const eyeLabels = { od: 'OD — Ojo Derecho', oi: 'OI — Ojo Izquierdo' };
-  const singleEyeSuffix = /izquierdo|\boi\b/i.test(row.ojo || '') ? 'OI' : 'OD';
+  const singleEyeSuffix = /izquierdo|\boi\b/i.test(ojoLabel) ? 'OI' : 'OD';
 
   // Load existing informe on open and reverse-map legacy field names → React field names
   useEffect(() => {
@@ -423,7 +449,7 @@ export function InformarModal({ row, readOnly, onClose, onSave, showToast, docto
       icon={readOnly ? 'mdi-file-eye-outline' : 'mdi-file-document-edit-outline'}
       iconTone={readOnly ? 'success' : 'primary'}
       title={readOnly ? 'Informe del examen' : isCorrection ? 'Corregir informe' : 'Informar examen'}
-      sub={`${row.tipo_label} · ${row.ojo}`}
+      sub={`${row.tipo_label} · ${ojoLabel}`}
       onClose={onClose} footer={footer}>
       <PatientStrip row={row} />
       <div className="imr-informe-grid">
@@ -486,9 +512,10 @@ export function InformarModal({ row, readOnly, onClose, onSave, showToast, docto
 
 // ---- Modal: Ver imágenes -------------------------------------------
 export function VerImagenesModal({ row, onClose }) {
+  const ojoLabel = row.ojo || 'Ambos ojos';
   return (
     <ModalShell size="md" icon="mdi-folder-image" iconTone="primary"
-      title="Imágenes del examen" sub={`${row.full_name} · ${row.tipo_short} · ${row.ojo}`}
+      title="Imágenes del examen" sub={`${row.full_name} · ${row.tipo_short} · ${ojoLabel}`}
       onClose={onClose}
       footer={
         <>
