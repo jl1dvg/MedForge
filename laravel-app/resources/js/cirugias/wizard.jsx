@@ -167,15 +167,16 @@ function runAudit(r) {
     add('ok', 'Descripción operatoria', 'Descripción operatoria presente.');
   }
 
+  // Los diagnósticos pre-op (derivación) y post-op son conceptualmente distintos:
+  // el pre-op refleja la patología antes de operar (ej. H259 catarata), el post-op
+  // refleja el resultado (ej. Z961 pseudofaquia). Solo se alerta si no hay ningún
+  // diagnóstico post-op registrado.
   const previos = (r.diagnosticos_previos || []).map((d) => d.cie10);
   const registrados = (r.diagnosticos || []).map((d) => d.cie10);
-  const faltanDx = previos.filter((c) => !registrados.includes(c));
   if (registrados.length === 0) {
-    add('error', 'Diagnósticos', 'No hay diagnósticos registrados en el protocolo.', { faltantes: previos });
-  } else if (faltanDx.length) {
-    add('warning', 'Diagnósticos', 'Hay diagnósticos de la derivación que no constan en el protocolo.', { proyectado: previos.join(', '), registrado: registrados.join(', '), faltantes: faltanDx });
+    add('error', 'Diagnósticos', 'No hay diagnósticos post-operatorios registrados en el protocolo.', { faltantes: previos });
   } else {
-    add('ok', 'Diagnósticos', 'Diagnósticos registrados concuerdan con la derivación.', { registrado: registrados.join(', ') });
+    add('ok', 'Diagnósticos', 'Diagnósticos registrados en el protocolo.', { registrado: registrados.join(', ') });
   }
 
   const usados = flatInsumos(r.insumos).map((x) => x.nombre);
