@@ -25,6 +25,17 @@ class CirugiasReadController
         $this->service = new CirugiaService($pdo);
     }
 
+    public function staffOptions(Request $request): JsonResponse
+    {
+        if (!Auth::check()) {
+            return response()->json(['error' => 'Sesion expirada'], 401);
+        }
+
+        return response()->json([
+            'data' => $this->service->obtenerStaffPorEspecialidad(),
+        ]);
+    }
+
     public function datatable(Request $request): JsonResponse
     {
         if (!Auth::check()) {
@@ -180,11 +191,10 @@ class CirugiasReadController
 
         $auditoria = $this->service->obtenerAuditoriaProtocolo($cirugia);
 
-        // Parse insumos/medicamentos for the wizard
-        $insumosRaw = json_decode((string) ($cirugia->insumos ?? '{}'), true);
-        $insumos = is_array($insumosRaw) ? $insumosRaw : [];
-        $medicamentosRaw = json_decode((string) ($cirugia->medicamentos ?? '[]'), true);
-        $medicamentos = is_array($medicamentosRaw) ? $medicamentosRaw : [];
+        // Insumos/medicamentos: usa el JSON guardado si existe; si no, cae a la
+        // plantilla del procedimiento (misma lógica que el wizard legacy).
+        $insumos = $this->service->obtenerInsumosPorProtocolo($cirugia->procedimiento_id ?? null, $cirugia->insumos ?? null);
+        $medicamentos = $this->service->obtenerMedicamentosConfigurados($cirugia->medicamentos ?? null, $cirugia->procedimiento_id ?? null);
 
         return response()->json([
             // Patient identity (for wizard step 1)

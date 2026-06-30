@@ -1,11 +1,42 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import Select from 'react-select';
 import { AuditPanel } from './components';
 
-// ---- Catalogs (mirrors data.js for backend-driven wizard) -------
-const CIRUJANOS = {
-  'Cirujano Oftalmólogo': [],
-  'Anestesiólogo': [],
-  'Asistente': [],
+// ---- Staff options cache (módulo-level) -------------------------
+// Una sola petición por carga de página. Si falla, _staffPromise queda null
+// para que el próximo intento pueda reintentar.
+let _staffPromise = null;
+let _staffCache = null;
+
+function fetchStaffOptions(url) {
+  if (_staffCache) return Promise.resolve(_staffCache);
+  if (_staffPromise) return _staffPromise;
+  _staffPromise = fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+    .then((r) => r.json())
+    .then((d) => {
+      _staffCache = d.data || {};
+      _staffPromise = null; // ya resuelto, liberar referencia
+      return _staffCache;
+    })
+    .catch((err) => {
+      _staffPromise = null; // fallo → próximo intento puede reintentar
+      throw err;
+    });
+  return _staffPromise;
+}
+
+// ---- Catalogs ---------------------------------------------------
+// Mapeo rol del formulario -> clave del payload { cirujanos, anestesiologos, asistentes }
+const STAFF_ROLE_KEY = {
+  cirujano_1:       'cirujanos',
+  cirujano_2:       'cirujanos',
+  primer_ayudante:  'cirujanos',
+  segundo_ayudante: 'cirujanos',
+  tercer_ayudante:  'cirujanos',
+  anestesiologo:    'anestesiologos',
+  ayudante_anestesia: 'asistentes',
+  instrumentista:   'asistentes',
+  circulante:       'asistentes',
 };
 const TIPO_ANESTESIA = ['GENERAL', 'LOCAL', 'REGIONAL', 'SEDACIÓN', 'TÓPICA', 'PERIBULBAR'];
 const LATERALIDAD = [
@@ -19,6 +50,9 @@ const INSUMOS_DISPONIBLES = {
   anestesia: ['Lidocaína 2%', 'Bupivacaína 0.75%', 'Set de anestesia peribulbar', 'Midazolam', 'Propofol'],
 };
 const CAT_INSUMO_LABEL = { equipos: 'Equipos', quirurgicos: 'Quirúrgicos', anestesia: 'Anestesia' };
+// Colores legacy por categoría/responsable (wizard anterior)
+const CAT_INSUMO_COLOR = { equipos: '#cce5ff', anestesia: '#f8d7da', quirurgicos: '#d4edda' };
+const RESP_MED_COLOR = { 'Anestesiólogo': '#f8d7da', 'Cirujano Principal': '#cce5ff', 'Asistente': '#d4edda' };
 const MEDICAMENTOS = ['Cefazolina', 'Moxifloxacino intracameral', 'Dexametasona', 'Ketorolaco', 'Atropina', 'Acetazolamida', 'Bevacizumab (Avastin)', 'Ranibizumab', 'Triamcinolona', 'Tropicamida', 'Apraclonidina'];
 const VIAS = ['INTRAVENOSA', 'INFILTRATIVA', 'SUBCONJUNTIVAL', 'TÓPICA', 'INTRAVÍTREA', 'INTRACAMERAL'];
 const RESPONSABLES_MED = ['Cirujano Principal', 'Anestesiólogo', 'Asistente', 'Instrumentista'];
@@ -315,6 +349,16 @@ export function ProtocolWizard({ form: initialForm, endpoints = {}, onClose, onS
   const [marcarRevisado, setMarcarRevisado] = useState(initialForm.status === 1);
   const [scraped, setScraped] = useState((initialForm.diagnosticos_previos || []).length > 0);
   const [scraping, setScraping] = useState(false);
+  const [staffOptions, setStaffOptions] = useState(() => _staffCache || {});
+
+  useEffect(() => {
+    if (!endpoints.staffOptions || _staffCache) return;
+    let cancelled = false;
+    fetchStaffOptions(endpoints.staffOptions)
+      .then((data) => { if (!cancelled) setStaffOptions(data); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [endpoints.staffOptions]);
 
   const audit = useMemo(() => runAudit(form), [form]);
   const stepStatus = useMemo(() => {
@@ -336,7 +380,7 @@ export function ProtocolWizard({ form: initialForm, endpoints = {}, onClose, onS
   const finish = () => onSave(form, { status: marcarRevisado ? 1 : 0 });
 
   const cur = WSTEPS[step].key;
-  const ctx = { form, set, setStaff, setForm, showToast, scraped, setScraped, scraping, setScraping, audit, marcarRevisado, setMarcarRevisado, endpoints, goStep: (k) => go(WSTEPS.findIndex((s) => s.key === k)) };
+  const ctx = { form, set, setStaff, setForm, showToast, scraped, setScraped, scraping, setScraping, audit, marcarRevisado, setMarcarRevisado, endpoints, staffOptions, goStep: (k) => go(WSTEPS.findIndex((s) => s.key === k)) };
 
   return (
     <div className="wiz-overlay">
@@ -637,13 +681,35 @@ function StepProcedimiento({ form, set, setForm, showToast, scraped, setScraped,
 }
 
 // ---- Step 3: Staff ----------------------------------------------
-function StepStaff({ form, setStaff }) {
-  const Sel = ({ label, k, req }) => (
-    <div className="form-row">
-      <label>{label} {req && <span style={{ color: 'var(--danger)' }}>*</span>}</label>
-      <input value={form.staff[k] || ''} onChange={(e) => setStaff(k, e.target.value)} placeholder="Nombre del profesional" />
-    </div>
-  );
+function StepStaff({ form, setStaff, staffOptions }) {
+  const optionsByRole = useMemo(() => {
+    const cache = {};
+    return (k) => {
+      const groupKey = STAFF_ROLE_KEY[k];
+      if (cache[groupKey]) return cache[groupKey];
+      const list = (staffOptions[groupKey] || []).map((u) => ({ value: u.nombre, label: u.nombre }));
+      cache[groupKey] = list;
+      return list;
+    };
+  }, [staffOptions]);
+
+  const Sel = ({ label, k, req }) => {
+    const value = form.staff[k] || '';
+    return (
+      <div className="form-row">
+        <label>{label} {req && <span style={{ color: 'var(--danger)' }}>*</span>}</label>
+        <Select
+          classNamePrefix="rs"
+          isClearable
+          placeholder="Buscar profesional..."
+          noOptionsMessage={() => 'Sin resultados'}
+          options={optionsByRole(k)}
+          value={value ? { value, label: value } : null}
+          onChange={(opt) => setStaff(k, opt ? opt.value : '')}
+        />
+      </div>
+    );
+  };
   return (
     <div className="wiz-stepframe">
       <h3>Equipo quirúrgico</h3>
@@ -666,14 +732,24 @@ function StepStaff({ form, setStaff }) {
 // ---- Step 4: Tiempos & Anestesia --------------------------------
 function StepTiempos({ form, set }) {
   const dur = durMin(form.hora_inicio, form.hora_fin);
+
+  // Autocompleta fecha_fin con fecha_inicio mientras el usuario no la haya
+  // editado manualmente (ej. cirugía que cruza medianoche).
+  const handleFechaInicio = (value) => {
+    set('fecha_inicio', value);
+    if (!form.fecha_fin || form.fecha_fin === form.fecha_inicio) {
+      set('fecha_fin', value);
+    }
+  };
+
   return (
     <div className="wiz-stepframe">
       <h3>Tiempos quirúrgicos y anestesia</h3>
       <div className="step-sub">Horario real del procedimiento y tipo de anestesia administrada.</div>
       <div className="form-grid-2">
-        <div className="form-row"><label>Fecha de inicio</label><input type="date" value={form.fecha_inicio} onChange={(e) => set('fecha_inicio', e.target.value)} /></div>
+        <div className="form-row"><label>Fecha de inicio</label><input type="date" value={form.fecha_inicio} onChange={(e) => handleFechaInicio(e.target.value)} /></div>
         <div className="form-row"><label>Hora de inicio</label><input type="time" value={form.hora_inicio} onChange={(e) => set('hora_inicio', e.target.value)} /></div>
-        <div className="form-row"><label>Fecha de fin</label><input type="date" value={form.fecha_fin} onChange={(e) => set('fecha_fin', e.target.value)} /></div>
+        <div className="form-row"><label>Fecha de fin</label><input type="date" value={form.fecha_fin} onChange={(e) => set('fecha_fin', e.target.value)} /><span className="hint">Se autocompleta con la fecha de inicio. Cámbiala solo si la cirugía cruza medianoche.</span></div>
         <div className="form-row"><label>Hora de fin</label><input type="time" value={form.hora_fin} onChange={(e) => set('hora_fin', e.target.value)} /></div>
       </div>
       <div className="form-grid-2">
@@ -785,7 +861,7 @@ function StepInsumos({ form, setForm, showToast }) {
             {all.map((it, i) => {
               const listId = `insumos-cat-${it.cat}-${i}`;
               return (
-                <tr key={i}>
+                <tr key={i} style={{ backgroundColor: CAT_INSUMO_COLOR[it.cat] || 'transparent' }}>
                   <td>
                     <select value={it.cat} onChange={(e) => updItem(i, 'cat', e.target.value)}>
                       {cats.map((c) => <option key={c} value={c}>{CAT_INSUMO_LABEL[c]}</option>)}
@@ -866,7 +942,7 @@ function StepMedicamentos({ form, setForm, showToast }) {
           <tbody>
             {meds.length === 0 && <tr><td colSpan={5} style={{ padding: 16, color: 'var(--fg-mute)', fontStyle: 'italic' }}>Sin medicamentos registrados.</td></tr>}
             {meds.map((m, i) => (
-              <tr key={i}>
+              <tr key={i} style={{ backgroundColor: RESP_MED_COLOR[m.responsable] || 'transparent' }}>
                 <td>
                   {/* Free-text + datalist — never silently replaces real values from backend */}
                   <input list="med-nombres" value={m.nombre} placeholder="Medicamento"
