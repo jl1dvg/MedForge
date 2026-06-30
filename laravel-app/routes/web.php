@@ -43,7 +43,25 @@ Route::get('/control-center/{path?}', function (?string $path = null) {
         abort(404);
     }
 
-    return response()->file($realPath);
+    $extension = strtolower(pathinfo($realPath, PATHINFO_EXTENSION));
+    $mimeTypes = [
+        'css' => 'text/css; charset=utf-8',
+        'html' => 'text/html; charset=utf-8',
+        'ico' => 'image/x-icon',
+        'jpg' => 'image/jpeg',
+        'jpeg' => 'image/jpeg',
+        'js' => 'text/javascript; charset=utf-8',
+        'jsx' => 'text/plain; charset=utf-8',
+        'png' => 'image/png',
+        'svg' => 'image/svg+xml',
+        'ttf' => 'font/ttf',
+        'woff' => 'font/woff',
+        'woff2' => 'font/woff2',
+    ];
+
+    return response()->file($realPath, [
+        'Content-Type' => $mimeTypes[$extension] ?? 'application/octet-stream',
+    ]);
 })->where('path', '.*');
 
 Route::get('/auth/login', [LoginController::class, 'show'])->name('login');
