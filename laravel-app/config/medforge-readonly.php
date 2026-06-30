@@ -15,7 +15,7 @@ return [
 
     'mode' => env('MEDFORGE_READONLY_MODE', 'auto'),
 
-    'start_date' => env('MEDFORGE_READONLY_START', '2026-07-01 00:00:00'),
+    'start_date' => env('MEDFORGE_READONLY_START', '2026-07-15 00:00:00'),
     'end_date' => env('MEDFORGE_READONLY_END', '2026-07-31 23:59:59'),
 
     'message' => env(
