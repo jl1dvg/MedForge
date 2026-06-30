@@ -27,6 +27,8 @@ Route::get('/', function () {
     return view('welcome');
 });
 
+Route::redirect('/control-center', '/control-center/index.html');
+
 Route::get('/auth/login', [LoginController::class, 'show'])->name('login');
 Route::post('/auth/login', [LoginController::class, 'login']);
 Route::get('/auth/logout', [UnifiedLogoutController::class, 'logout']);
