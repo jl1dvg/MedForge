@@ -10,6 +10,7 @@ use App\Http\Middleware\CiveExtensionAuth;
 use App\Http\Middleware\ConsultasCors;
 use App\Http\Middleware\RequireLegacyPermission;
 use App\Http\Middleware\RequireLegacySession;
+use App\Http\Middleware\RequireOwnerAccess;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -41,6 +42,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'consultas.cors' => ConsultasCors::class,
             'cive.extension.auth' => CiveExtensionAuth::class,
             'whatsapp.feature' => EnsureWhatsappFeatureEnabled::class,
+            'owner.access'     => RequireOwnerAccess::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
