@@ -44,3 +44,4 @@ cive_extention/manifest.json
 .superpowers/
 /laravel-app/public/build_bk/
 medforge-design-system/
+.claude/worktrees/

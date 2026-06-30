@@ -255,9 +255,23 @@ class CirugiaService
 
         $baseFrom = "FROM protocolo_data pr
             INNER JOIN patient_data p
-                ON p.hc_number = pr.hc_number
+                ON CONVERT(p.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                 = CONVERT(pr.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
             LEFT JOIN procedimiento_proyectado pp
                 ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number
+            LEFT JOIN users u_cir
+                ON u_cir.nombre_norm = pr.cirujano_1 OR u_cir.nombre_norm_rev = pr.cirujano_1
+            LEFT JOIN users u_firmado
+                ON u_firmado.id = pr.protocolo_firmado_por
+            LEFT JOIN protocolo_huellas ph_last
+                ON ph_last.id = (
+                    SELECT ph2.id FROM protocolo_huellas ph2
+                    WHERE ph2.protocolo_id = pr.id
+                    ORDER BY ph2.actualizado_en DESC, ph2.id DESC
+                    LIMIT 1
+                )
+            LEFT JOIN users u_huella
+                ON u_huella.id = ph_last.usuario_id
             {$categoriaContext['join']}";
 
         $buildWhere = function (bool $includeSearch, array &$params) use (
@@ -347,14 +361,30 @@ class CirugiaService
                 p.fname,
                 p.lname,
                 p.lname2,
+                TIMESTAMPDIFF(YEAR, p.fecha_nacimiento, CURDATE()) AS edad,
                 p.afiliacion,
                 {$afiliacionLabelExpr} AS afiliacion_label,
                 {$categoriaContext['expr']} AS afiliacion_categoria,
                 {$sedeExpr} AS sede,
                 pr.fecha_inicio,
                 pr.membrete,
+                COALESCE(NULLIF(TRIM(pr.lateralidad), ''), '') AS lateralidad,
                 pr.printed,
-                pr.status
+                pr.status,
+                u_cir.first_name    AS cirujano_first_name,
+                u_cir.last_name     AS cirujano_last_name,
+                u_firmado.first_name AS firmado_first_name,
+                u_firmado.last_name  AS firmado_last_name,
+                pr.fecha_firma,
+                u_huella.first_name  AS huella_first_name,
+                u_huella.last_name   AS huella_last_name,
+                ph_last.evento       AS huella_evento,
+                ph_last.actualizado_en AS huella_fecha,
+                (
+                    CASE WHEN COALESCE(NULLIF(TRIM(pr.cirujano_1), ''), '') = '' THEN 1 ELSE 0 END
+                    + CASE WHEN COALESCE(NULLIF(TRIM(pr.lateralidad), ''), '') = '' THEN 1 ELSE 0 END
+                    + CASE WHEN pp.form_id IS NULL THEN 1 ELSE 0 END
+                ) AS alertas_count
             {$baseFrom}
             {$whereFiltered}
             ORDER BY {$orderExpr} {$orderDir}, pr.id DESC
@@ -380,6 +410,42 @@ class CirugiaService
     /**
      * @return array<int, array{value:string,label:string}>
      */
+    /**
+     * Replica la lógica del wizard legacy: agrupa usuarios por especialidad
+     * para alimentar los selectores del equipo quirúrgico (Step 3).
+     *
+     * @return array<string, array<int, array{id: int, nombre: string}>>
+     */
+    public function obtenerStaffPorEspecialidad(): array
+    {
+        $result = ['cirujanos' => [], 'anestesiologos' => [], 'asistentes' => []];
+
+        $stmt = $this->db->prepare(
+            "SELECT id, nombre, especialidad
+               FROM users
+              WHERE especialidad IN ('Cirujano Oftalmólogo', 'Anestesiologo', 'Asistente')
+              ORDER BY especialidad, nombre"
+        );
+        $stmt->execute();
+
+        $map = [
+            'Cirujano Oftalmólogo' => 'cirujanos',
+            'Anestesiologo'        => 'anestesiologos',
+            'Asistente'            => 'asistentes',
+        ];
+
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $key = $map[(string) ($row['especialidad'] ?? '')] ?? null;
+            if ($key === null) continue;
+            $result[$key][] = [
+                'id'     => (int) ($row['id'] ?? 0),
+                'nombre' => (string) ($row['nombre'] ?? ''),
+            ];
+        }
+
+        return $result;
+    }
+
     public function obtenerAfiliacionOptions(): array
     {
         $afiliacionKeyExpr = $this->afiliacionGroupKeyExpr('p');
@@ -890,7 +956,7 @@ class CirugiaService
                 'primer_ayudante' => $this->normalizeNullableString($data['primer_ayudante'] ?? null),
                 'segundo_ayudante' => $this->normalizeNullableString($data['segundo_ayudante'] ?? null),
                 'tercer_ayudante' => $this->normalizeNullableString($data['tercer_ayudante'] ?? null),
-                'ayudante_anestesia' => $this->normalizeNullableString($data['ayudanteAnestesia'] ?? null),
+                'ayudante_anestesia' => $this->normalizeNullableString($data['ayudante_anestesia'] ?? $data['ayudanteAnestesia'] ?? null),
                 'anestesiologo' => $this->normalizeNullableString($data['anestesiologo'] ?? null),
                 'instrumentista' => $this->normalizeNullableString($data['instrumentista'] ?? null),
                 'circulante' => $this->normalizeNullableString($data['circulante'] ?? null),

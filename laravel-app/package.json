@@ -4,7 +4,8 @@
     "type": "module",
     "scripts": {
         "build": "vite build",
-        "dev": "vite"
+        "dev": "vite",
+        "test:flowmaker-v3": "node tests/js/flowmaker-v3-compiler-smoke.mjs"
     },
     "devDependencies": {
         "@mdi/font": "^7.4.47",
@@ -26,6 +27,7 @@
         "vite": "^7.0.7"
     },
     "dependencies": {
+        "react-select": "^5.10.1",
         "recharts": "^3.8.1"
     }
 }

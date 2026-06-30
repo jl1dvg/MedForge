@@ -25,6 +25,17 @@ class CirugiasReadController
         $this->service = new CirugiaService($pdo);
     }
 
+    public function staffOptions(Request $request): JsonResponse
+    {
+        if (!Auth::check()) {
+            return response()->json(['error' => 'Sesion expirada'], 401);
+        }
+
+        return response()->json([
+            'data' => $this->service->obtenerStaffPorEspecialidad(),
+        ]);
+    }
+
     public function datatable(Request $request): JsonResponse
     {
         if (!Auth::check()) {
@@ -180,26 +191,61 @@ class CirugiasReadController
 
         $auditoria = $this->service->obtenerAuditoriaProtocolo($cirugia);
 
+        // Insumos/medicamentos: usa el JSON guardado si existe; si no, cae a la
+        // plantilla del procedimiento (misma lógica que el wizard legacy).
+        $insumos = $this->service->obtenerInsumosPorProtocolo($cirugia->procedimiento_id ?? null, $cirugia->insumos ?? null);
+        $medicamentos = $this->service->obtenerMedicamentosConfigurados($cirugia->medicamentos ?? null, $cirugia->procedimiento_id ?? null);
+
         return response()->json([
+            // Patient identity (for wizard step 1)
+            'hc_number'  => $cirugia->hc_number,
+            'fname'      => $cirugia->fname,
+            'mname'      => $cirugia->mname,
+            'lname'      => $cirugia->lname,
+            'lname2'     => $cirugia->lname2,
+            'fecha_nacimiento' => $cirugia->fecha_nacimiento,
+            // Procedure
+            'procedimiento_id'        => $cirugia->procedimiento_id,
+            'procedimiento_proyectado' => $cirugia->procedimiento_proyectado,
+            'membrete'    => $cirugia->membrete,
+            'lateralidad' => $cirugia->lateralidad,
+            // Tiempos
             'fecha_inicio' => $cirugia->fecha_inicio,
-            'hora_inicio' => $cirugia->hora_inicio,
-            'hora_fin' => $cirugia->hora_fin,
-            'duracion' => $duracion,
-            'dieresis' => $cirugia->dieresis,
-            'exposicion' => $cirugia->exposicion,
-            'hallazgo' => $cirugia->hallazgo,
-            'operatorio' => $cirugia->operatorio,
-            'comentario' => $cirugia->complicaciones_operatorio,
-            'diagnosticos' => $diagnosticos,
-            'procedimientos' => $procedimientos,
-            'staff' => $staff,
+            'fecha_fin'    => $cirugia->fecha_fin ?? '',
+            'hora_inicio'  => $cirugia->hora_inicio,
+            'hora_fin'     => $cirugia->hora_fin,
+            'duracion'     => $duracion,
+            'tipo_anestesia' => $cirugia->tipo_anestesia,
+            // Operatorio
+            'dieresis'    => $cirugia->dieresis,
+            'exposicion'  => $cirugia->exposicion,
+            'hallazgo'    => $cirugia->hallazgo,
+            'operatorio'  => $cirugia->operatorio,
+            'complicaciones_operatorio' => $cirugia->complicaciones_operatorio,
+            // Collections
+            'diagnosticos'         => $diagnosticos,
+            'diagnosticos_previos' => json_decode((string) ($cirugia->diagnosticos_previos ?? '[]'), true) ?: [],
+            'procedimientos'       => $procedimientos,
+            'insumos'              => $insumos,
+            'medicamentos'         => $medicamentos,
+            // Staff
+            'staff'     => $staff,
+            // Audit
             'auditoria' => $auditoria,
         ]);
     }
 
+    private function buildDoctorName(?string $firstName, ?string $lastName): string
+    {
+        $first = trim((string) ($firstName ?? ''));
+        $last  = trim((string) ($lastName ?? ''));
+        if ($first === '' && $last === '') return '';
+        return 'Dr. ' . implode(' ', array_filter([$first, $last]));
+    }
+
     /**
      * @param array<string, mixed> $row
-     * @return array<string, string>
+     * @return array<string, mixed>
      */
     private function buildDatatableRow(array $row): array
     {
@@ -208,7 +254,9 @@ class CirugiasReadController
         $cirugia = new Cirugia($row);
         $estado = $cirugia->getEstado();
         $printed = (int) ($row['printed'] ?? 0);
+        $alertasCount = (int) ($row['alertas_count'] ?? 0);
 
+        // Legacy HTML columns kept for the blade fallback
         $badgeEstado = match ($estado) {
             'revisado' => "<span class='badge bg-success'><i class='fa fa-check'></i></span>",
             'no revisado' => "<span class='badge bg-warning'><i class='fa fa-exclamation-triangle'></i></span>",
@@ -262,9 +310,29 @@ class CirugiasReadController
             $afiliacionHtml .= '<span class="d-block text-muted fs-11">Categoria: ' . $esc(ucfirst($categoria)) . '</span>';
         }
 
+        // Lateralidad normalised
+        $lateralidadRaw = strtoupper(trim((string) ($row['lateralidad'] ?? '')));
+        $lateralidad = match (true) {
+            str_contains($lateralidadRaw, 'AMBOS') || str_contains($lateralidadRaw, 'AO') || str_contains($lateralidadRaw, 'BILATERAL') => 'AO',
+            str_contains($lateralidadRaw, 'IZQUIERDO') || str_contains($lateralidadRaw, 'OI') || str_contains($lateralidadRaw, 'LEFT') => 'OI',
+            str_contains($lateralidadRaw, 'DERECHO') || str_contains($lateralidadRaw, 'OD') || str_contains($lateralidadRaw, 'RIGHT') => 'OD',
+            default => '',
+        };
+
+        // Audit status for React UI.
+        // 'estado' solo puede ser revisado/no revisado/incompleto (Cirugia::getEstado()).
+        // Como esta fila siempre proviene de protocolo_data, "incompleto" significa
+        // protocolo iniciado pendiente de completar/revisar, nunca "sin protocolo".
+        $auditStatus = match ($estado) {
+            'revisado' => 'conforme',
+            'no revisado' => 'por_revisar',
+            default => $alertasCount > 0 ? 'alertas' : 'por_revisar',
+        };
+
         return [
-            'form_id' => $esc((string) ($row['form_id'] ?? '')),
-            'hc_number' => $esc((string) ($row['hc_number'] ?? '')),
+            // Legacy HTML (used by blade fallback datatable)
+            'form_id' => $esc($formId),
+            'hc_number' => $esc($hcNumber),
             'full_name' => $esc($cirugia->getNombreCompleto()),
             'afiliacion_html' => $afiliacionHtml,
             'fecha_inicio' => $esc($fechaInicio),
@@ -272,6 +340,23 @@ class CirugiasReadController
             'protocolo_html' => $protocoloHtml,
             'descanso_html' => $descansoHtml,
             'imprimir_html' => $imprimirHtml,
+            // Clean fields for React UI
+            'cedula' => $esc((string) ($row['hc_number'] ?? '')),
+            'edad' => $row['edad'] !== null ? (int) $row['edad'] : null,
+            'afiliacion_label' => $esc($afiliacion),
+            'afiliacion_categoria' => $esc($categoria),
+            'sede' => $esc((string) ($row['sede'] ?? '')),
+            'lateralidad' => $lateralidad,
+            'estado' => $estado,
+            'printed' => $printed,
+            'alertas_count' => $alertasCount,
+            'audit_status' => $auditStatus,
+            'cirujano_display' => $this->buildDoctorName($row['cirujano_first_name'] ?? null, $row['cirujano_last_name'] ?? null),
+            'revisado_por' => $this->buildDoctorName($row['firmado_first_name'] ?? null, $row['firmado_last_name'] ?? null),
+            'revisado_fecha' => $esc((string) ($row['fecha_firma'] ?? '')),
+            'huella_display' => $this->buildDoctorName($row['huella_first_name'] ?? null, $row['huella_last_name'] ?? null),
+            'huella_evento' => $esc((string) ($row['huella_evento'] ?? '')),
+            'huella_fecha' => $esc((string) ($row['huella_fecha'] ?? '')),
         ];
     }
 }

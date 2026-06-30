@@ -14,6 +14,7 @@ class ConversationAbandonmentMonitorService
     public function __construct(
         private readonly ConversationOpsService $conversationOpsService = new ConversationOpsService(),
         private readonly AutomatedConversationDispatchService $dispatchService = new AutomatedConversationDispatchService(),
+        private readonly WhatsappRealtimeService $realtime = new WhatsappRealtimeService(),
     ) {
     }
 
@@ -165,6 +166,21 @@ class ConversationAbandonmentMonitorService
                             true,
                             $note
                         );
+                        $this->conversationOpsService->recordHandoffEventForConversation(
+                            (int) $conversation->id,
+                            'abandonment_escalated',
+                            null,
+                            $note
+                        );
+                        $this->realtime->broadcastHandoffOperationalEvent([
+                            'event' => 'handoff.escalated',
+                            'conversation_id' => (int) $conversation->id,
+                            'priority' => 'high',
+                            'topic' => 'captacion_agendar',
+                            'reason' => 'abandonment_monitor',
+                            'assigned_to' => null,
+                            'timestamp' => now()->toISOString(),
+                        ]);
 
                         $context['abandonment_monitor'] = array_merge($monitorContext, [
                             'nudged_at' => $nudgedAt->toISOString(),
