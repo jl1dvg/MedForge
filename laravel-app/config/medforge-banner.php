@@ -10,9 +10,9 @@ return [
     'enabled' => env('MEDFORGE_BANNER_ENABLED', true),
 
     // warning | danger | info — maps to a color variant in medforge-global-banner.css
-    'variant' => env('MEDFORGE_BANNER_VARIANT', 'danger'),
+    'variant' => env('MEDFORGE_BANNER_VARIANT', 'warning'),
 
-    'icon' => env('MEDFORGE_BANNER_ICON', 'mdi-alert'),
+    'icon' => env('MEDFORGE_BANNER_ICON', 'mdi-alert-outline'),
 
     'title' => env('MEDFORGE_BANNER_TITLE', 'Aviso Importante'),
 
