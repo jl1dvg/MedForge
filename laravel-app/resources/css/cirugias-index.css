@@ -417,7 +417,7 @@ table.cirtab tbody tr.row-alert:hover { background: linear-gradient(90deg, #fbe7
 .diag-prev-row .cie { font-family: var(--font-mono); font-weight: 700; color: #2e5e99; }
 .diag-prev-row .desc { flex: 1; color: var(--fg-2); }
 
-.etable-wrap { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; max-height: 480px; overflow-y: auto; }
+.etable-wrap { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
 .etable { width: 100%; border-collapse: collapse; font-size: 13px; }
 .etable thead th { text-align: left; padding: 9px 12px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .03em; color: var(--fg-mute); font-weight: 700; background: var(--bg-soft); border-bottom: 1px solid var(--border); }
 .etable tbody td { padding: 7px 10px; border-bottom: 1px solid rgba(0,0,0,.04); vertical-align: middle; }
