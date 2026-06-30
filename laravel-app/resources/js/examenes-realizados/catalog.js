@@ -283,7 +283,7 @@ export const TEMPLATES = {
   },
   ECOGRAFIA: {
     titulo: 'Ecografía ocular (modo B)',
-    bilateral: false,
+    bilateral: true,
     campos: [
       { k: 'hallazgos', label: 'Conclusión', type: 'text', ph: 'Membranas, masa, longitud axial…' },
     ],
