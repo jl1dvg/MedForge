@@ -24,6 +24,7 @@
         'endpoints' => [
             'datatable'       => '/v2/cirugias/datatable',
             'protocolo'       => '/v2/cirugias/protocolo',
+            'staffOptions'    => '/v2/cirugias/staff-options',
             'wizard'          => '/v2/cirugias/wizard',
             'printed'         => '/v2/cirugias/protocolo/printed',
             'status'          => '/v2/cirugias/protocolo/status',
