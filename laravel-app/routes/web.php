@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Owner\CompaniesController as OwnerCompaniesController;
 use App\Modules\Dashboard\Http\Controllers\DashboardUiController;
 use App\Modules\Consultas\Http\Controllers\ConsultasUiController;
 use App\Modules\Cirugias\Http\Controllers\ProtocolosLegacyBridgeController;
@@ -329,3 +330,10 @@ Route::middleware(['app.auth', 'app.permission:administrativo,crm.view,crm.manag
 
 Route::redirect('/crm', '/v2/crm');
 Route::redirect('/leads', '/v2/crm');
+
+// Platform-owner panel: access restricted by MEDFORGE_OWNER_EMAIL
+Route::middleware(['app.auth', 'owner.access'])->prefix('owner')->group(function (): void {
+    Route::get('/companies', [OwnerCompaniesController::class, 'index']);
+    Route::get('/companies/{id}/edit', [OwnerCompaniesController::class, 'edit'])->whereNumber('id');
+    Route::put('/companies/{id}', [OwnerCompaniesController::class, 'update'])->whereNumber('id');
+});

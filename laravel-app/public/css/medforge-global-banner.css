@@ -26,9 +26,9 @@
 }
 
 .medforge-global-banner--danger {
-  background: #fcd3dd;
-  border-bottom-color: #ee3158;
-  color: #6e1227;
+  background: #b91c1c;
+  border-bottom-color: #7f1d1d;
+  color: #ffffff;
 }
 
 .medforge-global-banner--info {
@@ -43,7 +43,7 @@
 }
 
 .medforge-global-banner--warning .medforge-global-banner__icon { color: #b9790a; }
-.medforge-global-banner--danger .medforge-global-banner__icon { color: #c21f3f; }
+.medforge-global-banner--danger .medforge-global-banner__icon { color: #fca5a5; }
 .medforge-global-banner--info .medforge-global-banner__icon { color: #1f6fc9; }
 
 .medforge-global-banner__text {
