@@ -57,6 +57,8 @@ function normalizeRow(raw) {
     });
   }
 
+  const ojo = raw.ojo || inferOjo(procedureText) || 'Ambos ojos';
+
   return {
     id: raw.id ?? raw.form_id,
     form_id: raw.form_id,
@@ -73,7 +75,7 @@ function normalizeRow(raw) {
     tipo_label: tipoInfo?.label || raw.tipo_examen || raw.procedimiento || '—',
     tipo_short: tipoInfo?.short || raw.tipo_examen || '—',
     equipo: tipoInfo?.equipo || '',
-    ojo: raw.ojo || inferOjo(procedureText),
+    ojo,
     informado: Boolean(raw.informado),
     informe_id: raw.informe_id || null,
     informado_por: raw.informado_por || raw.informe_firmado_por || null,
