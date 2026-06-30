@@ -196,6 +196,9 @@ class CirugiasReadController
         $insumos = $this->service->obtenerInsumosPorProtocolo($cirugia->procedimiento_id ?? null, $cirugia->insumos ?? null);
         $medicamentos = $this->service->obtenerMedicamentosConfigurados($cirugia->medicamentos ?? null, $cirugia->procedimiento_id ?? null);
 
+        // Catálogo de insumos disponibles (real, filtrado por afiliación como en el legacy).
+        $insumosDisponibles = $this->service->obtenerInsumosDisponibles((string) ($cirugia->afiliacion ?? ''));
+
         return response()->json([
             // Patient identity (for wizard step 1)
             'hc_number'  => $cirugia->hc_number,
@@ -228,6 +231,7 @@ class CirugiasReadController
             'procedimientos'       => $procedimientos,
             'insumos'              => $insumos,
             'medicamentos'         => $medicamentos,
+            'insumosDisponibles'   => $insumosDisponibles,
             // Staff
             'staff'     => $staff,
             // Audit
