@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import Select from 'react-select';
+import Creatable from 'react-select/creatable';
 import { AuditPanel } from './components';
 
 // ---- Staff options cache (módulo-level) -------------------------
@@ -133,7 +134,7 @@ function normaliseMedicamentos(raw) {
     id: m.id ?? medNombre(m),
     nombre: medNombre(m),            // canonical display name
     dosis: m.dosis || m.dose || '',
-    via: m.via || m.vía || m.route || '',
+    via: m.via || m.vía || m.via_administracion || m.route || '',
     responsable: m.responsable || m.responsible || '',
     frecuencia: m.frecuencia || m.frequency || 'Dosis única',
   }));
@@ -869,17 +870,16 @@ function StepInsumos({ form, setForm, showToast }) {
                     </select>
                   </td>
                   <td>
-                    {/* Free-text input with datalist suggestions — never silently replaces the stored name */}
-                    <input
-                      list={listId}
-                      value={it.nombre}
-                      onChange={(e) => updItem(i, 'nombre', e.target.value)}
-                      placeholder="Nombre del insumo"
-                      style={{ width: '100%' }}
+                    <Creatable
+                      classNamePrefix="rs"
+                      isClearable
+                      placeholder="Seleccionar insumo..."
+                      noOptionsMessage={() => 'Sin opciones'}
+                      formatCreateLabel={(v) => `Agregar "${v}"`}
+                      options={(INSUMOS_DISPONIBLES[it.cat] || []).map((n) => ({ value: n, label: n }))}
+                      value={it.nombre ? { value: it.nombre, label: it.nombre } : null}
+                      onChange={(opt) => updItem(i, 'nombre', opt ? opt.value : '')}
                     />
-                    <datalist id={listId}>
-                      {(INSUMOS_DISPONIBLES[it.cat] || []).map((n) => <option key={n} value={n} />)}
-                    </datalist>
                   </td>
                   <td><input type="number" min="1" value={it.cantidad ?? 1} onChange={(e) => updItem(i, 'cantidad', e.target.value)} /></td>
                   <td className="col-act"><button className="icon-mini" onClick={() => rm(i)} title="Quitar"><i className="mdi mdi-minus" /></button></td>
@@ -945,28 +945,35 @@ function StepMedicamentos({ form, setForm, showToast }) {
             {meds.map((m, i) => (
               <tr key={i} style={{ backgroundColor: RESP_MED_COLOR[m.responsable] || 'transparent' }}>
                 <td>
-                  {/* Free-text + datalist — never silently replaces real values from backend */}
-                  <input list="med-nombres" value={m.nombre} placeholder="Medicamento"
-                    onChange={(e) => upd(i, 'nombre', e.target.value)} style={{ width: '100%' }} />
+                  <Creatable
+                    classNamePrefix="rs"
+                    isClearable
+                    placeholder="Medicamento..."
+                    noOptionsMessage={() => 'Sin opciones'}
+                    formatCreateLabel={(v) => `Agregar "${v}"`}
+                    options={MEDICAMENTOS.map((n) => ({ value: n, label: n }))}
+                    value={m.nombre ? { value: m.nombre, label: m.nombre } : null}
+                    onChange={(opt) => upd(i, 'nombre', opt ? opt.value : '')}
+                  />
                 </td>
                 <td><input value={m.dosis || ''} placeholder="—" onChange={(e) => upd(i, 'dosis', e.target.value)} /></td>
                 <td>
-                  <input list="med-vias" value={m.via || ''} placeholder="Vía"
-                    onChange={(e) => upd(i, 'via', e.target.value)} style={{ width: '100%' }} />
+                  <select value={m.via || ''} onChange={(e) => upd(i, 'via', e.target.value)} style={{ width: '100%' }}>
+                    <option value="">— Vía —</option>
+                    {VIAS.map((v) => <option key={v} value={v}>{v}</option>)}
+                  </select>
                 </td>
                 <td>
-                  <input list="med-resp" value={m.responsable || ''} placeholder="Responsable"
-                    onChange={(e) => upd(i, 'responsable', e.target.value)} style={{ width: '100%' }} />
+                  <select value={m.responsable || ''} onChange={(e) => upd(i, 'responsable', e.target.value)} style={{ width: '100%' }}>
+                    <option value="">— Responsable —</option>
+                    {RESPONSABLES_MED.map((r) => <option key={r} value={r}>{r}</option>)}
+                  </select>
                 </td>
                 <td className="col-act"><button className="icon-mini" onClick={() => rm(i)} title="Quitar"><i className="mdi mdi-minus" /></button></td>
               </tr>
             ))}
           </tbody>
         </table>
-        {/* Shared datalists for suggestions */}
-        <datalist id="med-nombres">{MEDICAMENTOS.map((n) => <option key={n} value={n} />)}</datalist>
-        <datalist id="med-vias">{VIAS.map((v) => <option key={v} value={v} />)}</datalist>
-        <datalist id="med-resp">{RESPONSABLES_MED.map((r) => <option key={r} value={r} />)}</datalist>
         <div className="etable-foot">
           <button className="add-line" onClick={add}><i className="mdi mdi-plus-circle-outline" /> Agregar medicamento</button>
         </div>

@@ -367,7 +367,7 @@ table.cirtab tbody tr.row-alert:hover { background: linear-gradient(90deg, #fbe7
 .pac-notice .mdi { font-size: 16px; flex: none; margin-top: 1px; color: var(--accent); }
 
 .wiz-content { display: flex; flex-direction: column; min-height: 0; position: relative; }
-.wiz-stepframe { flex: 1; overflow-y: auto; padding: 26px 36px 0; width: 100%; max-width: min(1280px, calc(100vw - 280px)); margin: 0 auto; animation: stepIn .18s ease-out; }
+.wiz-stepframe { flex: 1; overflow-y: auto; padding: 26px 36px 24px; width: 100%; max-width: min(1280px, calc(100vw - 280px)); margin: 0 auto; animation: stepIn .18s ease-out; }
 .wiz-foot { flex: none; display: flex; align-items: center; gap: 10px; padding: 13px 30px; background: var(--bg, #fff); border-top: 1px solid var(--border); }
 @media (max-width: 1100px) { .wiz-stepframe { max-width: 100%; padding-left: 20px; padding-right: 20px; } }
 @media (max-width: 768px) { .wiz-stepframe { padding-left: 14px; padding-right: 14px; } }
@@ -417,7 +417,7 @@ table.cirtab tbody tr.row-alert:hover { background: linear-gradient(90deg, #fbe7
 .diag-prev-row .cie { font-family: var(--font-mono); font-weight: 700; color: #2e5e99; }
 .diag-prev-row .desc { flex: 1; color: var(--fg-2); }
 
-.etable-wrap { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.etable-wrap { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; max-height: 480px; overflow-y: auto; }
 .etable { width: 100%; border-collapse: collapse; font-size: 13px; }
 .etable thead th { text-align: left; padding: 9px 12px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .03em; color: var(--fg-mute); font-weight: 700; background: var(--bg-soft); border-bottom: 1px solid var(--border); }
 .etable tbody td { padding: 7px 10px; border-bottom: 1px solid rgba(0,0,0,.04); vertical-align: middle; }
