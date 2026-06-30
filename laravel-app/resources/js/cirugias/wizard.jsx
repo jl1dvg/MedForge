@@ -2,18 +2,41 @@ import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import Select from 'react-select';
 import { AuditPanel } from './components';
 
-// ---- Catalogs (mirrors data.js for backend-driven wizard) -------
-// Mapeo legacy de rol del formulario -> especialidad agrupadora (users.especialidad)
-const STAFF_ROLE_ESPECIALIDAD = {
-  cirujano_1: 'Cirujano Oftalmólogo',
-  cirujano_2: 'Cirujano Oftalmólogo',
-  primer_ayudante: 'Cirujano Oftalmólogo',
-  segundo_ayudante: 'Cirujano Oftalmólogo',
-  tercer_ayudante: 'Cirujano Oftalmólogo',
-  anestesiologo: 'Anestesiologo',
-  ayudante_anestesia: 'Asistente',
-  instrumentista: 'Asistente',
-  circulante: 'Asistente',
+// ---- Staff options cache (módulo-level) -------------------------
+// Una sola petición por carga de página. Si falla, _staffPromise queda null
+// para que el próximo intento pueda reintentar.
+let _staffPromise = null;
+let _staffCache = null;
+
+function fetchStaffOptions(url) {
+  if (_staffCache) return Promise.resolve(_staffCache);
+  if (_staffPromise) return _staffPromise;
+  _staffPromise = fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+    .then((r) => r.json())
+    .then((d) => {
+      _staffCache = d.data || {};
+      _staffPromise = null; // ya resuelto, liberar referencia
+      return _staffCache;
+    })
+    .catch((err) => {
+      _staffPromise = null; // fallo → próximo intento puede reintentar
+      throw err;
+    });
+  return _staffPromise;
+}
+
+// ---- Catalogs ---------------------------------------------------
+// Mapeo rol del formulario -> clave del payload { cirujanos, anestesiologos, asistentes }
+const STAFF_ROLE_KEY = {
+  cirujano_1:       'cirujanos',
+  cirujano_2:       'cirujanos',
+  primer_ayudante:  'cirujanos',
+  segundo_ayudante: 'cirujanos',
+  tercer_ayudante:  'cirujanos',
+  anestesiologo:    'anestesiologos',
+  ayudante_anestesia: 'asistentes',
+  instrumentista:   'asistentes',
+  circulante:       'asistentes',
 };
 const TIPO_ANESTESIA = ['GENERAL', 'LOCAL', 'REGIONAL', 'SEDACIÓN', 'TÓPICA', 'PERIBULBAR'];
 const LATERALIDAD = [
@@ -326,14 +349,13 @@ export function ProtocolWizard({ form: initialForm, endpoints = {}, onClose, onS
   const [marcarRevisado, setMarcarRevisado] = useState(initialForm.status === 1);
   const [scraped, setScraped] = useState((initialForm.diagnosticos_previos || []).length > 0);
   const [scraping, setScraping] = useState(false);
-  const [staffOptions, setStaffOptions] = useState({});
+  const [staffOptions, setStaffOptions] = useState(() => _staffCache || {});
 
   useEffect(() => {
-    if (!endpoints.staffOptions) return;
+    if (!endpoints.staffOptions || _staffCache) return;
     let cancelled = false;
-    fetch(endpoints.staffOptions, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-      .then((r) => r.json())
-      .then((d) => { if (!cancelled) setStaffOptions(d.data || {}); })
+    fetchStaffOptions(endpoints.staffOptions)
+      .then((data) => { if (!cancelled) setStaffOptions(data); })
       .catch(() => {});
     return () => { cancelled = true; };
   }, [endpoints.staffOptions]);
@@ -663,10 +685,10 @@ function StepStaff({ form, setStaff, staffOptions }) {
   const optionsByRole = useMemo(() => {
     const cache = {};
     return (k) => {
-      const especialidad = STAFF_ROLE_ESPECIALIDAD[k];
-      if (cache[especialidad]) return cache[especialidad];
-      const list = (staffOptions[especialidad] || []).map((u) => ({ value: u.nombre, label: u.nombre }));
-      cache[especialidad] = list;
+      const groupKey = STAFF_ROLE_KEY[k];
+      if (cache[groupKey]) return cache[groupKey];
+      const list = (staffOptions[groupKey] || []).map((u) => ({ value: u.nombre, label: u.nombre }));
+      cache[groupKey] = list;
       return list;
     };
   }, [staffOptions]);

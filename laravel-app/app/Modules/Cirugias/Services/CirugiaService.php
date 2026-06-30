@@ -418,26 +418,32 @@ class CirugiaService
      */
     public function obtenerStaffPorEspecialidad(): array
     {
-        $especialidades = ['Cirujano Oftalmólogo', 'Anestesiologo', 'Asistente'];
-        $staff = [
-            'Cirujano Oftalmólogo' => [],
-            'Anestesiologo' => [],
-            'Asistente' => [],
+        $result = ['cirujanos' => [], 'anestesiologos' => [], 'asistentes' => []];
+
+        $stmt = $this->db->prepare(
+            "SELECT id, nombre, especialidad
+               FROM users
+              WHERE especialidad IN ('Cirujano Oftalmólogo', 'Anestesiologo', 'Asistente')
+              ORDER BY especialidad, nombre"
+        );
+        $stmt->execute();
+
+        $map = [
+            'Cirujano Oftalmólogo' => 'cirujanos',
+            'Anestesiologo'        => 'anestesiologos',
+            'Asistente'            => 'asistentes',
         ];
 
-        foreach ($especialidades as $especialidad) {
-            $stmt = $this->db->prepare('SELECT id, nombre FROM users WHERE especialidad LIKE ? ORDER BY nombre');
-            $stmt->execute([$especialidad]);
-            $staff[$especialidad] = array_map(
-                static fn(array $row): array => [
-                    'id' => (int) ($row['id'] ?? 0),
-                    'nombre' => (string) ($row['nombre'] ?? ''),
-                ],
-                $stmt->fetchAll(PDO::FETCH_ASSOC) ?: []
-            );
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $key = $map[(string) ($row['especialidad'] ?? '')] ?? null;
+            if ($key === null) continue;
+            $result[$key][] = [
+                'id'     => (int) ($row['id'] ?? 0),
+                'nombre' => (string) ($row['nombre'] ?? ''),
+            ];
         }
 
-        return $staff;
+        return $result;
     }
 
     public function obtenerAfiliacionOptions(): array
