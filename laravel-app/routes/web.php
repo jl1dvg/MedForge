@@ -27,7 +27,24 @@ Route::get('/', function () {
     return view('welcome');
 });
 
-Route::redirect('/control-center', '/control-center/index.html');
+Route::get('/control-center/{path?}', function (?string $path = null) {
+    $relativePath = $path ?: 'index.html';
+    $relativePath = str_replace('\\', '/', $relativePath);
+
+    if (str_contains($relativePath, '..')) {
+        abort(404);
+    }
+
+    $basePath = realpath(public_path('control-center'));
+    $filePath = public_path('control-center/' . ltrim($relativePath, '/'));
+    $realPath = is_file($filePath) ? realpath($filePath) : false;
+
+    if (!$basePath || !$realPath || !str_starts_with($realPath, $basePath . DIRECTORY_SEPARATOR)) {
+        abort(404);
+    }
+
+    return response()->file($realPath);
+})->where('path', '.*');
 
 Route::get('/auth/login', [LoginController::class, 'show'])->name('login');
 Route::post('/auth/login', [LoginController::class, 'login']);
