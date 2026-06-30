@@ -410,6 +410,36 @@ class CirugiaService
     /**
      * @return array<int, array{value:string,label:string}>
      */
+    /**
+     * Replica la lógica del wizard legacy: agrupa usuarios por especialidad
+     * para alimentar los selectores del equipo quirúrgico (Step 3).
+     *
+     * @return array<string, array<int, array{id: int, nombre: string}>>
+     */
+    public function obtenerStaffPorEspecialidad(): array
+    {
+        $especialidades = ['Cirujano Oftalmólogo', 'Anestesiologo', 'Asistente'];
+        $staff = [
+            'Cirujano Oftalmólogo' => [],
+            'Anestesiologo' => [],
+            'Asistente' => [],
+        ];
+
+        foreach ($especialidades as $especialidad) {
+            $stmt = $this->db->prepare('SELECT id, nombre FROM users WHERE especialidad LIKE ? ORDER BY nombre');
+            $stmt->execute([$especialidad]);
+            $staff[$especialidad] = array_map(
+                static fn(array $row): array => [
+                    'id' => (int) ($row['id'] ?? 0),
+                    'nombre' => (string) ($row['nombre'] ?? ''),
+                ],
+                $stmt->fetchAll(PDO::FETCH_ASSOC) ?: []
+            );
+        }
+
+        return $staff;
+    }
+
     public function obtenerAfiliacionOptions(): array
     {
         $afiliacionKeyExpr = $this->afiliacionGroupKeyExpr('p');
