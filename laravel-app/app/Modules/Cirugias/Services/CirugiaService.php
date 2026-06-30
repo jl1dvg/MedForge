@@ -255,7 +255,8 @@ class CirugiaService
 
         $baseFrom = "FROM protocolo_data pr
             INNER JOIN patient_data p
-                ON p.hc_number = pr.hc_number
+                ON CONVERT(p.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                 = CONVERT(pr.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
             LEFT JOIN procedimiento_proyectado pp
                 ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number
             LEFT JOIN users u_cir

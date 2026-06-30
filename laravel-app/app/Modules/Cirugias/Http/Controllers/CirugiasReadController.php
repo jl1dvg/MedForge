@@ -309,11 +309,14 @@ class CirugiasReadController
             default => '',
         };
 
-        // Audit status for React UI
+        // Audit status for React UI.
+        // 'estado' solo puede ser revisado/no revisado/incompleto (Cirugia::getEstado()).
+        // Como esta fila siempre proviene de protocolo_data, "incompleto" significa
+        // protocolo iniciado pendiente de completar/revisar, nunca "sin protocolo".
         $auditStatus = match ($estado) {
             'revisado' => 'conforme',
             'no revisado' => 'por_revisar',
-            default => $alertasCount > 0 ? 'alertas' : 'sin_protocolo',
+            default => $alertasCount > 0 ? 'alertas' : 'por_revisar',
         };
 
         return [
