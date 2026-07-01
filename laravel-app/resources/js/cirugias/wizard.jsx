@@ -295,6 +295,7 @@ export function normaliseWizardForm(row, data) {
     // insumos / meds
     insumos,
     insumos_esperados: data.insumos_esperados || [],
+    insumosDisponibles: data.insumosDisponibles || {},
     medicamentos: normaliseMedicamentos(data.medicamentos),
     medicamentos_esperados: data.medicamentos_esperados || [],
     // meta
@@ -807,7 +808,17 @@ function StepOperatorio({ form, set, showToast }) {
 
 // ---- Step 6: Insumos --------------------------------------------
 function StepInsumos({ form, setForm, showToast }) {
-  const cats = Object.keys(INSUMOS_DISPONIBLES);
+  // Use real insumos from DB (keyed by categoria → { id → { id, nombre } }).
+  // Fall back to hardcoded INSUMOS_DISPONIBLES only when backend data hasn't loaded yet.
+  const dbInsumos = form.insumosDisponibles || {};
+  const hasDb = Object.keys(dbInsumos).length > 0;
+  const cats = hasDb ? Object.keys(dbInsumos) : Object.keys(INSUMOS_DISPONIBLES);
+  const catOptions = (cat) => {
+    if (hasDb) {
+      return Object.values(dbInsumos[cat] || {}).map((item) => ({ value: item.nombre, label: item.nombre }));
+    }
+    return (INSUMOS_DISPONIBLES[cat] || []).map((n) => ({ value: n, label: n }));
+  };
   const all = flatInsumos(form.insumos);
   const faltantes = (form.insumos_esperados || []).filter((n) => !all.map((x) => x.nombre).includes(n));
 
@@ -876,7 +887,7 @@ function StepInsumos({ form, setForm, showToast }) {
                       placeholder="Seleccionar insumo..."
                       noOptionsMessage={() => 'Sin opciones'}
                       formatCreateLabel={(v) => `Agregar "${v}"`}
-                      options={(INSUMOS_DISPONIBLES[it.cat] || []).map((n) => ({ value: n, label: n }))}
+                      options={catOptions(it.cat)}
                       value={it.nombre ? { value: it.nombre, label: it.nombre } : null}
                       onChange={(opt) => updItem(i, 'nombre', opt ? opt.value : '')}
                     />

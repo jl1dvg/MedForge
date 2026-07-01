@@ -125,6 +125,13 @@ export default function App({ config }) {
   const [wizardRow, setWizardRow] = useState(null);
   const [wizardLoading, setWizardLoading] = useState(false);
 
+  // Bloquea el scroll del body mientras el wizard está abierto para evitar
+  // el doble scrollbar (página + stepframe interno).
+  useEffect(() => {
+    document.body.style.overflow = wizardRow ? 'hidden' : '';
+    return () => { document.body.style.overflow = ''; };
+  }, [wizardRow]);
+
   useEffect(() => {
     document.documentElement.style.setProperty('--accent', tweaks.accent || '#5156be');
   }, [tweaks.accent]);
