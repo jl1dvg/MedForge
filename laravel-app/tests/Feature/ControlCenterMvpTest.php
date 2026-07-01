@@ -23,12 +23,13 @@ class ControlCenterMvpTest extends TestCase
             'control_center_releases',
             'control_center_service_snapshots',
             'control_center_services',
-            'control_center_client_features',
+            'control_center_instance_features',
             'control_center_features',
             'control_center_operational_states',
             'control_center_contracts',
             'control_center_plans',
-            'control_center_clients',
+            'control_center_instances',
+            'control_center_organizations',
             'users',
             'roles',
         ] as $table) {
@@ -83,7 +84,7 @@ class ControlCenterMvpTest extends TestCase
     {
         $user = $this->createUser(['control_center.view', 'control_center.state.manage']);
 
-        $response = $this->actingAsLegacyUser($user)->postJson('/v2/control-center/clients/1/state', [
+        $response = $this->actingAsLegacyUser($user)->postJson('/v2/control-center/instances/1/state', [
             'state' => 'readonly',
             'reason' => 'Factura vencida',
             'confirm' => 'readonly',
@@ -93,13 +94,13 @@ class ControlCenterMvpTest extends TestCase
             ->assertJsonPath('data.state.state', 'readonly');
 
         $this->assertDatabaseHas('control_center_operational_states', [
-            'client_id' => 1,
+            'instance_id' => 1,
             'state' => 'readonly',
             'reason' => 'Factura vencida',
         ]);
 
         $this->assertDatabaseHas('control_center_audit_logs', [
-            'client_id' => 1,
+            'instance_id' => 1,
             'event_type' => 'state',
             'action' => 'state.changed',
         ]);
@@ -109,10 +110,10 @@ class ControlCenterMvpTest extends TestCase
     {
         $user = $this->createUser(['dashboard.view']);
 
-        config(['control_center.client_slug' => 'cive']);
+        config(['control_center.instance_slug' => 'cive-production']);
 
         $this->actingAsLegacyUser($this->createUser(['control_center.view', 'control_center.state.manage']))
-            ->postJson('/v2/control-center/clients/1/state', [
+            ->postJson('/v2/control-center/instances/1/state', [
                 'state' => 'readonly',
                 'reason' => 'Mora superior a 30 dias',
                 'confirm' => 'readonly',
@@ -128,7 +129,7 @@ class ControlCenterMvpTest extends TestCase
     {
         $user = $this->createUser(['control_center.view', 'control_center.features.manage']);
 
-        $response = $this->actingAsLegacyUser($user)->postJson('/v2/control-center/clients/1/features', [
+        $response = $this->actingAsLegacyUser($user)->postJson('/v2/control-center/instances/1/features', [
             'features' => [
                 ['key' => 'ia', 'enabled' => false, 'reason' => 'Pa Pausa operativa'],
             ],
@@ -138,41 +139,55 @@ class ControlCenterMvpTest extends TestCase
             ->assertJsonPath('data.features.0.key', 'ia')
             ->assertJsonPath('data.features.0.enabled', false);
 
-        $this->assertDatabaseHas('control_center_client_features', [
-            'client_id' => 1,
+        $this->assertDatabaseHas('control_center_instance_features', [
+            'instance_id' => 1,
             'enabled' => 0,
         ]);
 
         $this->assertDatabaseHas('control_center_audit_logs', [
-            'client_id' => 1,
+            'instance_id' => 1,
             'event_type' => 'feature',
             'action' => 'feature.updated',
         ]);
     }
 
-    public function test_control_center_seeder_is_idempotent_and_preserves_operational_data(): void
+    public function test_control_center_seeder_is_idempotent_and_preserves_instance_operational_data(): void
     {
-        DB::table('control_center_clients')->where('slug', 'cive')->update(['status' => 'readonly']);
-        DB::table('control_center_client_features')
-            ->where('client_id', 1)
+        DB::table('control_center_instances')->where('slug', 'cive-production')->update(['status' => 'readonly']);
+        DB::table('control_center_instance_features')
+            ->where('instance_id', 1)
             ->where('feature_id', DB::table('control_center_features')->where('key', 'ia')->value('id'))
             ->update(['enabled' => false, 'override_reason' => 'Manual staging override']);
 
-        $clientCount = DB::table('control_center_clients')->count();
-        $featureRows = DB::table('control_center_client_features')->count();
+        $organizationCount = DB::table('control_center_organizations')->count();
+        $instanceCount = DB::table('control_center_instances')->count();
+        $featureRows = DB::table('control_center_instance_features')->count();
+        $contractRows = DB::table('control_center_contracts')->count();
+        $stateRows = DB::table('control_center_operational_states')->count();
+        $serviceSnapshotRows = DB::table('control_center_service_snapshots')->count();
+        $deploymentRows = DB::table('control_center_deployments')->count();
+        $usageRows = DB::table('control_center_usage_metrics')->count();
+        $auditRows = DB::table('control_center_audit_logs')->count();
 
         $this->artisan('db:seed', [
             '--class' => 'Database\\Seeders\\ControlCenterSeeder',
         ])->run();
 
-        $this->assertSame($clientCount, DB::table('control_center_clients')->count());
-        $this->assertSame($featureRows, DB::table('control_center_client_features')->count());
-        $this->assertDatabaseHas('control_center_clients', [
-            'slug' => 'cive',
+        $this->assertSame($organizationCount, DB::table('control_center_organizations')->count());
+        $this->assertSame($instanceCount, DB::table('control_center_instances')->count());
+        $this->assertSame($featureRows, DB::table('control_center_instance_features')->count());
+        $this->assertSame($contractRows, DB::table('control_center_contracts')->count());
+        $this->assertSame($stateRows, DB::table('control_center_operational_states')->count());
+        $this->assertSame($serviceSnapshotRows, DB::table('control_center_service_snapshots')->count());
+        $this->assertSame($deploymentRows, DB::table('control_center_deployments')->count());
+        $this->assertSame($usageRows, DB::table('control_center_usage_metrics')->count());
+        $this->assertSame($auditRows, DB::table('control_center_audit_logs')->count());
+        $this->assertDatabaseHas('control_center_instances', [
+            'slug' => 'cive-production',
             'status' => 'readonly',
         ]);
-        $this->assertDatabaseHas('control_center_client_features', [
-            'client_id' => 1,
+        $this->assertDatabaseHas('control_center_instance_features', [
+            'instance_id' => 1,
             'enabled' => 0,
             'override_reason' => 'Manual staging override',
         ]);

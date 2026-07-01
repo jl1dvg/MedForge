@@ -8,28 +8,39 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('control_center_clients', function (Blueprint $table): void {
+        Schema::create('control_center_organizations', function (Blueprint $table): void {
             $table->id();
             $table->string('slug')->unique();
             $table->string('name');
             $table->string('legal_name')->nullable();
             $table->string('ruc')->nullable();
+            $table->string('commercial_name')->nullable();
+            $table->string('city')->nullable();
+            $table->string('timezone')->default('America/Guayaquil');
+            $table->string('color', 24)->nullable();
+            $table->string('initials', 12)->nullable();
+            $table->json('metadata_json')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('control_center_instances', function (Blueprint $table): void {
+            $table->id();
+            $table->foreignId('organization_id')->constrained('control_center_organizations')->cascadeOnDelete();
+            $table->string('slug')->unique();
+            $table->string('name');
             $table->string('domain')->nullable()->unique();
             $table->string('admin_url')->nullable();
             $table->string('environment')->default('production')->index();
             $table->string('server_label')->nullable();
             $table->string('database_name')->nullable();
             $table->string('database_host')->nullable();
-            $table->string('city')->nullable();
-            $table->string('timezone')->default('America/Guayaquil');
             $table->string('status')->default('production')->index();
             $table->string('current_version')->nullable();
             $table->string('release_channel')->default('stable');
-            $table->string('color', 24)->nullable();
-            $table->string('initials', 12)->nullable();
             $table->timestamp('last_activity_at')->nullable();
             $table->json('metadata_json')->nullable();
             $table->timestamps();
+            $table->index(['organization_id', 'environment']);
         });
 
         Schema::create('control_center_plans', function (Blueprint $table): void {
@@ -51,22 +62,25 @@ return new class extends Migration
 
         Schema::create('control_center_contracts', function (Blueprint $table): void {
             $table->id();
-            $table->foreignId('client_id')->constrained('control_center_clients')->cascadeOnDelete();
+            $table->foreignId('organization_id')->constrained('control_center_organizations')->cascadeOnDelete();
+            $table->foreignId('instance_id')->nullable()->constrained('control_center_instances')->nullOnDelete();
             $table->foreignId('plan_id')->nullable()->constrained('control_center_plans')->nullOnDelete();
             $table->date('starts_at')->nullable();
             $table->date('ends_at')->nullable();
             $table->string('payment_status')->default('current')->index();
             $table->string('contract_status')->default('active')->index();
+            $table->string('scope')->default('organization')->index();
             $table->json('billing_contact_json')->nullable();
             $table->json('technical_contact_json')->nullable();
             $table->text('notes')->nullable();
             $table->timestamps();
-            $table->index(['client_id', 'contract_status']);
+            $table->index(['organization_id', 'contract_status']);
+            $table->index(['instance_id', 'contract_status']);
         });
 
         Schema::create('control_center_operational_states', function (Blueprint $table): void {
             $table->id();
-            $table->foreignId('client_id')->constrained('control_center_clients')->cascadeOnDelete();
+            $table->foreignId('instance_id')->constrained('control_center_instances')->cascadeOnDelete();
             $table->string('state')->index();
             $table->timestamp('starts_at')->nullable()->index();
             $table->timestamp('ends_at')->nullable()->index();
@@ -76,7 +90,7 @@ return new class extends Migration
             $table->string('changed_by_name')->nullable();
             $table->string('source')->default('manual')->index();
             $table->timestamps();
-            $table->index(['client_id', 'state']);
+            $table->index(['instance_id', 'state']);
         });
 
         Schema::create('control_center_features', function (Blueprint $table): void {
@@ -93,16 +107,16 @@ return new class extends Migration
             $table->timestamps();
         });
 
-        Schema::create('control_center_client_features', function (Blueprint $table): void {
+        Schema::create('control_center_instance_features', function (Blueprint $table): void {
             $table->id();
-            $table->foreignId('client_id')->constrained('control_center_clients')->cascadeOnDelete();
+            $table->foreignId('instance_id')->constrained('control_center_instances')->cascadeOnDelete();
             $table->foreignId('feature_id')->constrained('control_center_features')->cascadeOnDelete();
             $table->boolean('enabled')->default(false)->index();
             $table->string('environment')->default('production')->index();
             $table->unsignedBigInteger('overridden_by_user_id')->nullable()->index();
             $table->text('override_reason')->nullable();
             $table->timestamps();
-            $table->unique(['client_id', 'feature_id', 'environment'], 'cc_client_features_unique');
+            $table->unique(['instance_id', 'feature_id', 'environment'], 'cc_instance_features_unique');
         });
 
         Schema::create('control_center_services', function (Blueprint $table): void {
@@ -117,7 +131,7 @@ return new class extends Migration
 
         Schema::create('control_center_service_snapshots', function (Blueprint $table): void {
             $table->id();
-            $table->foreignId('client_id')->constrained('control_center_clients')->cascadeOnDelete();
+            $table->foreignId('instance_id')->constrained('control_center_instances')->cascadeOnDelete();
             $table->foreignId('service_id')->constrained('control_center_services')->cascadeOnDelete();
             $table->string('state')->default('operational')->index();
             $table->unsignedInteger('latency_ms')->nullable();
@@ -126,7 +140,7 @@ return new class extends Migration
             $table->timestamp('checked_at')->nullable()->index();
             $table->json('metadata_json')->nullable();
             $table->timestamps();
-            $table->index(['client_id', 'service_id']);
+            $table->index(['instance_id', 'service_id']);
         });
 
         Schema::create('control_center_releases', function (Blueprint $table): void {
@@ -143,7 +157,7 @@ return new class extends Migration
 
         Schema::create('control_center_deployments', function (Blueprint $table): void {
             $table->id();
-            $table->foreignId('client_id')->constrained('control_center_clients')->cascadeOnDelete();
+            $table->foreignId('instance_id')->constrained('control_center_instances')->cascadeOnDelete();
             $table->foreignId('release_id')->nullable()->constrained('control_center_releases')->nullOnDelete();
             $table->string('version');
             $table->string('available_version')->nullable();
@@ -154,12 +168,13 @@ return new class extends Migration
             $table->string('responsible')->nullable();
             $table->json('metadata_json')->nullable();
             $table->timestamps();
-            $table->index(['client_id', 'status']);
+            $table->index(['instance_id', 'status']);
         });
 
         Schema::create('control_center_usage_metrics', function (Blueprint $table): void {
             $table->id();
-            $table->foreignId('client_id')->nullable()->constrained('control_center_clients')->cascadeOnDelete();
+            $table->foreignId('organization_id')->nullable()->constrained('control_center_organizations')->cascadeOnDelete();
+            $table->foreignId('instance_id')->nullable()->constrained('control_center_instances')->cascadeOnDelete();
             $table->string('metric')->index();
             $table->date('period_start')->index();
             $table->date('period_end')->nullable();
@@ -168,12 +183,14 @@ return new class extends Migration
             $table->decimal('cost', 12, 2)->nullable();
             $table->json('metadata_json')->nullable();
             $table->timestamps();
-            $table->index(['client_id', 'metric', 'period_start'], 'cc_usage_client_metric_period_idx');
+            $table->index(['organization_id', 'metric', 'period_start'], 'cc_usage_org_metric_period_idx');
+            $table->index(['instance_id', 'metric', 'period_start'], 'cc_usage_instance_metric_period_idx');
         });
 
         Schema::create('control_center_audit_logs', function (Blueprint $table): void {
             $table->id();
-            $table->foreignId('client_id')->nullable()->constrained('control_center_clients')->cascadeOnDelete();
+            $table->foreignId('organization_id')->nullable()->constrained('control_center_organizations')->cascadeOnDelete();
+            $table->foreignId('instance_id')->nullable()->constrained('control_center_instances')->cascadeOnDelete();
             $table->string('event_type')->index();
             $table->string('action')->index();
             $table->unsignedBigInteger('actor_user_id')->nullable()->index();
@@ -186,7 +203,8 @@ return new class extends Migration
             $table->string('ip_address', 64)->nullable();
             $table->text('user_agent')->nullable();
             $table->timestamp('created_at')->useCurrent()->index();
-            $table->index(['client_id', 'event_type']);
+            $table->index(['organization_id', 'event_type'], 'cc_audit_org_event_idx');
+            $table->index(['instance_id', 'event_type'], 'cc_audit_instance_event_idx');
         });
     }
 
@@ -198,11 +216,12 @@ return new class extends Migration
         Schema::dropIfExists('control_center_releases');
         Schema::dropIfExists('control_center_service_snapshots');
         Schema::dropIfExists('control_center_services');
-        Schema::dropIfExists('control_center_client_features');
+        Schema::dropIfExists('control_center_instance_features');
         Schema::dropIfExists('control_center_features');
         Schema::dropIfExists('control_center_operational_states');
         Schema::dropIfExists('control_center_contracts');
         Schema::dropIfExists('control_center_plans');
-        Schema::dropIfExists('control_center_clients');
+        Schema::dropIfExists('control_center_instances');
+        Schema::dropIfExists('control_center_organizations');
     }
 };

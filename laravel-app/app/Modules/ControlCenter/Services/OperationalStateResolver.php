@@ -14,17 +14,17 @@ class OperationalStateResolver
     public const SUSPENDED = 'suspended';
 
     /**
-     * @return array{state: string, client_id: int|null, slug: string|null, reason: string|null, source: string}
+     * @return array{state: string, instance_id: int|null, organization_id: int|null, slug: string|null, reason: string|null, source: string}
      */
     public function resolve(?string $slug = null): array
     {
-        $slug = $slug ?: config('control_center.client_slug');
+        $slug = $slug ?: config('control_center.instance_slug');
         if (!is_string($slug) || trim($slug) === '') {
             return $this->fallback(null);
         }
 
         $slug = trim($slug);
-        $cacheKey = 'control_center.operational_state.' . $slug;
+        $cacheKey = 'control_center.operational_state.instance.' . $slug;
         $ttl = max(5, (int) config('control_center.state_cache_ttl', 60));
 
         try {
@@ -51,28 +51,28 @@ class OperationalStateResolver
         }
 
         try {
-            Cache::forget('control_center.operational_state.' . trim($slug));
+            Cache::forget('control_center.operational_state.instance.' . trim($slug));
         } catch (\Throwable) {
             // Operational state changes should not fail because cache storage is unavailable.
         }
     }
 
     /**
-     * @return array{state: string, client_id: int|null, slug: string|null, reason: string|null, source: string}
+     * @return array{state: string, instance_id: int|null, organization_id: int|null, slug: string|null, reason: string|null, source: string}
      */
     private function loadState(string $slug): array
     {
-        $client = DB::table('control_center_clients')
+        $instance = DB::table('control_center_instances')
             ->where('slug', $slug)
-            ->first(['id', 'slug', 'status']);
+            ->first(['id', 'organization_id', 'slug', 'status']);
 
-        if ($client === null) {
+        if ($instance === null) {
             return $this->fallback($slug);
         }
 
         $now = Carbon::now();
         $state = DB::table('control_center_operational_states')
-            ->where('client_id', $client->id)
+            ->where('instance_id', $instance->id)
             ->where(function ($query) use ($now): void {
                 $query->whereNull('starts_at')->orWhere('starts_at', '<=', $now);
             })
@@ -84,22 +84,24 @@ class OperationalStateResolver
             ->first(['state', 'reason']);
 
         return [
-            'state' => $this->normalizeState($state->state ?? $client->status ?? self::PRODUCTION),
-            'client_id' => (int) $client->id,
-            'slug' => (string) $client->slug,
+            'state' => $this->normalizeState($state->state ?? $instance->status ?? self::PRODUCTION),
+            'instance_id' => (int) $instance->id,
+            'organization_id' => (int) $instance->organization_id,
+            'slug' => (string) $instance->slug,
             'reason' => isset($state->reason) ? (string) $state->reason : null,
             'source' => 'database',
         ];
     }
 
     /**
-     * @return array{state: string, client_id: int|null, slug: string|null, reason: string|null, source: string}
+     * @return array{state: string, instance_id: int|null, organization_id: int|null, slug: string|null, reason: string|null, source: string}
      */
     private function fallback(?string $slug): array
     {
         return [
             'state' => $this->normalizeState((string) config('control_center.fallback_state', self::PRODUCTION)),
-            'client_id' => null,
+            'instance_id' => null,
+            'organization_id' => null,
             'slug' => $slug,
             'reason' => null,
             'source' => 'fallback',

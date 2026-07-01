@@ -17,25 +17,46 @@ class ControlCenterApiController
         return response()->json(['ok' => true, 'data' => $this->service->overview()]);
     }
 
-    public function clients(Request $request): JsonResponse
+    public function organizations(Request $request): JsonResponse
     {
-        $clients = $this->service->clients($request);
+        $organizations = $this->service->organizations($request);
 
         return response()->json([
             'ok' => true,
-            'data' => $clients->items(),
+            'data' => $organizations->items(),
             'meta' => [
-                'current_page' => $clients->currentPage(),
-                'last_page' => $clients->lastPage(),
-                'per_page' => $clients->perPage(),
-                'total' => $clients->total(),
+                'current_page' => $organizations->currentPage(),
+                'last_page' => $organizations->lastPage(),
+                'per_page' => $organizations->perPage(),
+                'total' => $organizations->total(),
             ],
         ]);
     }
 
-    public function client(int $id): JsonResponse
+    public function instances(Request $request): JsonResponse
     {
-        return response()->json(['ok' => true, 'data' => $this->service->client($id)]);
+        $instances = $this->service->instances($request);
+
+        return response()->json([
+            'ok' => true,
+            'data' => $instances->items(),
+            'meta' => [
+                'current_page' => $instances->currentPage(),
+                'last_page' => $instances->lastPage(),
+                'per_page' => $instances->perPage(),
+                'total' => $instances->total(),
+            ],
+        ]);
+    }
+
+    public function organization(int $id): JsonResponse
+    {
+        return response()->json(['ok' => true, 'data' => $this->service->organization($id)]);
+    }
+
+    public function instance(int $id): JsonResponse
+    {
+        return response()->json(['ok' => true, 'data' => $this->service->instance($id)]);
     }
 
     public function changeState(int $id, Request $request): JsonResponse
@@ -75,9 +96,10 @@ class ControlCenterApiController
 
     public function audit(Request $request): JsonResponse
     {
-        $clientId = $request->integer('client_id') ?: null;
+        $organizationId = $request->integer('organization_id') ?: null;
+        $instanceId = $request->integer('instance_id') ?: null;
         $limit = min(max($request->integer('limit', 50), 1), 100);
 
-        return response()->json(['ok' => true, 'data' => ['audit' => $this->service->audit($clientId, $limit)]]);
+        return response()->json(['ok' => true, 'data' => ['audit' => $this->service->audit($organizationId, $instanceId, $limit)]]);
     }
 }

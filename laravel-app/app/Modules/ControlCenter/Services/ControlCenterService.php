@@ -22,8 +22,9 @@ class ControlCenterService
      */
     public function overview(): array
     {
-        $clients = DB::table('control_center_clients')->get();
-        $states = $clients->groupBy('status')->map->count();
+        $organizations = DB::table('control_center_organizations')->count();
+        $instances = DB::table('control_center_instances')->get();
+        $states = $instances->groupBy('status')->map->count();
         $serviceCounts = DB::table('control_center_service_snapshots')
             ->select('state', DB::raw('count(*) as total'))
             ->groupBy('state')
@@ -31,7 +32,8 @@ class ControlCenterService
 
         return [
             'summary' => [
-                'clients_total' => $clients->count(),
+                'organizations_total' => $organizations,
+                'instances_total' => $instances->count(),
                 'production' => (int) ($states['production'] ?? 0),
                 'maintenance' => (int) ($states['maintenance'] ?? 0),
                 'readonly' => (int) ($states['readonly'] ?? 0),
@@ -39,67 +41,96 @@ class ControlCenterService
                 'services_degraded' => (int) ($serviceCounts['degraded'] ?? 0),
                 'updates_available' => (int) DB::table('control_center_deployments')->where('status', 'update_available')->count(),
             ],
-            'clients' => $clients->map(fn ($client): array => $this->clientCard($client))->values()->all(),
+            'organizations' => $this->organizationsQuery()->get()->map(fn ($row): array => $this->organizationCard($row))->values()->all(),
+            'instances' => $this->instancesQuery()->get()->map(fn ($row): array => $this->instanceCard($row))->values()->all(),
             'services' => $this->services(),
             'usage' => $this->usageTotals(),
             'audit' => $this->auditQuery(limit: 6)->get()->map(fn ($row): array => $this->auditRow($row))->all(),
         ];
     }
 
-    public function clients(Request $request): LengthAwarePaginator
+    public function organizations(Request $request): LengthAwarePaginator
     {
-        $query = DB::table('control_center_clients as c')
-            ->leftJoin('control_center_contracts as co', 'co.client_id', '=', 'c.id')
-            ->leftJoin('control_center_plans as p', 'p.id', '=', 'co.plan_id')
-            ->select(['c.*', 'p.name as plan_name', 'co.payment_status', 'co.contract_status']);
-
-        if ($request->filled('state')) {
-            $query->where('c.status', $request->string('state')->toString());
-        }
-
+        $query = $this->organizationsQuery();
         if ($request->filled('q')) {
             $search = '%' . $request->string('q')->toString() . '%';
             $query->where(function ($inner) use ($search): void {
-                $inner->where('c.name', 'like', $search)
-                    ->orWhere('c.slug', 'like', $search)
-                    ->orWhere('c.domain', 'like', $search);
+                $inner->where('o.name', 'like', $search)
+                    ->orWhere('o.slug', 'like', $search)
+                    ->orWhere('o.legal_name', 'like', $search);
             });
         }
 
-        $perPage = min(max((int) $request->integer('per_page', 25), 1), 100);
+        return $query->orderBy('o.name')
+            ->paginate($this->perPage($request))
+            ->through(fn ($row): array => $this->organizationCard($row));
+    }
 
-        return $query->orderBy('c.name')->paginate($perPage)->through(fn ($client): array => $this->clientCard($client));
+    public function instances(Request $request): LengthAwarePaginator
+    {
+        $query = $this->instancesQuery();
+        if ($request->filled('state')) {
+            $query->where('i.status', $request->string('state')->toString());
+        }
+        if ($request->filled('organization_id')) {
+            $query->where('i.organization_id', $request->integer('organization_id'));
+        }
+        if ($request->filled('q')) {
+            $search = '%' . $request->string('q')->toString() . '%';
+            $query->where(function ($inner) use ($search): void {
+                $inner->where('i.name', 'like', $search)
+                    ->orWhere('i.slug', 'like', $search)
+                    ->orWhere('i.domain', 'like', $search)
+                    ->orWhere('o.name', 'like', $search);
+            });
+        }
+
+        return $query->orderBy('o.name')->orderBy('i.environment')
+            ->paginate($this->perPage($request))
+            ->through(fn ($row): array => $this->instanceCard($row));
     }
 
     /**
      * @return array<string, mixed>
      */
-    public function client(int $id): array
+    public function organization(int $id): array
     {
-        $client = DB::table('control_center_clients as c')
-            ->leftJoin('control_center_contracts as co', 'co.client_id', '=', 'c.id')
-            ->leftJoin('control_center_plans as p', 'p.id', '=', 'co.plan_id')
-            ->where('c.id', $id)
-            ->select(['c.*', 'p.name as plan_name', 'p.code as plan_code', 'co.payment_status', 'co.contract_status', 'co.starts_at', 'co.ends_at'])
-            ->first();
-
-        abort_if($client === null, 404);
+        $organization = $this->organizationsQuery()->where('o.id', $id)->first();
+        abort_if($organization === null, 404);
 
         return [
-            'client' => $this->clientCard($client),
-            'state' => $this->currentState((int) $client->id),
-            'features' => $this->features((int) $client->id),
-            'services' => $this->services((int) $client->id),
-            'deployments' => $this->deployments(clientId: (int) $client->id),
-            'usage' => $this->usage(clientId: (int) $client->id),
-            'audit' => $this->audit(clientId: (int) $client->id, limit: 10),
+            'organization' => $this->organizationCard($organization),
+            'instances' => $this->instancesQuery()->where('i.organization_id', $id)->get()->map(fn ($row): array => $this->instanceCard($row))->all(),
+            'contracts' => $this->contracts($id),
+            'usage' => $this->usage(organizationId: $id),
+            'audit' => $this->audit(organizationId: $id, limit: 10),
         ];
     }
 
     /**
      * @return array<string, mixed>
      */
-    public function changeState(int $clientId, Request $request): array
+    public function instance(int $id): array
+    {
+        $instance = $this->instancesQuery()->where('i.id', $id)->first();
+        abort_if($instance === null, 404);
+
+        return [
+            'organization' => $this->organizationCard($this->organizationsQuery()->where('o.id', $instance->organization_id)->first()),
+            'instance' => $this->instanceCard($instance),
+            'state' => $this->currentState((int) $instance->id),
+            'features' => $this->features((int) $instance->id),
+            'services' => $this->services((int) $instance->id),
+            'deployments' => $this->deployments(instanceId: (int) $instance->id),
+            'usage' => $this->usage(instanceId: (int) $instance->id),
+            'audit' => $this->audit(instanceId: (int) $instance->id, limit: 10),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function changeState(int $instanceId, Request $request): array
     {
         $validated = $request->validate([
             'state' => ['required', 'string', 'in:' . implode(',', self::STATES)],
@@ -112,17 +143,17 @@ class ControlCenterService
             throw ValidationException::withMessages(['confirm' => 'Confirma el estado operativo solicitado.']);
         }
 
-        $client = $this->findClient($clientId);
-        $before = $this->currentState($clientId);
+        $instance = $this->findInstance($instanceId);
+        $before = $this->currentState($instanceId);
         $now = Carbon::now();
 
         DB::table('control_center_operational_states')
-            ->where('client_id', $clientId)
+            ->where('instance_id', $instanceId)
             ->whereNull('ends_at')
             ->update(['ends_at' => $now, 'updated_at' => $now]);
 
         $stateId = DB::table('control_center_operational_states')->insertGetId([
-            'client_id' => $clientId,
+            'instance_id' => $instanceId,
             'state' => $validated['state'],
             'starts_at' => $now,
             'ends_at' => null,
@@ -135,17 +166,17 @@ class ControlCenterService
             'updated_at' => $now,
         ]);
 
-        DB::table('control_center_clients')->where('id', $clientId)->update([
+        DB::table('control_center_instances')->where('id', $instanceId)->update([
             'status' => $validated['state'],
             'updated_at' => $now,
         ]);
 
-        $after = $this->currentState($clientId);
-        $this->auditLog($clientId, 'state', 'state.changed', 'operational_state', $stateId, $before, $after, $request);
-        $this->stateResolver->forget($client->slug ?? null);
+        $after = $this->currentState($instanceId);
+        $this->auditLog((int) $instance->organization_id, $instanceId, 'state', 'state.changed', 'operational_state', $stateId, $before, $after, $request);
+        $this->stateResolver->forget($instance->slug ?? null);
 
         return [
-            'client' => $this->clientCard($this->findClient($clientId)),
+            'instance' => $this->instanceCard($this->instancesQuery()->where('i.id', $instanceId)->first()),
             'state' => $after,
         ];
     }
@@ -153,13 +184,13 @@ class ControlCenterService
     /**
      * @return array<int, array<string, mixed>>
      */
-    public function features(int $clientId): array
+    public function features(int $instanceId): array
     {
         return DB::table('control_center_features as f')
-            ->leftJoin('control_center_client_features as cf', function ($join) use ($clientId): void {
-                $join->on('cf.feature_id', '=', 'f.id')->where('cf.client_id', '=', $clientId);
+            ->leftJoin('control_center_instance_features as ife', function ($join) use ($instanceId): void {
+                $join->on('ife.feature_id', '=', 'f.id')->where('ife.instance_id', '=', $instanceId);
             })
-            ->select(['f.id', 'f.key', 'f.name', 'f.description', 'f.module', 'f.risk_level', 'f.requires_review', 'f.default_enabled', 'cf.enabled', 'cf.override_reason', 'cf.updated_at'])
+            ->select(['f.id', 'f.key', 'f.name', 'f.description', 'f.module', 'f.risk_level', 'f.requires_review', 'f.default_enabled', 'ife.enabled', 'ife.override_reason', 'ife.updated_at'])
             ->orderBy('f.module')
             ->orderBy('f.name')
             ->get()
@@ -181,7 +212,7 @@ class ControlCenterService
     /**
      * @return array<string, mixed>
      */
-    public function updateFeatures(int $clientId, Request $request): array
+    public function updateFeatures(int $instanceId, Request $request): array
     {
         $validated = $request->validate([
             'features' => ['required', 'array', 'min:1'],
@@ -190,8 +221,8 @@ class ControlCenterService
             'features.*.reason' => ['nullable', 'string', 'max:2000'],
         ]);
 
-        $this->findClient($clientId);
-        $before = $this->features($clientId);
+        $instance = $this->findInstance($instanceId);
+        $before = $this->features($instanceId);
         $now = Carbon::now();
         $featureIds = DB::table('control_center_features')->pluck('id', 'key');
 
@@ -201,9 +232,9 @@ class ControlCenterService
                 throw ValidationException::withMessages(['features' => "Feature no registrada: {$key}"]);
             }
 
-            DB::table('control_center_client_features')->updateOrInsert(
+            DB::table('control_center_instance_features')->updateOrInsert(
                 [
-                    'client_id' => $clientId,
+                    'instance_id' => $instanceId,
                     'feature_id' => $featureIds[$key],
                     'environment' => 'production',
                 ],
@@ -217,8 +248,8 @@ class ControlCenterService
             );
         }
 
-        $after = $this->features($clientId);
-        $this->auditLog($clientId, 'feature', 'feature.updated', 'client_feature', $clientId, $before, $after, $request);
+        $after = $this->features($instanceId);
+        $this->auditLog((int) $instance->organization_id, $instanceId, 'feature', 'feature.updated', 'instance_feature', $instanceId, $before, $after, $request);
 
         return ['features' => $after];
     }
@@ -226,22 +257,24 @@ class ControlCenterService
     /**
      * @return array<int, array<string, mixed>>
      */
-    public function services(?int $clientId = null): array
+    public function services(?int $instanceId = null): array
     {
         $query = DB::table('control_center_service_snapshots as ss')
             ->join('control_center_services as s', 's.id', '=', 'ss.service_id')
-            ->join('control_center_clients as c', 'c.id', '=', 'ss.client_id')
-            ->select(['ss.*', 's.key', 's.name', 's.icon', 'c.name as client_name', 'c.slug as client_slug']);
+            ->join('control_center_instances as i', 'i.id', '=', 'ss.instance_id')
+            ->join('control_center_organizations as o', 'o.id', '=', 'i.organization_id')
+            ->select(['ss.*', 's.key', 's.name', 's.icon', 'i.name as instance_name', 'i.slug as instance_slug', 'o.name as organization_name']);
 
-        if ($clientId !== null) {
-            $query->where('ss.client_id', $clientId);
+        if ($instanceId !== null) {
+            $query->where('ss.instance_id', $instanceId);
         }
 
-        return $query->orderBy('s.name')->orderBy('c.name')->get()->map(fn ($row): array => [
+        return $query->orderBy('s.name')->orderBy('i.name')->get()->map(fn ($row): array => [
             'id' => (int) $row->id,
-            'client_id' => (int) $row->client_id,
-            'client_name' => $row->client_name,
-            'client_slug' => $row->client_slug,
+            'instance_id' => (int) $row->instance_id,
+            'instance_name' => $row->instance_name,
+            'instance_slug' => $row->instance_slug,
+            'organization_name' => $row->organization_name,
             'key' => $row->key,
             'name' => $row->name,
             'icon' => $row->icon,
@@ -258,46 +291,44 @@ class ControlCenterService
      */
     public function plans(): array
     {
-        return DB::table('control_center_plans')
-            ->orderBy('monthly_price')
-            ->get()
-            ->map(fn ($plan): array => [
-                'id' => (int) $plan->id,
-                'code' => $plan->code,
-                'name' => $plan->name,
-                'monthly_price' => $plan->monthly_price === null ? null : (float) $plan->monthly_price,
-                'currency' => $plan->currency,
-                'user_limit' => $plan->user_limit,
-                'ai_token_limit' => $plan->ai_token_limit,
-                'whatsapp_message_limit' => $plan->whatsapp_message_limit,
-                'storage_gb_limit' => $plan->storage_gb_limit,
-                'sla_target' => $plan->sla_target === null ? null : (float) $plan->sla_target,
-                'support_level' => $plan->support_level,
-                'modules' => $this->decodeJson($plan->modules_json),
-                'is_active' => (bool) $plan->is_active,
-            ])
-            ->all();
+        return DB::table('control_center_plans')->orderBy('monthly_price')->get()->map(fn ($plan): array => [
+            'id' => (int) $plan->id,
+            'code' => $plan->code,
+            'name' => $plan->name,
+            'monthly_price' => $plan->monthly_price === null ? null : (float) $plan->monthly_price,
+            'currency' => $plan->currency,
+            'user_limit' => $plan->user_limit,
+            'ai_token_limit' => $plan->ai_token_limit,
+            'whatsapp_message_limit' => $plan->whatsapp_message_limit,
+            'storage_gb_limit' => $plan->storage_gb_limit,
+            'sla_target' => $plan->sla_target === null ? null : (float) $plan->sla_target,
+            'support_level' => $plan->support_level,
+            'modules' => $this->decodeJson($plan->modules_json),
+            'is_active' => (bool) $plan->is_active,
+        ])->all();
     }
 
     /**
      * @return array<int, array<string, mixed>>
      */
-    public function deployments(?int $clientId = null): array
+    public function deployments(?int $instanceId = null): array
     {
         $query = DB::table('control_center_deployments as d')
-            ->join('control_center_clients as c', 'c.id', '=', 'd.client_id')
+            ->join('control_center_instances as i', 'i.id', '=', 'd.instance_id')
+            ->join('control_center_organizations as o', 'o.id', '=', 'i.organization_id')
             ->leftJoin('control_center_releases as r', 'r.id', '=', 'd.release_id')
-            ->select(['d.*', 'c.name as client_name', 'c.slug as client_slug', 'r.title as release_title']);
+            ->select(['d.*', 'i.name as instance_name', 'i.slug as instance_slug', 'o.name as organization_name', 'r.title as release_title']);
 
-        if ($clientId !== null) {
-            $query->where('d.client_id', $clientId);
+        if ($instanceId !== null) {
+            $query->where('d.instance_id', $instanceId);
         }
 
         return $query->orderByDesc('d.deployed_at')->get()->map(fn ($row): array => [
             'id' => (int) $row->id,
-            'client_id' => (int) $row->client_id,
-            'client_name' => $row->client_name,
-            'client_slug' => $row->client_slug,
+            'instance_id' => (int) $row->instance_id,
+            'instance_name' => $row->instance_name,
+            'instance_slug' => $row->instance_slug,
+            'organization_name' => $row->organization_name,
             'version' => $row->version,
             'available_version' => $row->available_version,
             'channel' => $row->channel,
@@ -312,21 +343,27 @@ class ControlCenterService
     /**
      * @return array<int, array<string, mixed>>
      */
-    public function usage(?int $clientId = null): array
+    public function usage(?int $organizationId = null, ?int $instanceId = null): array
     {
         $query = DB::table('control_center_usage_metrics as u')
-            ->leftJoin('control_center_clients as c', 'c.id', '=', 'u.client_id')
-            ->select(['u.*', 'c.name as client_name', 'c.slug as client_slug']);
+            ->leftJoin('control_center_organizations as o', 'o.id', '=', 'u.organization_id')
+            ->leftJoin('control_center_instances as i', 'i.id', '=', 'u.instance_id')
+            ->select(['u.*', 'o.name as organization_name', 'i.name as instance_name', 'i.slug as instance_slug']);
 
-        if ($clientId !== null) {
-            $query->where('u.client_id', $clientId);
+        if ($organizationId !== null) {
+            $query->where('u.organization_id', $organizationId);
+        }
+        if ($instanceId !== null) {
+            $query->where('u.instance_id', $instanceId);
         }
 
         return $query->orderBy('u.metric')->get()->map(fn ($row): array => [
             'id' => (int) $row->id,
-            'client_id' => $row->client_id === null ? null : (int) $row->client_id,
-            'client_name' => $row->client_name,
-            'client_slug' => $row->client_slug,
+            'organization_id' => $row->organization_id === null ? null : (int) $row->organization_id,
+            'organization_name' => $row->organization_name,
+            'instance_id' => $row->instance_id === null ? null : (int) $row->instance_id,
+            'instance_name' => $row->instance_name,
+            'instance_slug' => $row->instance_slug,
             'metric' => $row->metric,
             'period_start' => $row->period_start,
             'period_end' => $row->period_end,
@@ -339,65 +376,112 @@ class ControlCenterService
     /**
      * @return array<int, array<string, mixed>>
      */
-    public function audit(?int $clientId = null, int $limit = 50): array
+    public function audit(?int $organizationId = null, ?int $instanceId = null, int $limit = 50): array
     {
-        return $this->auditQuery($clientId, $limit)->get()->map(fn ($row): array => $this->auditRow($row))->all();
+        return $this->auditQuery($organizationId, $instanceId, $limit)->get()->map(fn ($row): array => $this->auditRow($row))->all();
     }
 
-    private function findClient(int $id): object
+    private function organizationsQuery(): \Illuminate\Database\Query\Builder
     {
-        $client = DB::table('control_center_clients')->where('id', $id)->first();
-        abort_if($client === null, 404);
+        return DB::table('control_center_organizations as o')
+            ->leftJoin('control_center_contracts as co', function ($join): void {
+                $join->on('co.organization_id', '=', 'o.id')->whereNull('co.instance_id');
+            })
+            ->leftJoin('control_center_plans as p', 'p.id', '=', 'co.plan_id')
+            ->select(['o.*', 'p.name as plan_name', 'co.payment_status', 'co.contract_status']);
+    }
 
-        return $client;
+    private function instancesQuery(): \Illuminate\Database\Query\Builder
+    {
+        return DB::table('control_center_instances as i')
+            ->join('control_center_organizations as o', 'o.id', '=', 'i.organization_id')
+            ->leftJoin('control_center_contracts as co', function ($join): void {
+                $join->on('co.organization_id', '=', 'o.id')->whereNull('co.instance_id');
+            })
+            ->leftJoin('control_center_plans as p', 'p.id', '=', 'co.plan_id')
+            ->select(['i.*', 'o.name as organization_name', 'o.slug as organization_slug', 'o.color as organization_color', 'o.initials as organization_initials', 'o.city as organization_city', 'p.name as plan_name', 'co.payment_status', 'co.contract_status']);
+    }
+
+    private function findInstance(int $id): object
+    {
+        $instance = DB::table('control_center_instances')->where('id', $id)->first();
+        abort_if($instance === null, 404);
+
+        return $instance;
     }
 
     /**
      * @return array<string, mixed>
      */
-    private function clientCard(object $client): array
+    private function organizationCard(?object $organization): array
     {
+        if ($organization === null) {
+            return [];
+        }
+
         return [
-            'id' => (int) $client->id,
-            'slug' => (string) $client->slug,
-            'name' => (string) $client->name,
-            'legal_name' => $client->legal_name ?? null,
-            'domain' => $client->domain ?? null,
-            'admin_url' => $client->admin_url ?? null,
-            'environment' => $client->environment ?? 'production',
-            'server_label' => $client->server_label ?? null,
-            'database_name' => $client->database_name ?? null,
-            'database_host' => $client->database_host ?? null,
-            'city' => $client->city ?? null,
-            'timezone' => $client->timezone ?? 'America/Guayaquil',
-            'status' => $client->status ?? 'production',
-            'current_version' => $client->current_version ?? null,
-            'release_channel' => $client->release_channel ?? 'stable',
-            'color' => $client->color ?? '#006b75',
-            'initials' => $client->initials ?? mb_substr((string) $client->name, 0, 2),
-            'last_activity_at' => $client->last_activity_at ?? null,
-            'plan_name' => $client->plan_name ?? null,
-            'payment_status' => $client->payment_status ?? null,
-            'contract_status' => $client->contract_status ?? null,
+            'id' => (int) $organization->id,
+            'slug' => (string) $organization->slug,
+            'name' => (string) $organization->name,
+            'legal_name' => $organization->legal_name ?? null,
+            'commercial_name' => $organization->commercial_name ?? null,
+            'city' => $organization->city ?? null,
+            'timezone' => $organization->timezone ?? 'America/Guayaquil',
+            'color' => $organization->color ?? '#006b75',
+            'initials' => $organization->initials ?? mb_substr((string) $organization->name, 0, 2),
+            'plan_name' => $organization->plan_name ?? null,
+            'payment_status' => $organization->payment_status ?? null,
+            'contract_status' => $organization->contract_status ?? null,
         ];
     }
 
     /**
      * @return array<string, mixed>
      */
-    private function currentState(int $clientId): array
+    private function instanceCard(object $instance): array
+    {
+        return [
+            'id' => (int) $instance->id,
+            'organization_id' => (int) $instance->organization_id,
+            'organization_name' => $instance->organization_name ?? null,
+            'organization_slug' => $instance->organization_slug ?? null,
+            'organization_color' => $instance->organization_color ?? '#006b75',
+            'organization_initials' => $instance->organization_initials ?? null,
+            'organization_city' => $instance->organization_city ?? null,
+            'slug' => (string) $instance->slug,
+            'name' => (string) $instance->name,
+            'domain' => $instance->domain ?? null,
+            'admin_url' => $instance->admin_url ?? null,
+            'environment' => $instance->environment ?? 'production',
+            'server_label' => $instance->server_label ?? null,
+            'database_name' => $instance->database_name ?? null,
+            'database_host' => $instance->database_host ?? null,
+            'status' => $instance->status ?? 'production',
+            'current_version' => $instance->current_version ?? null,
+            'release_channel' => $instance->release_channel ?? 'stable',
+            'last_activity_at' => $instance->last_activity_at ?? null,
+            'plan_name' => $instance->plan_name ?? null,
+            'payment_status' => $instance->payment_status ?? null,
+            'contract_status' => $instance->contract_status ?? null,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function currentState(int $instanceId): array
     {
         $state = DB::table('control_center_operational_states')
-            ->where('client_id', $clientId)
+            ->where('instance_id', $instanceId)
             ->whereNull('ends_at')
             ->orderByDesc('starts_at')
             ->orderByDesc('id')
             ->first();
 
         if ($state === null) {
-            $client = $this->findClient($clientId);
+            $instance = $this->findInstance($instanceId);
 
-            return ['state' => $client->status ?? 'production', 'reason' => null, 'changed_by_name' => null, 'starts_at' => null];
+            return ['state' => $instance->status ?? 'production', 'reason' => null, 'changed_by_name' => null, 'starts_at' => null];
         }
 
         return [
@@ -413,17 +497,45 @@ class ControlCenterService
         ];
     }
 
-    private function auditQuery(?int $clientId = null, int $limit = 50): \Illuminate\Database\Query\Builder
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function contracts(int $organizationId): array
+    {
+        return DB::table('control_center_contracts as co')
+            ->leftJoin('control_center_plans as p', 'p.id', '=', 'co.plan_id')
+            ->where('co.organization_id', $organizationId)
+            ->select(['co.*', 'p.name as plan_name'])
+            ->get()
+            ->map(fn ($row): array => [
+                'id' => (int) $row->id,
+                'organization_id' => (int) $row->organization_id,
+                'instance_id' => $row->instance_id === null ? null : (int) $row->instance_id,
+                'plan_name' => $row->plan_name,
+                'payment_status' => $row->payment_status,
+                'contract_status' => $row->contract_status,
+                'scope' => $row->scope,
+                'starts_at' => $row->starts_at,
+                'ends_at' => $row->ends_at,
+            ])
+            ->all();
+    }
+
+    private function auditQuery(?int $organizationId = null, ?int $instanceId = null, int $limit = 50): \Illuminate\Database\Query\Builder
     {
         $query = DB::table('control_center_audit_logs as a')
-            ->leftJoin('control_center_clients as c', 'c.id', '=', 'a.client_id')
-            ->select(['a.*', 'c.name as client_name', 'c.slug as client_slug'])
+            ->leftJoin('control_center_organizations as o', 'o.id', '=', 'a.organization_id')
+            ->leftJoin('control_center_instances as i', 'i.id', '=', 'a.instance_id')
+            ->select(['a.*', 'o.name as organization_name', 'o.slug as organization_slug', 'i.name as instance_name', 'i.slug as instance_slug'])
             ->orderByDesc('a.created_at')
             ->orderByDesc('a.id')
             ->limit($limit);
 
-        if ($clientId !== null) {
-            $query->where('a.client_id', $clientId);
+        if ($organizationId !== null) {
+            $query->where('a.organization_id', $organizationId);
+        }
+        if ($instanceId !== null) {
+            $query->where('a.instance_id', $instanceId);
         }
 
         return $query;
@@ -436,9 +548,12 @@ class ControlCenterService
     {
         return [
             'id' => (int) $row->id,
-            'client_id' => $row->client_id === null ? null : (int) $row->client_id,
-            'client_name' => $row->client_name,
-            'client_slug' => $row->client_slug,
+            'organization_id' => $row->organization_id === null ? null : (int) $row->organization_id,
+            'organization_name' => $row->organization_name,
+            'organization_slug' => $row->organization_slug,
+            'instance_id' => $row->instance_id === null ? null : (int) $row->instance_id,
+            'instance_name' => $row->instance_name,
+            'instance_slug' => $row->instance_slug,
             'event_type' => $row->event_type,
             'action' => $row->action,
             'actor_user_id' => $row->actor_user_id === null ? null : (int) $row->actor_user_id,
@@ -473,10 +588,11 @@ class ControlCenterService
         return $totals;
     }
 
-    private function auditLog(int $clientId, string $eventType, string $action, string $targetType, int $targetId, mixed $before, mixed $after, Request $request): void
+    private function auditLog(int $organizationId, int $instanceId, string $eventType, string $action, string $targetType, int $targetId, mixed $before, mixed $after, Request $request): void
     {
         DB::table('control_center_audit_logs')->insert([
-            'client_id' => $clientId,
+            'organization_id' => $organizationId,
+            'instance_id' => $instanceId,
             'event_type' => $eventType,
             'action' => $action,
             'actor_user_id' => Auth::id(),
@@ -490,6 +606,11 @@ class ControlCenterService
             'user_agent' => (string) $request->userAgent(),
             'created_at' => Carbon::now(),
         ]);
+    }
+
+    private function perPage(Request $request): int
+    {
+        return min(max((int) $request->integer('per_page', 25), 1), 100);
     }
 
     private function actorName(): ?string

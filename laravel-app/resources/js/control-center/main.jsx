@@ -17,9 +17,7 @@ async function request(path, options = {}) {
     },
   });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(payload.message || payload.error || 'No se pudo completar la solicitud.');
-  }
+  if (!response.ok) throw new Error(payload.message || payload.error || 'No se pudo completar la solicitud.');
   return payload.data;
 }
 
@@ -32,8 +30,10 @@ const stateMeta = {
 
 function App() {
   const [overview, setOverview] = useState(null);
-  const [clients, setClients] = useState([]);
-  const [selectedId, setSelectedId] = useState(null);
+  const [organizations, setOrganizations] = useState([]);
+  const [instances, setInstances] = useState([]);
+  const [selectedOrganizationId, setSelectedOrganizationId] = useState(null);
+  const [selectedInstanceId, setSelectedInstanceId] = useState(null);
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -44,13 +44,16 @@ function App() {
     setLoading(true);
     setError('');
     try {
-      const [overviewData, clientsData] = await Promise.all([
+      const [overviewData, orgData, instanceData] = await Promise.all([
         request('/v2/control-center/overview'),
-        request('/v2/control-center/clients?per_page=100'),
+        request('/v2/control-center/organizations?per_page=100'),
+        request('/v2/control-center/instances?per_page=100'),
       ]);
       setOverview(overviewData);
-      setClients(clientsData);
-      setSelectedId((current) => current || clientsData[0]?.id || null);
+      setOrganizations(orgData);
+      setInstances(instanceData);
+      setSelectedOrganizationId((current) => current || orgData[0]?.id || null);
+      setSelectedInstanceId((current) => current || instanceData[0]?.id || null);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -58,40 +61,39 @@ function App() {
     }
   }
 
-  async function loadDetail(clientId) {
-    if (!clientId) return;
+  async function loadDetail(instanceId) {
+    if (!instanceId) return;
     setError('');
     try {
-      setDetail(await request(`/v2/control-center/clients/${clientId}`));
+      setDetail(await request(`/v2/control-center/instances/${instanceId}`));
     } catch (err) {
       setError(err.message);
     }
   }
 
-  useEffect(() => {
-    load();
-  }, []);
+  useEffect(() => { load(); }, []);
+  useEffect(() => { loadDetail(selectedInstanceId); }, [selectedInstanceId]);
 
-  useEffect(() => {
-    loadDetail(selectedId);
-  }, [selectedId]);
+  const visibleInstances = useMemo(() => {
+    return instances.filter((instance) => {
+      if (selectedOrganizationId && instance.organization_id !== selectedOrganizationId) return false;
+      if (filter !== 'all' && instance.status !== filter) return false;
+      return true;
+    });
+  }, [instances, selectedOrganizationId, filter]);
 
-  const visibleClients = useMemo(() => {
-    if (filter === 'all') return clients;
-    return clients.filter((client) => client.status === filter);
-  }, [clients, filter]);
-
-  const selectedClient = detail?.client || clients.find((client) => client.id === selectedId);
+  const selectedInstance = detail?.instance || instances.find((instance) => instance.id === selectedInstanceId);
+  const selectedOrganization = detail?.organization || organizations.find((organization) => organization.id === selectedOrganizationId);
 
   async function changeState(nextState) {
-    if (!selectedClient) return;
-    const reason = window.prompt(`Motivo para cambiar ${selectedClient.name} a ${stateMeta[nextState].label}:`, '');
+    if (!selectedInstance) return;
+    const reason = window.prompt(`Motivo para cambiar ${selectedInstance.name} a ${stateMeta[nextState].label}:`, '');
     if (reason === null) return;
 
     setSaving(true);
     setError('');
     try {
-      const data = await request(`/v2/control-center/clients/${selectedClient.id}/state`, {
+      const data = await request(`/v2/control-center/instances/${selectedInstance.id}/state`, {
         method: 'POST',
         body: JSON.stringify({
           state: nextState,
@@ -109,11 +111,11 @@ function App() {
   }
 
   async function toggleFeature(feature) {
-    if (!selectedClient) return;
+    if (!selectedInstance) return;
     setSaving(true);
     setError('');
     try {
-      const data = await request(`/v2/control-center/clients/${selectedClient.id}/features`, {
+      const data = await request(`/v2/control-center/instances/${selectedInstance.id}/features`, {
         method: 'POST',
         body: JSON.stringify({
           features: [{ key: feature.key, enabled: !feature.enabled, reason: 'Cambio desde Control Center MVP' }],
@@ -149,8 +151,8 @@ function App() {
       {error ? <div className="cc-alert">{error}</div> : null}
 
       <section className="cc-kpis">
-        <Kpi icon="mdi-domain" label="Clientes" value={overview?.summary?.clients_total || 0} />
-        <Kpi icon="mdi-check-decagram" label="Produccion" value={overview?.summary?.production || 0} tone="ok" />
+        <Kpi icon="mdi-domain" label="Organizaciones" value={overview?.summary?.organizations_total || 0} />
+        <Kpi icon="mdi-server-network" label="Instancias" value={overview?.summary?.instances_total || 0} />
         <Kpi icon="mdi-lock-outline" label="Solo lectura" value={overview?.summary?.readonly || 0} tone="info" />
         <Kpi icon="mdi-alert" label="Servicios degradados" value={overview?.summary?.services_degraded || 0} tone="warn" />
       </section>
@@ -159,8 +161,38 @@ function App() {
         <section className="cc-panel cc-clients">
           <div className="cc-panel-head">
             <div>
-              <p className="cc-eyebrow">Instancias</p>
-              <h2>Clientes</h2>
+              <p className="cc-eyebrow">Empresa legal/comercial</p>
+              <h2>Organizaciones</h2>
+            </div>
+          </div>
+          <div className="cc-client-list">
+            {organizations.map((organization) => (
+              <button
+                type="button"
+                className={`cc-client-row ${organization.id === selectedOrganizationId ? 'is-active' : ''}`}
+                key={organization.id}
+                onClick={() => {
+                  setSelectedOrganizationId(organization.id);
+                  const firstInstance = instances.find((instance) => instance.organization_id === organization.id);
+                  if (firstInstance) setSelectedInstanceId(firstInstance.id);
+                }}
+              >
+                <span className="cc-avatar" style={{ backgroundColor: organization.color || '#006b75' }}>{organization.initials}</span>
+                <span>
+                  <strong>{organization.name}</strong>
+                  <small>{organization.plan_name || 'Sin plan'}</small>
+                </span>
+                <span className="cc-count">{instances.filter((instance) => instance.organization_id === organization.id).length}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section className="cc-panel cc-detail">
+          <div className="cc-panel-head compact">
+            <div>
+              <p className="cc-eyebrow">Instalaciones MedForge</p>
+              <h2>Instancias</h2>
             </div>
             <select value={filter} onChange={(event) => setFilter(event.target.value)}>
               <option value="all">Todos</option>
@@ -171,52 +203,48 @@ function App() {
             </select>
           </div>
 
-          <div className="cc-client-list">
-            {visibleClients.map((client) => (
+          <div className="cc-instance-strip">
+            {visibleInstances.map((instance) => (
               <button
                 type="button"
-                className={`cc-client-row ${client.id === selectedId ? 'is-active' : ''}`}
-                key={client.id}
-                onClick={() => setSelectedId(client.id)}
+                className={`cc-instance-chip ${instance.id === selectedInstanceId ? 'is-active' : ''}`}
+                key={instance.id}
+                onClick={() => setSelectedInstanceId(instance.id)}
               >
-                <span className="cc-avatar" style={{ backgroundColor: client.color || '#006b75' }}>{client.initials}</span>
-                <span>
-                  <strong>{client.name}</strong>
-                  <small>{client.domain || client.slug}</small>
-                </span>
-                <StatePill state={client.status} />
+                <span>{instance.name}</span>
+                <StatePill state={instance.status} />
               </button>
             ))}
           </div>
-        </section>
 
-        <section className="cc-panel cc-detail">
-          {selectedClient ? (
+          {selectedInstance ? (
             <>
               <div className="cc-detail-head">
                 <div className="cc-titleline">
-                  <span className="cc-avatar cc-avatar-lg" style={{ backgroundColor: selectedClient.color || '#006b75' }}>{selectedClient.initials}</span>
+                  <span className="cc-avatar cc-avatar-lg" style={{ backgroundColor: selectedInstance.organization_color || '#006b75' }}>
+                    {selectedInstance.organization_initials || selectedOrganization?.initials}
+                  </span>
                   <div>
-                    <p className="cc-eyebrow">{selectedClient.environment} · {selectedClient.city || 'Sin ciudad'}</p>
-                    <h2>{selectedClient.name}</h2>
-                    <span>{selectedClient.domain}</span>
+                    <p className="cc-eyebrow">{selectedOrganization?.name || selectedInstance.organization_name} · {selectedInstance.environment}</p>
+                    <h2>{selectedInstance.name}</h2>
+                    <span>{selectedInstance.domain}</span>
                   </div>
                 </div>
-                <StatePill state={selectedClient.status} />
+                <StatePill state={selectedInstance.status} />
               </div>
 
               <div className="cc-meta-grid">
-                <Meta label="Servidor" value={selectedClient.server_label} />
-                <Meta label="Base de datos" value={selectedClient.database_name} />
-                <Meta label="Version" value={selectedClient.current_version} />
-                <Meta label="Plan" value={selectedClient.plan_name} />
+                <Meta label="Servidor" value={selectedInstance.server_label} />
+                <Meta label="Base de datos" value={selectedInstance.database_name} />
+                <Meta label="Version" value={selectedInstance.current_version} />
+                <Meta label="Release channel" value={selectedInstance.release_channel} />
               </div>
 
               <div className="cc-section">
                 <div className="cc-panel-head compact">
                   <div>
-                    <p className="cc-eyebrow">Estado operativo</p>
-                    <h3>{stateMeta[detail?.state?.state || selectedClient.status]?.label}</h3>
+                    <p className="cc-eyebrow">Estado operativo por instancia</p>
+                    <h3>{stateMeta[detail?.state?.state || selectedInstance.status]?.label}</h3>
                   </div>
                 </div>
                 <div className="cc-state-actions">
@@ -232,7 +260,7 @@ function App() {
               <div className="cc-section">
                 <div className="cc-panel-head compact">
                   <div>
-                    <p className="cc-eyebrow">Feature flags</p>
+                    <p className="cc-eyebrow">Feature flags por instancia</p>
                     <h3>Modulos activos</h3>
                   </div>
                 </div>
@@ -250,7 +278,7 @@ function App() {
               </div>
             </>
           ) : (
-            <div className="cc-empty">Selecciona un cliente.</div>
+            <div className="cc-empty">Selecciona una instancia.</div>
           )}
         </section>
 
@@ -263,11 +291,11 @@ function App() {
           </div>
           <div className="cc-service-list">
             {(detail?.services || overview?.services || []).slice(0, 8).map((service) => (
-              <div className="cc-service-row" key={`${service.client_id}-${service.key}`}>
+              <div className="cc-service-row" key={`${service.instance_id}-${service.key}`}>
                 <i className={`mdi ${service.icon || 'mdi-server'}`} aria-hidden="true" />
                 <span>
                   <strong>{service.name}</strong>
-                  <small>{service.client_name || selectedClient?.name}</small>
+                  <small>{service.instance_name || selectedInstance?.name}</small>
                 </span>
                 <span className={`cc-dot ${service.state}`} />
               </div>
@@ -280,7 +308,7 @@ function App() {
               {(detail?.audit || overview?.audit || []).slice(0, 6).map((entry) => (
                 <div className="cc-audit-row" key={entry.id}>
                   <strong>{entry.action}</strong>
-                  <small>{entry.actor_name || 'Sistema'} · {entry.client_name || 'Global'}</small>
+                  <small>{entry.actor_name || 'Sistema'} · {entry.instance_name || entry.organization_name || 'Global'}</small>
                 </div>
               ))}
             </div>
@@ -299,7 +327,7 @@ function Shell({ children }) {
           <span className="cc-mark">MF</span>
           <strong>MedForge</strong>
         </div>
-        {['Overview', 'Clientes', 'Estado', 'Features', 'Servicios', 'Deploys', 'Consumo', 'Auditoria'].map((item, index) => (
+        {['Overview', 'Organizaciones', 'Instancias', 'Estado', 'Features', 'Servicios', 'Deploys', 'Consumo', 'Auditoria'].map((item, index) => (
           <span className={`cc-nav-item ${index === 0 ? 'is-active' : ''}`} key={item}>{item}</span>
         ))}
       </nav>
@@ -335,6 +363,4 @@ function Meta({ label, value }) {
 }
 
 const root = document.getElementById('control-center-root');
-if (root) {
-  createRoot(root).render(<App />);
-}
+if (root) createRoot(root).render(<App />);

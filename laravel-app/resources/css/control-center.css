@@ -234,6 +234,17 @@ h3 { font-size: 16px; }
   color: var(--cc-muted);
 }
 
+.cc-count {
+  min-width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: #e7eef0;
+  color: var(--cc-teal);
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+}
+
 .cc-avatar {
   width: 40px;
   height: 40px;
@@ -251,6 +262,29 @@ h3 { font-size: 16px; }
 
 .cc-detail {
   padding: 18px;
+}
+
+.cc-instance-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 0 18px;
+}
+
+.cc-instance-chip {
+  border: 1px solid var(--cc-line);
+  background: #f8fbfb;
+  border-radius: 8px;
+  padding: 9px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.cc-instance-chip.is-active {
+  border-color: var(--cc-teal);
+  background: #eef6f7;
 }
 
 .cc-detail-head {
