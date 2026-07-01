@@ -506,16 +506,16 @@ function StepProcedimiento({ form, set, setForm, showToast, scraped, setScraped,
   const addRow = (key, blank) => setForm((f) => ({ ...f, [key]: [...f[key], blank] }));
   const rmRow = (key, i) => setForm((f) => ({ ...f, [key]: f[key].filter((_, k) => k !== i) }));
 
-  // Async search against tarifario_2014 for procedure codes
+  // Async search against tarifario_2014 via cirugias-scoped endpoint (no codes.view perm needed)
   const searchProcedimientos = useCallback((inputValue) => {
     if (!inputValue || inputValue.length < 2) return Promise.resolve([]);
-    return fetch(`/v2/codes/api/search?q=${encodeURIComponent(inputValue)}&limit=20`, {
+    return fetch(`/v2/cirugias/search-procedimientos?q=${encodeURIComponent(inputValue)}`, {
       headers: { 'X-Requested-With': 'XMLHttpRequest' },
     })
       .then((r) => r.json())
       .then((res) => (res.data || []).map((c) => ({
         value: c.codigo,
-        label: `${c.codigo} — ${c.descripcion}`,
+        label: c.codigo,
         codigo: c.codigo,
         nombre: c.descripcion,
       })))
@@ -604,13 +604,28 @@ function StepProcedimiento({ form, set, setForm, showToast, scraped, setScraped,
               noOptionsMessage={({ inputValue }) => inputValue.length < 2 ? 'Escribe al menos 2 caracteres' : 'Sin resultados'}
               loadingMessage={() => 'Buscando...'}
               loadOptions={searchProcedimientos}
-              value={p.codigo ? { value: p.codigo, label: `${p.codigo} — ${p.nombre}` } : null}
+              value={p.codigo ? { value: p.codigo, label: p.codigo, codigo: p.codigo, nombre: p.nombre } : null}
               onChange={(opt) => {
                 const a = (form.procedimientos || []).slice();
                 a[i] = { ...a[i], codigo: opt ? opt.codigo : '', nombre: opt ? opt.nombre : '' };
                 setForm((f) => ({ ...f, procedimientos: a }));
               }}
-              styles={{ container: (b) => ({ ...b, flex: 1 }) }}
+              formatOptionLabel={(opt) => (
+                <div>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, marginRight: 8 }}>{opt.codigo}</span>
+                  <span style={{ color: 'var(--fg-2)', fontSize: 12 }}>{opt.nombre}</span>
+                </div>
+              )}
+              formatValueLabel={(opt) => (
+                <div>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700 }}>{opt.codigo}</span>
+                  {opt.nombre && <span style={{ color: 'var(--fg-2)', fontSize: 11, marginLeft: 6 }}>{opt.nombre}</span>}
+                </div>
+              )}
+              styles={{
+                container: (b) => ({ ...b, flex: 1, minWidth: 0 }),
+                singleValue: (b) => ({ ...b, overflow: 'visible' }),
+              }}
             />
             <button className="icon-mini" title="Quitar" onClick={() => {
                 if (p.codigo || p.nombre) {
