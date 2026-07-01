@@ -170,6 +170,36 @@ export function Modal({ icon, tone = 'danger', title, children, confirmLabel, co
   );
 }
 
+/**
+ * Sin esto, cualquier error de render no capturado desmonta todo el árbol de React
+ * y deja la página en blanco/oscura sin ninguna pista de qué pasó.
+ */
+export class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  componentDidCatch(error, info) {
+    console.error('protocolos-index: render error', error, info);
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ maxWidth: 560, margin: '60px auto', textAlign: 'center', padding: 20 }}>
+          <i className="mdi mdi-alert-circle-outline" style={{ fontSize: 46, color: 'var(--danger)' }}></i>
+          <h2 style={{ font: '500 20px var(--font-display)', margin: '14px 0 6px' }}>Ocurrió un error inesperado</h2>
+          <p style={{ font: '400 13px var(--font-body)', color: 'var(--fg-3)', marginBottom: 18 }}>{String(this.state.error.message || this.state.error)}</p>
+          <button className="btn btn-primary" onClick={() => window.location.reload()}>Recargar página</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export const uid = () => 'p-' + Math.random().toString(36).slice(2, 8);
 export const rid = () => Math.random().toString(36).slice(2, 9);
 
