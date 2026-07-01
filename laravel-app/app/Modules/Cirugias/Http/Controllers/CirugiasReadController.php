@@ -303,42 +303,8 @@ class CirugiasReadController
         $printed = (int) ($row['printed'] ?? 0);
         $alertasCount = (int) ($row['alertas_count'] ?? 0);
 
-        // Legacy HTML columns kept for the blade fallback
-        $badgeEstado = match ($estado) {
-            'revisado' => "<span class='badge bg-success'><i class='fa fa-check'></i></span>",
-            'no revisado' => "<span class='badge bg-warning'><i class='fa fa-exclamation-triangle'></i></span>",
-            default => "<span class='badge bg-danger'><i class='fa fa-times'></i></span>",
-        };
-        $badgePrinted = $printed ? "<span class='badge bg-success'><i class='fa fa-check'></i></span>" : '';
-
         $formId = (string) ($row['form_id'] ?? '');
         $hcNumber = (string) ($row['hc_number'] ?? '');
-        $formIdEsc = $esc($formId);
-        $hcNumberEsc = $esc($hcNumber);
-        $formIdJs = json_encode($formId, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT);
-        $hcNumberJs = json_encode($hcNumber, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT);
-
-        $protocoloHtml = '<a href="#" class="btn btn-app btn-info" '
-            . 'title="Ver protocolo quirurgico" '
-            . 'data-bs-toggle="modal" data-bs-target="#resultModal" '
-            . 'data-form-id="' . $formIdEsc . '" '
-            . 'data-hc-number="' . $hcNumberEsc . '" '
-            . 'onclick="loadProtocolData(this)">'
-            . $badgeEstado . '<i class="mdi mdi-file-document"></i> Protocolo</a>';
-
-        $descansoOnClick = 'emitirCertificadoDescanso(' . $formIdJs . ', ' . $hcNumberJs . ')';
-        $descansoHtml = '<a class="btn btn-app btn-warning" '
-            . 'title="Generar certificado medico" '
-            . 'onclick="' . $esc($descansoOnClick) . '">'
-            . '<i class="mdi mdi-file-document-box"></i> Certificado</a>';
-
-        $printOnClick = $estado === 'revisado'
-            ? 'togglePrintStatus(' . $formIdJs . ', ' . $hcNumberJs . ', this, ' . $printed . ')'
-            : "Swal.fire({ icon: 'warning', title: 'Pendiente revision', text: 'Debe revisar el protocolo antes de imprimir.' })";
-
-        $imprimirHtml = '<a class="btn btn-app btn-primary ' . ($printed ? 'active' : '') . '" '
-            . 'title="Imprimir protocolo" onclick="' . $esc($printOnClick) . '">'
-            . $badgePrinted . '<i class="fa fa-print"></i> Imprimir</a>';
 
         $fechaInicioRaw = (string) ($row['fecha_inicio'] ?? '');
         $fechaInicio = '';
@@ -352,12 +318,7 @@ class CirugiasReadController
             $afiliacion = 'Sin convenio';
         }
         $categoria = trim((string) ($row['afiliacion_categoria'] ?? ''));
-        $afiliacionHtml = $esc($afiliacion);
-        if ($categoria !== '') {
-            $afiliacionHtml .= '<span class="d-block text-muted fs-11">Categoria: ' . $esc(ucfirst($categoria)) . '</span>';
-        }
 
-        // Lateralidad normalised
         $lateralidadRaw = strtoupper(trim((string) ($row['lateralidad'] ?? '')));
         $lateralidad = match (true) {
             str_contains($lateralidadRaw, 'AMBOS') || str_contains($lateralidadRaw, 'AO') || str_contains($lateralidadRaw, 'BILATERAL') => 'AO',
@@ -366,44 +327,37 @@ class CirugiasReadController
             default => '',
         };
 
-        // Audit status for React UI.
-        // 'estado' solo puede ser revisado/no revisado/incompleto (Cirugia::getEstado()).
-        // Como esta fila siempre proviene de protocolo_data, "incompleto" significa
-        // protocolo iniciado pendiente de completar/revisar, nunca "sin protocolo".
+        // 'estado' values: revisado / no revisado / incompleto.
+        // Every row here comes from protocolo_data, so "incompleto" means the
+        // protocol was started but is pending completion — never "sin_protocolo".
         $auditStatus = match ($estado) {
-            'revisado' => 'conforme',
+            'revisado'    => 'conforme',
             'no revisado' => 'por_revisar',
-            default => $alertasCount > 0 ? 'alertas' : 'por_revisar',
+            default       => $alertasCount > 0 ? 'alertas' : 'por_revisar',
         };
 
         return [
-            // Legacy HTML (used by blade fallback datatable)
-            'form_id' => $esc($formId),
-            'hc_number' => $esc($hcNumber),
-            'full_name' => $esc($cirugia->getNombreCompleto()),
-            'afiliacion_html' => $afiliacionHtml,
-            'fecha_inicio' => $esc($fechaInicio),
-            'membrete' => $esc((string) ($row['membrete'] ?? '')),
-            'protocolo_html' => $protocoloHtml,
-            'descanso_html' => $descansoHtml,
-            'imprimir_html' => $imprimirHtml,
-            // Clean fields for React UI
-            'cedula' => $esc((string) ($row['hc_number'] ?? '')),
-            'edad' => $row['edad'] !== null ? (int) $row['edad'] : null,
-            'afiliacion_label' => $esc($afiliacion),
-            'afiliacion_categoria' => $esc($categoria),
-            'sede' => $esc((string) ($row['sede'] ?? '')),
-            'lateralidad' => $lateralidad,
-            'estado' => $estado,
-            'printed' => $printed,
-            'alertas_count' => $alertasCount,
-            'audit_status' => $auditStatus,
-            'cirujano_display' => $this->buildDoctorName($row['cirujano_first_name'] ?? null, $row['cirujano_last_name'] ?? null),
-            'revisado_por' => $this->buildDoctorName($row['firmado_first_name'] ?? null, $row['firmado_last_name'] ?? null),
-            'revisado_fecha' => $esc((string) ($row['fecha_firma'] ?? '')),
-            'huella_display' => $this->buildDoctorName($row['huella_first_name'] ?? null, $row['huella_last_name'] ?? null),
-            'huella_evento' => $esc((string) ($row['huella_evento'] ?? '')),
-            'huella_fecha' => $esc((string) ($row['huella_fecha'] ?? '')),
+            'form_id'            => $formId,
+            'hc_number'          => $hcNumber,
+            'full_name'          => $cirugia->getNombreCompleto(),
+            'edad'               => $row['edad'] !== null ? (int) $row['edad'] : null,
+            'afiliacion_label'   => $afiliacion,
+            'afiliacion_categoria' => $categoria,
+            'sede'               => (string) ($row['sede'] ?? ''),
+            'fecha_inicio'       => $fechaInicio,
+            'membrete'           => (string) ($row['membrete'] ?? ''),
+            'lateralidad'        => $lateralidad,
+            'printed'            => $printed,
+            'status'             => (int) ($row['status'] ?? 0),
+            'alertas_count'      => $alertasCount,
+            'audit_status'       => $auditStatus,
+            'protocolo_iniciado' => $auditStatus !== 'sin_protocolo',
+            'cirujano_display'   => $this->buildDoctorName($row['cirujano_first_name'] ?? null, $row['cirujano_last_name'] ?? null),
+            'revisado_por'       => $this->buildDoctorName($row['firmado_first_name'] ?? null, $row['firmado_last_name'] ?? null),
+            'revisado_fecha'     => (string) ($row['fecha_firma'] ?? ''),
+            'huella_display'     => $this->buildDoctorName($row['huella_first_name'] ?? null, $row['huella_last_name'] ?? null),
+            'huella_evento'      => (string) ($row['huella_evento'] ?? ''),
+            'huella_fecha'       => (string) ($row['huella_fecha'] ?? ''),
         ];
     }
 }
