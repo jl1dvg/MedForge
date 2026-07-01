@@ -296,6 +296,7 @@ export function normaliseWizardForm(row, data) {
     insumos,
     insumos_esperados: data.insumos_esperados || [],
     insumosDisponibles: data.insumosDisponibles || {},
+    medicamentosDisponibles: Array.isArray(data.medicamentosDisponibles) ? data.medicamentosDisponibles : [],
     medicamentos: normaliseMedicamentos(data.medicamentos),
     medicamentos_esperados: data.medicamentos_esperados || [],
     // meta
@@ -911,6 +912,12 @@ function StepInsumos({ form, setForm, showToast }) {
 
 // ---- Step 7: Medicamentos ---------------------------------------
 function StepMedicamentos({ form, setForm, showToast }) {
+  // Real medicamentos from DB; fall back to hardcoded list only if not loaded yet.
+  const medOptions = (form.medicamentosDisponibles && form.medicamentosDisponibles.length > 0
+    ? form.medicamentosDisponibles
+    : MEDICAMENTOS
+  ).map((n) => ({ value: n, label: n }));
+
   const meds = form.medicamentos || [];
   const setMeds = (m) => setForm((f) => ({ ...f, medicamentos: m }));
   const upd = (i, field, val) => {
@@ -962,7 +969,7 @@ function StepMedicamentos({ form, setForm, showToast }) {
                     placeholder="Medicamento..."
                     noOptionsMessage={() => 'Sin opciones'}
                     formatCreateLabel={(v) => `Agregar "${v}"`}
-                    options={MEDICAMENTOS.map((n) => ({ value: n, label: n }))}
+                    options={medOptions}
                     value={m.nombre ? { value: m.nombre, label: m.nombre } : null}
                     onChange={(opt) => upd(i, 'nombre', opt ? opt.value : '')}
                   />

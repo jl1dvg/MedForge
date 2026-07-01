@@ -198,6 +198,8 @@ class CirugiasReadController
 
         // Catálogo de insumos disponibles (real, filtrado por afiliación como en el legacy).
         $insumosDisponibles = $this->service->obtenerInsumosDisponibles((string) ($cirugia->afiliacion ?? ''));
+        // Catálogo de medicamentos disponibles (real, tabla medicamentos).
+        $medicamentosDisponibles = array_column($this->service->obtenerOpcionesMedicamentos(), 'medicamento');
 
         return response()->json([
             // Patient identity (for wizard step 1)
@@ -231,7 +233,8 @@ class CirugiasReadController
             'procedimientos'       => $procedimientos,
             'insumos'              => $insumos,
             'medicamentos'         => $medicamentos,
-            'insumosDisponibles'   => $insumosDisponibles,
+            'insumosDisponibles'       => $insumosDisponibles,
+            'medicamentosDisponibles'  => $medicamentosDisponibles,
             // Staff
             'staff'     => $staff,
             // Audit
