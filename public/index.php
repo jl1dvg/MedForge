@@ -50,7 +50,6 @@ $laravelBridgePrefixes = [
     '/informes',   // Onda 5-A
     '/crm',        // Onda 5 — reinvención CRM
     '/leads',      // Onda 5 — legacy /leads alias
-    '/control-center',
 ];
 
 if (in_array($requestPath, $laravelBridgeExact, true)) {

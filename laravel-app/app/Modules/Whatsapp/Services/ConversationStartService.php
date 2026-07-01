@@ -266,7 +266,6 @@ class ConversationStartService
         }
 
         $components = [];
-        $headerType = strtolower(trim((string) $revision->header_type));
         $headerParameters = $this->buildTextParameterValues(
             (string) ($revision->header_text ?? ''),
             $contactName,
@@ -276,7 +275,7 @@ class ConversationStartService
             $templateVariables
         );
 
-        if ($headerType === 'text' && $headerParameters !== []) {
+        if ($revision->header_type === 'text' && $headerParameters !== []) {
             $components[] = [
                 'type' => 'header',
                 'parameters' => array_map(
@@ -286,37 +285,35 @@ class ConversationStartService
             ];
         }
 
-        if ($headerType === 'location') {
+        if ($revision->header_type === 'location') {
             $lat = (string) ($templateVariables['_location_lat'] ?? '');
             $lng = (string) ($templateVariables['_location_lng'] ?? '');
-            if ($lat === '' || $lng === '') {
-                throw new RuntimeException('template_location_header_missing_coordinates');
+            if ($lat !== '' && $lng !== '') {
+                $locationParam = ['latitude' => $lat, 'longitude' => $lng];
+                $locationName = (string) ($templateVariables['_location_name'] ?? '');
+                $locationAddress = (string) ($templateVariables['_location_address'] ?? '');
+                if ($locationName !== '') {
+                    $locationParam['name'] = $locationName;
+                }
+                if ($locationAddress !== '') {
+                    $locationParam['address'] = $locationAddress;
+                }
+                $components[] = [
+                    'type' => 'header',
+                    'parameters' => [
+                        ['type' => 'location', 'location' => $locationParam],
+                    ],
+                ];
             }
-
-            $locationParam = ['latitude' => $lat, 'longitude' => $lng];
-            $locationName = (string) ($templateVariables['_location_name'] ?? '');
-            $locationAddress = (string) ($templateVariables['_location_address'] ?? '');
-            if ($locationName !== '') {
-                $locationParam['name'] = $locationName;
-            }
-            if ($locationAddress !== '') {
-                $locationParam['address'] = $locationAddress;
-            }
-            $components[] = [
-                'type' => 'header',
-                'parameters' => [
-                    ['type' => 'location', 'location' => $locationParam],
-                ],
-            ];
         }
 
-        if (in_array($headerType, ['image', 'video', 'document'], true)) {
+        if (in_array($revision->header_type, ['image', 'video', 'document'], true)) {
             $mediaUrl = (string) ($templateVariables['_header_media_url'] ?? '');
             if ($mediaUrl !== '') {
                 $components[] = [
                     'type' => 'header',
                     'parameters' => [
-                        ['type' => $headerType, $headerType => ['link' => $mediaUrl]],
+                        ['type' => $revision->header_type, $revision->header_type => ['link' => $mediaUrl]],
                     ],
                 ];
             }

@@ -15,7 +15,6 @@
     };
 
     $currentPath = $normalizePath((string) request()->getPathInfo());
-    $currentQuery = request()->query();
 
     $pathStartsWith = static function (string $current, string $prefix) use ($normalizePath): bool {
         $resolvedCurrent = $normalizePath($current);
@@ -28,18 +27,7 @@
         return $resolvedCurrent === $expected || str_starts_with($resolvedCurrent . '/', $expected . '/');
     };
 
-    $queryMatches = static function (array $rules) use ($currentQuery): bool {
-        foreach ((array) ($rules['query'] ?? []) as $key => $expected) {
-            $actual = $currentQuery[(string) $key] ?? null;
-            if (is_array($actual) || (string) $actual !== (string) $expected) {
-                return false;
-            }
-        }
-
-        return true;
-    };
-
-    $ruleMatches = static function (array $rules) use ($currentPath, $normalizePath, $pathStartsWith, $queryMatches): bool {
+    $ruleMatches = static function (array $rules) use ($currentPath, $normalizePath, $pathStartsWith): bool {
         foreach ((array) ($rules['exclude_exact'] ?? []) as $path) {
             if ($currentPath === $normalizePath((string) $path)) {
                 return false;
@@ -54,13 +42,13 @@
 
         foreach ((array) ($rules['exact'] ?? []) as $path) {
             if ($currentPath === $normalizePath((string) $path)) {
-                return $queryMatches($rules);
+                return true;
             }
         }
 
         foreach ((array) ($rules['prefix'] ?? []) as $prefix) {
             if ($pathStartsWith($currentPath, (string) $prefix)) {
-                return $queryMatches($rules);
+                return true;
             }
         }
 

@@ -16,7 +16,6 @@ class ConversationOpsService
 {
     public function __construct(
         private readonly WhatsappRealtimeService $realtime = new WhatsappRealtimeService(),
-        private readonly WhatsappOperationalEventService $operationalEvents = new WhatsappOperationalEventService(),
     ) {
     }
 
@@ -289,9 +288,8 @@ class ConversationOpsService
 
         $count = 0;
         $ids = [];
-        $events = [];
 
-        DB::transaction(function () use ($expired, &$count, &$ids, &$events): void {
+        DB::transaction(function () use ($expired, &$count, &$ids): void {
             foreach ($expired as $handoff) {
                 $handoff->fill([
                     'status' => 'queued',
@@ -316,24 +314,10 @@ class ConversationOpsService
                 $this->insertHandoffEvent($handoff->id, 'expired', null, 'TTL vencido');
                 $this->insertHandoffEvent($handoff->id, 'requeued', null, $this->sanitizeNotes($handoff->notes));
 
-                $events[] = [
-                    'event' => 'handoff.requeued',
-                    'conversation_id' => (int) $handoff->conversation_id,
-                    'priority' => (string) ($handoff->priority ?: 'normal'),
-                    'topic' => (string) ($handoff->topic ?: 'faq_escalada'),
-                    'reason' => 'ttl_expired',
-                    'assigned_to' => null,
-                    'timestamp' => now()->toISOString(),
-                ];
-
                 $count++;
                 $ids[] = (int) $handoff->id;
             }
         });
-
-        foreach ($events as $event) {
-            $this->realtime->broadcastHandoffOperationalEvent($event);
-        }
 
         return ['count' => $count, 'ids' => $ids];
     }
@@ -614,16 +598,6 @@ class ConversationOpsService
             ->first();
     }
 
-    public function recordHandoffEventForConversation(int $conversationId, string $eventType, ?int $actorUserId = null, ?string $notes = null): void
-    {
-        $handoff = $this->findActiveHandoff($conversationId);
-        if (!$handoff instanceof WhatsappHandoff) {
-            return;
-        }
-
-        $this->insertHandoffEvent((int) $handoff->id, $eventType, $actorUserId, $notes);
-    }
-
     private function insertHandoffEvent(?int $handoffId, string $eventType, ?int $actorUserId, ?string $notes): void
     {
         if ($handoffId === null || $handoffId <= 0 || !Schema::hasTable('whatsapp_handoff_events')) {
@@ -639,69 +613,7 @@ class ConversationOpsService
             'created_at' => now(),
         ];
 
-        $eventId = DB::table('whatsapp_handoff_events')->insertGetId($payload);
-        $this->recordOperationalHandoffEvent((int) $eventId, $handoffId, $eventType, $actorUserId, $notes);
-    }
-
-    private function recordOperationalHandoffEvent(
-        int $legacyEventId,
-        int $handoffId,
-        string $legacyEventType,
-        ?int $actorUserId,
-        ?string $notes,
-    ): void {
-        $canonicalType = match ($legacyEventType) {
-            'queued', 'requested' => 'handoff_created',
-            'requeued' => 'handoff_requeued',
-            'expired' => 'handoff_expired',
-            'assigned' => 'manual_assigned',
-            'auto_assigned' => 'auto_assigned',
-            'transferred' => 'transferred',
-            'resolved' => 'handoff_resolved',
-            'autoassign_rollback_level_a' => 'assignment_rollback',
-            default => null,
-        };
-
-        if ($canonicalType === null || !Schema::hasTable('whatsapp_operational_events')) {
-            return;
-        }
-
-        $handoff = WhatsappHandoff::query()->find($handoffId);
-        if (!$handoff instanceof WhatsappHandoff) {
-            return;
-        }
-
-        $conversation = WhatsappConversation::query()->find($handoff->conversation_id);
-        if (!$conversation instanceof WhatsappConversation) {
-            return;
-        }
-
-        $this->operationalEvents->recordForConversation($conversation, $canonicalType, 'conversation_ops', [
-            'handoff_id' => $handoffId,
-            'event_at' => now(),
-            'actor_type' => $actorUserId !== null && $actorUserId > 0 ? 'agent' : 'system',
-            'actor_user_id' => $actorUserId,
-            'topic' => $handoff->topic,
-            'priority_score' => $this->handoffPriorityScore((string) $handoff->priority),
-            'reason' => $legacyEventType === 'expired' ? 'ttl_expired' : $legacyEventType,
-            'payload' => [
-                'legacy_event_id' => $legacyEventId,
-                'legacy_event_type' => $legacyEventType,
-                'notes' => $this->sanitizeNotes($notes),
-            ],
-            'idempotency_key' => "handoff_event:{$legacyEventId}",
-        ]);
-    }
-
-    private function handoffPriorityScore(string $priority): ?float
-    {
-        return match (strtolower(trim($priority))) {
-            'critical', 'urgent' => 100.0,
-            'high' => 75.0,
-            'normal' => 50.0,
-            'low' => 25.0,
-            default => null,
-        };
+        DB::table('whatsapp_handoff_events')->insert($payload);
     }
 
     private function resolveAssignedUntil(): CarbonImmutable

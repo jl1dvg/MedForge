@@ -102,37 +102,6 @@ class ConversationReadController
         ]);
     }
 
-    public function hotOpportunities(Request $request): JsonResponse
-    {
-        $viewerUserId = $this->actorUserId();
-        $canViewAssignedOthers = $this->canViewAssignedOthers();
-
-        $buckets = $this->service->findOperationalOpportunityBuckets($viewerUserId, $canViewAssignedOthers);
-        $reminders = $this->service->findFailedReminders();
-        $agents    = $this->service->getAgentWorkloads();
-
-        return response()->json([
-            'ok' => true,
-            'data' => [
-                'conversations' => $buckets['hot_open'],
-                'hot_open' => $buckets['hot_open'],
-                'hot_needs_template' => $buckets['hot_needs_template'],
-                'hot_opportunities' => $buckets['hot_opportunities'],
-                'rescue_opportunities' => $buckets['rescue_opportunities'],
-                'historical_backlog' => $buckets['historical_backlog'],
-                'lost_opportunities' => $buckets['lost_opportunities'],
-                'expired_or_lost' => $buckets['expired_or_lost'],
-                'counts' => $buckets['counts'],
-                'kpi_scope' => [
-                    'executive' => ['hot_open', 'hot_needs_template', 'rescue_opportunities'],
-                    'historical_debt' => ['historical_backlog', 'lost_opportunities'],
-                ],
-                'reminders' => $reminders,
-                'agents'    => $agents,
-            ],
-        ]);
-    }
-
     private function nullableIntQuery(Request $request, string $key): ?int
     {
         if (!$request->query->has($key)) {

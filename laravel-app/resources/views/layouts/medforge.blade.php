@@ -50,9 +50,7 @@
     </div>
 
     {{-- @include('layouts.partials.feedback_widget') --}}
-    @if (empty($disableWelcomeTour))
-        @include('layouts.partials.welcome_tour')
-    @endif
+    @include('layouts.partials.welcome_tour')
 
     <footer class="main-footer">
         <script>document.write(new Date().getFullYear())</script>

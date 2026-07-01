@@ -16,7 +16,6 @@ Route::middleware([
     Route::post('/cirugias/wizard/autosave', [CirugiasWriteController::class, 'autosave']);
     Route::post('/cirugias/wizard/scrape-derivacion', [CirugiasWriteController::class, 'scrapeDerivacion']);
     Route::get('/cirugias/protocolo', [CirugiasReadController::class, 'protocolo']);
-    Route::get('/cirugias/staff-options', [CirugiasReadController::class, 'staffOptions']);
     Route::post('/cirugias/protocolo/printed', [CirugiasWriteController::class, 'togglePrinted']);
     Route::post('/cirugias/protocolo/status', [CirugiasWriteController::class, 'updateStatus']);
 
