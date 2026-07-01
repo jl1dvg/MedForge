@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use App\Modules\Shared\Support\LegacySessionAuth;
+use App\Modules\ControlCenter\Services\ControlCenterService;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -57,6 +58,10 @@ class ControlCenterMvpTest extends TestCase
 
         $this->artisan('migrate', [
             '--path' => 'database/migrations/2026_07_01_000000_create_control_center_tables.php',
+            '--realpath' => false,
+        ])->run();
+        $this->artisan('migrate', [
+            '--path' => 'database/migrations/2026_07_01_010000_add_real_data_foundations_to_control_center_tables.php',
             '--realpath' => false,
         ])->run();
 
@@ -190,6 +195,133 @@ class ControlCenterMvpTest extends TestCase
             'instance_id' => 1,
             'enabled' => 0,
             'override_reason' => 'Manual staging override',
+        ]);
+    }
+
+    public function test_control_center_admin_can_create_and_update_organization_with_audit(): void
+    {
+        $user = $this->createUser(['control_center.view', 'control_center.clients.manage']);
+
+        $create = $this->actingAsLegacyUser($user)->postJson('/v2/control-center/organizations', [
+            'slug' => 'vision-real',
+            'name' => 'Vision Real',
+            'legal_name' => 'Vision Real S.A.',
+            'ruc' => '1799999999001',
+            'city' => 'Quito',
+            'source' => 'manual',
+        ]);
+
+        $create->assertCreated()
+            ->assertJsonPath('data.organization.slug', 'vision-real')
+            ->assertJsonPath('data.organization.data_quality.source', 'manual');
+
+        $id = $create->json('data.organization.id');
+
+        $this->actingAsLegacyUser($user)->patchJson("/v2/control-center/organizations/{$id}", [
+            'name' => 'Vision Real Ecuador',
+            'source' => 'real',
+        ])->assertOk()
+            ->assertJsonPath('data.organization.name', 'Vision Real Ecuador')
+            ->assertJsonPath('data.organization.data_quality.source', 'real');
+
+        $this->assertDatabaseHas('control_center_audit_logs', [
+            'organization_id' => $id,
+            'event_type' => 'organization',
+            'action' => 'organization.created',
+        ]);
+        $this->assertDatabaseHas('control_center_audit_logs', [
+            'organization_id' => $id,
+            'event_type' => 'organization',
+            'action' => 'organization.updated',
+        ]);
+    }
+
+    public function test_signed_instance_telemetry_updates_services_usage_version_and_audit(): void
+    {
+        DB::table('control_center_instances')->where('slug', 'cive-production')->update([
+            'telemetry_token_hash' => hash('sha256', 'secret-token'),
+        ]);
+
+        $response = $this->postJson('/v2/control-center/telemetry/heartbeat', [
+            'instance_slug' => 'cive-production',
+            'app_version' => '2026.07.1',
+            'environment' => 'production',
+            'php_version' => PHP_VERSION,
+            'laravel_version' => app()->version(),
+            'db_ok' => true,
+            'queue_ok' => false,
+            'cache_ok' => true,
+            'storage_ok' => true,
+            'scheduler_ok' => true,
+            'last_backup_at' => '2026-07-01T10:00:00Z',
+            'checked_at' => '2026-07-01T10:05:00Z',
+            'usage' => [
+                ['metric' => 'ai_tokens', 'value' => 2500, 'unit' => 'tokens', 'period_start' => '2026-07-01', 'period_end' => '2026-07-31', 'cost' => 0.32],
+            ],
+        ], [
+            'Authorization' => 'Bearer secret-token',
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.instance.current_version', '2026.07.1')
+            ->assertJsonPath('data.telemetry_status', 'degraded');
+
+        $this->assertDatabaseHas('control_center_service_snapshots', [
+            'instance_id' => 1,
+            'state' => 'degraded',
+            'source' => 'telemetry',
+        ]);
+        $this->assertDatabaseHas('control_center_usage_metrics', [
+            'instance_id' => 1,
+            'metric' => 'ai_tokens',
+            'value' => 2500,
+            'source' => 'telemetry',
+            'idempotency_key' => 'cive-production:ai_tokens:2026-07-01:2026-07-31:telemetry',
+        ]);
+        $this->assertDatabaseHas('control_center_audit_logs', [
+            'instance_id' => 1,
+            'event_type' => 'telemetry',
+            'action' => 'telemetry.heartbeat',
+        ]);
+    }
+
+    public function test_signed_telemetry_rejects_invalid_token(): void
+    {
+        DB::table('control_center_instances')->where('slug', 'cive-production')->update([
+            'telemetry_token_hash' => hash('sha256', 'secret-token'),
+        ]);
+
+        $this->postJson('/v2/control-center/telemetry/heartbeat', [
+            'instance_slug' => 'cive-production',
+            'checked_at' => '2026-07-01T10:05:00Z',
+        ], [
+            'Authorization' => 'Bearer wrong-token',
+        ])->assertUnauthorized();
+    }
+
+    public function test_record_deployment_service_is_idempotent_and_audited(): void
+    {
+        /** @var ControlCenterService $service */
+        $service = app(ControlCenterService::class);
+
+        $service->recordDeployment('cive-production', '2026.07.2', 'installed', 'abc1234', 'staging deploy', '2026-07-01 12:00:00');
+        $service->recordDeployment('cive-production', '2026.07.2', 'installed', 'abc1234', 'staging deploy', '2026-07-01 12:00:00');
+
+        $instanceId = DB::table('control_center_instances')->where('slug', 'cive-production')->value('id');
+
+        $this->assertSame(1, DB::table('control_center_deployments')
+            ->where('instance_id', $instanceId)
+            ->where('version', '2026.07.2')
+            ->where('commit_sha', 'abc1234')
+            ->count());
+        $this->assertDatabaseHas('control_center_instances', [
+            'id' => $instanceId,
+            'current_version' => '2026.07.2',
+        ]);
+        $this->assertDatabaseHas('control_center_audit_logs', [
+            'instance_id' => $instanceId,
+            'event_type' => 'deployment',
+            'action' => 'deployment.recorded',
         ]);
     }
 

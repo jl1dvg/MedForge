@@ -1662,7 +1662,7 @@ function clientFromInstance(instance, org, usageRows, deployments) {
     color: instance.organization_color || org?.color || '#5156be',
     inicial: instance.organization_initials || org?.initials || (instance.name || 'MF').slice(0, 2).toUpperCase(),
     dominio: instance.domain || instance.admin_url || '—',
-    ruc: '—',
+    ruc: org?.ruc || '—',
     plan: instance.plan_name || org?.plan_name || 'Starter',
     estado: uiState,
     ciudad: instance.organization_city || org?.city || '—',
@@ -1677,12 +1677,13 @@ function clientFromInstance(instance, org, usageRows, deployments) {
     inicio: '—',
     vence: '—',
     ultimoDeploy: dateTimeShort(deploy?.deployed_at, '—'),
-    ultimoBackup: 'manual MVP',
+    ultimoBackup: dateTimeShort(instance.last_backup_at, '—'),
     tickets: uiState === 'suspendido' ? 12 : uiState === 'lectura' ? 8 : uiState === 'mantenimiento' ? 5 : 2,
     riesgo: uiState === 'suspendido' ? 'crítico' : uiState === 'lectura' ? 'alto' : uiState === 'mantenimiento' ? 'medio' : 'bajo',
     contactoAdmin: { n: org?.name || instance.organization_name || 'Equipo cliente', c: '—', t: '—' },
     contactoTec: { n: 'Equipo MedForge', c: 'soporte@medforge.app', t: '—' },
-    placeholderFields: ['ruc', 'inicio', 'vence', 'ultimoBackup', 'tickets', 'contactos'],
+    placeholderFields: ['inicio', 'vence', 'tickets', 'contactos'].concat(org?.ruc ? [] : ['ruc']).concat(instance.last_backup_at ? [] : ['ultimoBackup']),
+    dataQuality: instance.data_quality || org?.data_quality || { source: 'pending', source_label: 'Pendiente de integracion' },
     iaTokens: tokens,
     iaCosto: Math.round(tokens / 1000000 * 127),
     iaPct: Math.min(100, Math.round(tokens ? tokens / 80000 : 0)),
@@ -1728,7 +1729,7 @@ function hydrateControlCenterData(payload) {
   CC_SERVICE_DETAILS = {};
   for (const c of CC_CLIENTS) CC_SERVICE_STATE[c.id] = {};
   for (const service of (payload.services || [])) {
-    serviceDefs.set(service.key, { id: service.key, nombre: service.name, icon: service.icon || 'mdi-server' });
+    serviceDefs.set(service.key, { id: service.key, nombre: service.name, icon: service.icon || 'mdi-server', dataQuality: service.data_quality });
     const client = CC_CLIENTS.find(c => Number(c.instanceId) === Number(service.instance_id));
     if (client) {
       const uiState = serviceApiToUi[service.state] || service.state;
@@ -1772,6 +1773,7 @@ function hydrateControlCenterData(payload) {
     sla: plan.sla_target ? `${plan.sla_target}%` : (plan.sla || '—'),
     clientes: CC_CLIENTS.filter(c => c.plan === (plan.name || plan.nombre)).length,
     destacado: (plan.name || plan.nombre) === 'Professional',
+    dataQuality: plan.data_quality,
   }));
 
   CC_RELEASES = deployments.slice(0, 8).map(d => ({
@@ -1782,6 +1784,7 @@ function hydrateControlCenterData(payload) {
     titulo: d.release_title || d.status || 'Deploy registrado',
     estado: d.status === 'update_available' ? 'Disponible' : 'Instalado',
     cls: (d.channel || '').toLowerCase().includes('beta') ? 'beta' : 'prod',
+    dataQuality: d.data_quality,
   }));
 
   CC_AUDIT = auditRows.map(entry => ({
