@@ -393,7 +393,7 @@ table.cirtab tbody tr.row-alert:hover { background: linear-gradient(90deg, #fbe7
 .rep-header.dx { grid-template-columns: 150px 1fr 36px; }
 .rep-row { display: grid; gap: 8px; align-items: center; margin-bottom: 8px; }
 .rep-row.dx { grid-template-columns: 150px 1fr 36px; }
-.rep-row.proc { grid-template-columns: 120px 1fr 36px; }
+.rep-row.proc { grid-template-columns: 1fr 36px; }
 @media (max-width: 620px) { .rep-header.dx, .rep-row.dx, .rep-row.proc { grid-template-columns: 1fr; } .rep-header { display: none; } }
 /* Lateralidad radio-button block */
 .lat-block { margin-bottom: 18px; }

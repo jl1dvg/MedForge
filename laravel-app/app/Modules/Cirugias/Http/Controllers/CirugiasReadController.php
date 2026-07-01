@@ -36,6 +36,33 @@ class CirugiasReadController
         ]);
     }
 
+    public function searchProcedimientos(Request $request): JsonResponse
+    {
+        if (!Auth::check()) {
+            return response()->json(['ok' => false, 'data' => []], 401);
+        }
+
+        $q = trim((string) $request->query('q', ''));
+        if (strlen($q) < 2) {
+            return response()->json(['ok' => true, 'data' => []]);
+        }
+
+        $pattern = '%' . $q . '%';
+        $rows = DB::table('tarifario_2014')
+            ->select(['codigo', 'descripcion'])
+            ->where(function ($builder) use ($pattern): void {
+                $builder->where('codigo', 'like', $pattern)
+                        ->orWhere('descripcion', 'like', $pattern);
+            })
+            ->orderBy('codigo')
+            ->limit(20)
+            ->get()
+            ->map(static fn(object $r): array => ['codigo' => $r->codigo, 'descripcion' => $r->descripcion])
+            ->all();
+
+        return response()->json(['ok' => true, 'data' => $rows]);
+    }
+
     public function datatable(Request $request): JsonResponse
     {
         if (!Auth::check()) {
