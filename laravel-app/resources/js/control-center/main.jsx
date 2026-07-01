@@ -42,115 +42,14 @@ let CC_PLANS = {
   Custom:       { tone: "maint",color: "#f5b53d" },
 };
 
-/* ---- clients ---- */
-let CC_CLIENTS = [
-  {
-    id: "cive", nombre: "CIVE", razon: "Centro Integral de la Visión y el Ojo S.A.",
-    color: "#5156be", inicial: "CI", dominio: "cive.medforge.app", ruc: "1791345678001",
-    plan: "Enterprise", estado: "produccion", ciudad: "Quito",
-    usuarios: 248, usuariosMax: 300, ultimaActividad: "hace 2 min",
-    version: "2026.6.1", canal: "Stable", versionDisp: "2026.6.1",
-    pago: "ok", pagoLabel: "Al día", inicio: "12 mar 2023", vence: "12 mar 2027",
-    ultimoDeploy: "28 jun 2026, 02:14", ultimoBackup: "30 jun 2026, 03:00",
-    tickets: 2, riesgo: "bajo",
-    contactoAdmin: { n: "Mónica Vélez", c: "monica.velez@cive.ec", t: "+593 99 845 1120" },
-    contactoTec:   { n: "Ing. Daniel Pérez", c: "sistemas@cive.ec", t: "+593 98 110 4422" },
-    iaTokens: 4_820_000, iaCosto: 612, iaPct: 64, waMsgs: 18420, waConv: 3110,
-    storage: 182, storageMax: 500, pdfs: 9240, reportes: 412, apiCalls: 1_240_000,
-  },
-  {
-    id: "altavision", nombre: "Alta Visión", razon: "Alta Visión Centro Oftalmológico Cía. Ltda.",
-    color: "#0f9d8c", inicial: "AV", dominio: "altavision.medforge.app", ruc: "0992876541001",
-    plan: "Professional", estado: "mantenimiento", ciudad: "Guayaquil",
-    usuarios: 64, usuariosMax: 80, ultimaActividad: "hace 1 h",
-    version: "2026.5.3", canal: "Stable", versionDisp: "2026.6.1",
-    pago: "ok", pagoLabel: "Al día", inicio: "04 ago 2024", vence: "04 ago 2026",
-    ultimoDeploy: "11 jun 2026, 23:40", ultimoBackup: "30 jun 2026, 03:00",
-    tickets: 5, riesgo: "medio",
-    contactoAdmin: { n: "Rosa Calderón", c: "administracion@altavision.ec", t: "+593 99 220 7781" },
-    contactoTec:   { n: "Soporte TI", c: "ti@altavision.ec", t: "+593 4 260 1180" },
-    iaTokens: 1_310_000, iaCosto: 168, iaPct: 41, waMsgs: 6240, waConv: 980,
-    storage: 64, storageMax: 200, pdfs: 3120, reportes: 145, apiCalls: 412_000,
-  },
-  {
-    id: "saludvisual", nombre: "Salud Visual", razon: "Salud Visual Integral S.A.",
-    color: "#d59623", inicial: "SV", dominio: "saludvisual.medforge.app", ruc: "0103456789001",
-    plan: "Professional", estado: "lectura", ciudad: "Cuenca",
-    usuarios: 39, usuariosMax: 80, ultimaActividad: "hace 3 h",
-    version: "2026.4.0", canal: "Stable", versionDisp: "2026.6.1",
-    pago: "vencido", pagoLabel: "Pago vencido", inicio: "19 ene 2025", vence: "19 ene 2026",
-    ultimoDeploy: "02 abr 2026, 21:10", ultimoBackup: "29 jun 2026, 03:00",
-    tickets: 8, riesgo: "alto",
-    contactoAdmin: { n: "Carlos Andrade", c: "gerencia@saludvisual.ec", t: "+593 99 501 3340" },
-    contactoTec:   { n: "Externo — DevOps", c: "soporte@saludvisual.ec", t: "+593 7 405 2290" },
-    iaTokens: 690_000, iaCosto: 88, iaPct: 28, waMsgs: 2980, waConv: 510,
-    storage: 41, storageMax: 200, pdfs: 1840, reportes: 78, apiCalls: 196_000,
-  },
-  {
-    id: "demo", nombre: "Clínica Demo", razon: "Clínica Demo (Ambiente de evaluación)",
-    color: "#7C4DFF", inicial: "CD", dominio: "demo.medforge.app", ruc: "9999999999001",
-    plan: "Trial", estado: "produccion", ciudad: "Quito",
-    usuarios: 8, usuariosMax: 10, ultimaActividad: "hace 12 min",
-    version: "2026.7.0-beta", canal: "Beta", versionDisp: "2026.7.0-beta",
-    pago: "trial", pagoLabel: "Trial — 9 días", inicio: "21 jun 2026", vence: "09 jul 2026",
-    ultimoDeploy: "29 jun 2026, 18:02", ultimoBackup: "30 jun 2026, 03:00",
-    tickets: 1, riesgo: "bajo",
-    contactoAdmin: { n: "Equipo MedForge", c: "demo@medforge.app", t: "—" },
-    contactoTec:   { n: "Equipo MedForge", c: "demo@medforge.app", t: "—" },
-    iaTokens: 120_000, iaCosto: 15, iaPct: 12, waMsgs: 410, waConv: 88,
-    storage: 6, storageMax: 25, pdfs: 210, reportes: 12, apiCalls: 28_000,
-  },
-  {
-    id: "hospitalquito", nombre: "Hospital Quito", razon: "Hospital General Quito S.A.",
-    color: "#ee3158", inicial: "HQ", dominio: "hospitalquito.medforge.app", ruc: "1790012345001",
-    plan: "Enterprise", estado: "suspendido", ciudad: "Quito",
-    usuarios: 0, usuariosMax: 500, ultimaActividad: "hace 14 días",
-    version: "2026.3.2", canal: "Stable", versionDisp: "2026.6.1",
-    pago: "vencido", pagoLabel: "Pago vencido", inicio: "08 feb 2024", vence: "08 feb 2026",
-    ultimoDeploy: "15 mar 2026, 01:30", ultimoBackup: "16 jun 2026, 03:00",
-    tickets: 12, riesgo: "crítico",
-    contactoAdmin: { n: "Dirección Administrativa", c: "admin@hospitalquito.ec", t: "+593 2 380 9900" },
-    contactoTec:   { n: "Departamento de Sistemas", c: "sistemas@hospitalquito.ec", t: "+593 2 380 9912" },
-    iaTokens: 0, iaCosto: 0, iaPct: 0, waMsgs: 0, waConv: 0,
-    storage: 318, storageMax: 600, pdfs: 0, reportes: 0, apiCalls: 0,
-  },
-];
-
-/* ---- feature flags (per client overrides simplified to global catalog) ---- */
-let CC_FEATURES = [
-  { id: "crm2", nombre: "CRM V2", icon: "mdi-account-heart-outline", env: "Producción", riesgo: "bajo", on: true, mod: "18 jun 2026", resp: "A. Torres", desc: "Nueva gestión de relaciones y embudo comercial con backlog y seguimiento." },
-  { id: "wa3", nombre: "WhatsApp V3", icon: "mdi-whatsapp", env: "Beta", riesgo: "medio", on: true, mod: "24 jun 2026", resp: "M. Gómez", desc: "Motor de autorespuesta y agente IA con flujos visuales (Flowmaker)." },
-  { id: "protoreact", nombre: "Protocolos React", icon: "mdi-file-document-edit-outline", env: "Beta", riesgo: "medio", on: false, mod: "12 jun 2026", resp: "D. Pérez", desc: "Editor de protocolos clínicos reescrito en React, reemplaza el legado Blade." },
-  { id: "dashej", nombre: "Dashboard Ejecutivo", icon: "mdi-view-dashboard-variant-outline", env: "Producción", riesgo: "bajo", on: true, mod: "09 jun 2026", resp: "A. Torres", desc: "Tablero gerencial con KPIs operativos y financieros en tiempo real." },
-  { id: "farmacia", nombre: "Farmacia", icon: "mdi-pill", env: "Producción", riesgo: "bajo", on: false, mod: "01 may 2026", resp: "L. Mora", desc: "Módulo de inventario y dispensación de farmacia con control de lotes." },
-  { id: "ia", nombre: "Asistente IA", icon: "mdi-auto-fix", env: "Producción", riesgo: "alto", on: true, mod: "27 jun 2026", resp: "M. Gómez", desc: "Documentación asistida, resúmenes clínicos y sugerencias de protocolo." },
-  { id: "iess", nombre: "Facturación IESS", icon: "mdi-cash-register", env: "Producción", riesgo: "alto", on: true, mod: "20 jun 2026", resp: "R. Calderón", desc: "Integración de prefacturación y planillaje con el IESS y convenios." },
-  { id: "reportes", nombre: "Reportes Gerenciales", icon: "mdi-chart-bar", env: "Producción", riesgo: "bajo", on: true, mod: "15 jun 2026", resp: "A. Torres", desc: "Reportería avanzada exportable a PDF y Excel por sede y afiliación." },
-  { id: "sigcenter", nombre: "Integración SigCenter", icon: "mdi-sync", env: "Experimental", riesgo: "alto", on: false, mod: "06 jun 2026", resp: "D. Pérez", desc: "Sincronización bidireccional con el EHR externo SigCenter / Sistema CIVE." },
-  { id: "movil", nombre: "App Móvil", icon: "mdi-cellphone", env: "Experimental", riesgo: "medio", on: false, mod: "28 may 2026", resp: "Equipo Móvil", desc: "Aplicación móvil para profesionales con agenda y notificaciones push." },
-];
-
-/* ---- services health per client (id -> services) ---- */
-let CC_SERVICE_DEFS = [
-  { id: "web", nombre: "Aplicación Web", icon: "mdi-web" },
-  { id: "db", nombre: "Base de datos", icon: "mdi-database" },
-  { id: "wa", nombre: "WhatsApp API", icon: "mdi-whatsapp" },
-  { id: "sig", nombre: "SigCenter Sync", icon: "mdi-sync" },
-  { id: "cron", nombre: "Scheduler / Cron", icon: "mdi-clock-outline" },
-  { id: "queue", nombre: "Queue Workers", icon: "mdi-tray-full" },
-  { id: "backup", nombre: "Backups", icon: "mdi-backup-restore" },
-  { id: "smtp", nombre: "Email SMTP", icon: "mdi-email-outline" },
-  { id: "ia", nombre: "IA / OpenAI", icon: "mdi-brain" },
-  { id: "storage", nombre: "Storage", icon: "mdi-folder-outline" },
-];
+/* ---- API-first runtime collections ----
+   These must stay empty until hydrated from /v2/control-center.
+   Staging/production must never render demo organizations from React. */
+let CC_CLIENTS = [];
+let CC_FEATURES = [];
+let CC_SERVICE_DEFS = [];
 let SVC = { ok: "operativo", deg: "degradado", err: "error", pause: "pausado", none: "no_config" };
-let CC_SERVICE_STATE = {
-  cive:        { web:"ok", db:"ok", wa:"ok", sig:"ok", cron:"ok", queue:"ok", backup:"ok", smtp:"ok", ia:"ok", storage:"ok" },
-  altavision:  { web:"pause", db:"ok", wa:"deg", sig:"none", cron:"ok", queue:"ok", backup:"ok", smtp:"ok", ia:"ok", storage:"ok" },
-  saludvisual: { web:"ok", db:"ok", wa:"ok", sig:"none", cron:"ok", queue:"deg", backup:"err", smtp:"ok", ia:"ok", storage:"ok" },
-  demo:        { web:"ok", db:"ok", wa:"ok", sig:"none", cron:"ok", queue:"ok", backup:"ok", smtp:"deg", ia:"ok", storage:"ok" },
-  hospitalquito:{ web:"pause", db:"pause", wa:"pause", sig:"none", cron:"pause", queue:"pause", backup:"ok", smtp:"pause", ia:"pause", storage:"ok" },
-};
+let CC_SERVICE_STATE = {};
 let CC_SVC_META = {
   operativo:  { label: "Operativo",      cls: "prod",  color: "var(--st-prod)" },
   degradado:  { label: "Degradado",      cls: "maint", color: "var(--st-maint)" },
@@ -160,71 +59,36 @@ let CC_SVC_META = {
 };
 let SVC_KEYMAP = { ok:"operativo", deg:"degradado", err:"error", pause:"pausado", none:"no_config" };
 
-/* ---- plans ---- */
-let CC_PLAN_CARDS = [
-  { nombre: "Starter", precio: 149, color: "#7d8aa3", usuarios: "10", modulos: "Núcleo clínico", ia: "200K tokens", wa: "1.000 msj", storage: "25 GB", soporte: "Email", sla: "99.0%", clientes: 0, destacado: false },
-  { nombre: "Professional", precio: 489, color: "#4aa8ff", usuarios: "80", modulos: "Núcleo + CRM + WhatsApp", ia: "2M tokens", wa: "10.000 msj", storage: "200 GB", soporte: "Email + Chat", sla: "99.5%", clientes: 2, destacado: true },
-  { nombre: "Enterprise", precio: 1290, color: "#7b80ff", usuarios: "300+", modulos: "Todos los módulos", ia: "8M tokens", wa: "Ilimitado", storage: "500 GB", soporte: "Dedicado 24/7", sla: "99.9%", clientes: 2, destacado: false },
-  { nombre: "Custom", precio: null, color: "#f5b53d", usuarios: "A medida", modulos: "A medida + on-premise", ia: "A medida", wa: "A medida", storage: "A medida", soporte: "Account Manager", sla: "99.95%", clientes: 0, destacado: false },
-];
+let CC_PLAN_CARDS = [];
+let CC_RELEASES = [];
+let CC_AUDIT = [];
+let CC_STATE_HISTORY = {};
 
-/* ---- deploys / releases ---- */
-let CC_RELEASES = [
-  { v: "2026.7.0-beta", canal: "Beta", fecha: "29 jun 2026", resp: "Plataforma", titulo: "Protocolos React + nuevo motor de reportes", estado: "En pruebas", cls: "beta" },
-  { v: "2026.6.1", canal: "Stable", fecha: "28 jun 2026", resp: "Plataforma", titulo: "Hotfix facturación IESS y mejoras de rendimiento", estado: "Disponible", cls: "prod" },
-  { v: "2026.6.0", canal: "Stable", fecha: "14 jun 2026", resp: "Plataforma", titulo: "Dashboard Ejecutivo y consumo de IA por sede", estado: "Disponible", cls: "prod" },
-  { v: "2026.5.3", canal: "Stable", fecha: "11 jun 2026", resp: "Plataforma", titulo: "Estabilidad WhatsApp V3 y colas de mensajería", estado: "Disponible", cls: "prod" },
-  { v: "2026.4.0", canal: "Stable", fecha: "02 abr 2026", resp: "Plataforma", titulo: "Kanban de flujo de pacientes y turnero", estado: "Disponible", cls: "prod" },
-];
+const DEV_VISUAL_DEMO_SERIES = import.meta.env.DEV ? {
+  months: ["Ene", "Feb", "Mar", "Abr", "May", "Jun"],
+  consumo: {
+    iaTokens: [3.1, 3.6, 4.0, 4.4, 5.2, 6.9],
+    iaCosto: [398, 462, 511, 560, 668, 883],
+    waMsgs: [19.2, 21.0, 22.4, 24.1, 26.8, 28.0],
+    conv: [3.4, 3.8, 4.1, 4.0, 4.6, 4.7],
+    pdfs: [9.8, 10.4, 11.1, 12.0, 13.2, 14.6],
+    reportes: [410, 468, 502, 540, 612, 647],
+    storage: [402, 441, 478, 520, 566, 611],
+    api: [1.4, 1.5, 1.6, 1.7, 1.9, 2.1],
+  },
+} : null;
+const HAS_VISUAL_DEMO_SERIES = Boolean(DEV_VISUAL_DEMO_SERIES);
 
-/* ---- consumption monthly series ---- */
-let CC_MONTHS = ["Ene","Feb","Mar","Abr","May","Jun"];
-let CC_CONSUMO = {
-  iaTokens:  [3.1, 3.6, 4.0, 4.4, 5.2, 6.9],     // millones
-  iaCosto:   [398, 462, 511, 560, 668, 883],     // USD
-  waMsgs:    [19.2, 21.0, 22.4, 24.1, 26.8, 28.0], // miles
-  conv:      [3.4, 3.8, 4.1, 4.0, 4.6, 4.7],     // miles
-  pdfs:      [9.8, 10.4, 11.1, 12.0, 13.2, 14.6],// miles
-  reportes:  [410, 468, 502, 540, 612, 647],
-  storage:   [402, 441, 478, 520, 566, 611],     // GB total
-  api:       [1.4, 1.5, 1.6, 1.7, 1.9, 2.1],     // millones
-};
-
-/* ---- audit / events ---- */
-let CC_AUDIT = [
-  { tipo: "estado", icon: "mdi-eye-lock-outline", cls: "read", titulo: "Salud Visual cambió a Solo lectura", desc: "Suspensión parcial automática por factura vencida (#FAC-2025-0418). Motivo interno: «Mora superior a 30 días».", actor: "Sistema · Facturación", cliente: "Salud Visual", when: "hace 3 h" },
-  { tipo: "deploy", icon: "mdi-rocket-launch-outline", cls: "acc", titulo: "Deploy 2026.7.0-beta en Clínica Demo", desc: "Canal Beta. Incluye Protocolos React y nuevo motor de reportes.", actor: "A. Torres", cliente: "Clínica Demo", when: "hace 6 h" },
-  { tipo: "feature", icon: "mdi-toggle-switch-outline", cls: "prod", titulo: "Asistente IA activado en CIVE", desc: "Feature flag «ia» → ON. Ambiente Producción. Riesgo alto revisado por seguridad.", actor: "M. Gómez", cliente: "CIVE", when: "hace 9 h" },
-  { tipo: "error", icon: "mdi-alert-octagon-outline", cls: "susp", titulo: "Fallo de backup en Salud Visual", desc: "El backup nocturno (03:00) terminó con error: timeout de almacenamiento externo. Reintento programado.", actor: "Scheduler", cliente: "Salud Visual", when: "hace 11 h" },
-  { tipo: "licencia", icon: "mdi-license", cls: "maint", titulo: "Licencia de Hospital Quito vencida", desc: "El contrato Enterprise venció el 08 feb 2026. Acceso suspendido tras periodo de gracia de 30 días.", actor: "Sistema · Licencias", cliente: "Hospital Quito", when: "hace 1 día" },
-  { tipo: "estado", icon: "mdi-wrench-clock", cls: "maint", titulo: "Alta Visión entró en Mantenimiento", desc: "Ventana de mantenimiento programado para migración de base de datos. Fin estimado: 30 jun 08:00.", actor: "D. Pérez", cliente: "Alta Visión", when: "hace 1 día" },
-  { tipo: "backup", icon: "mdi-backup-restore", cls: "prod", titulo: "Backup global completado", desc: "5 de 5 instancias respaldadas correctamente. Snapshot retenido por 30 días.", actor: "Scheduler", cliente: "Global", when: "hace 1 día" },
-  { tipo: "soporte", icon: "mdi-lifebuoy", cls: "read", titulo: "Ticket #4821 escalado — CIVE", desc: "Soporte de nivel 2 asignó el ticket de integración SigCenter al equipo de plataforma.", actor: "Soporte", cliente: "CIVE", when: "hace 2 días" },
-  { tipo: "feature", icon: "mdi-toggle-switch-off-outline", cls: "mute", titulo: "Integración SigCenter desactivada (Experimental)", desc: "Feature flag «sigcenter» → OFF en todos los clientes por inestabilidad del proveedor.", actor: "D. Pérez", cliente: "Global", when: "hace 3 días" },
-];
-
-/* ---- per-client operational state history ---- */
-let CC_STATE_HISTORY = {
-  saludvisual: [
-    { estado: "lectura", actor: "Sistema · Facturación", motivo: "Factura vencida #FAC-2025-0418 — mora > 30 días.", when: "30 jun 2026, 09:12" },
-    { estado: "produccion", actor: "M. Vélez", motivo: "Reactivación tras pago parcial.", when: "12 may 2026, 14:30" },
-    { estado: "lectura", actor: "Sistema · Facturación", motivo: "Primer aviso de mora.", when: "02 may 2026, 00:05" },
-  ],
-  cive: [
-    { estado: "produccion", actor: "A. Torres", motivo: "Operación normal desde la implementación.", when: "12 mar 2023, 10:00" },
-  ],
-  altavision: [
-    { estado: "mantenimiento", actor: "D. Pérez", motivo: "Migración de base de datos programada.", when: "29 jun 2026, 22:00" },
-    { estado: "produccion", actor: "R. Calderón", motivo: "Operación normal.", when: "04 ago 2024, 09:00" },
-  ],
-  hospitalquito: [
-    { estado: "suspendido", actor: "Sistema · Licencias", motivo: "Contrato vencido + mora. Periodo de gracia agotado.", when: "10 mar 2026, 00:00" },
-    { estado: "lectura", actor: "Sistema · Facturación", motivo: "Aviso de vencimiento de licencia.", when: "08 feb 2026, 00:00" },
-    { estado: "produccion", actor: "A. Torres", motivo: "Operación normal.", when: "08 feb 2024, 09:00" },
-  ],
-  demo: [
-    { estado: "produccion", actor: "Equipo MedForge", motivo: "Ambiente de evaluación activo.", when: "21 jun 2026, 12:00" },
-  ],
+let CC_MONTHS = DEV_VISUAL_DEMO_SERIES?.months || [];
+let CC_CONSUMO = DEV_VISUAL_DEMO_SERIES?.consumo || {
+  iaTokens: [],
+  iaCosto: [],
+  waMsgs: [],
+  conv: [],
+  pdfs: [],
+  reportes: [],
+  storage: [],
+  api: [],
 };
 
 let CC_BACKEND_STATUS = {
@@ -325,6 +189,7 @@ function Progress({ value, max = 100, tone }) {
 
 /* ---------- Bar chart ---------- */
 function BarChart({ data, labels, unit = "", alt = false, fmt }) {
+  if (!Array.isArray(data) || data.length === 0) return <ChartEmpty />;
   const max = Math.max(...data) * 1.15;
   return (
     <div>
@@ -342,6 +207,7 @@ function BarChart({ data, labels, unit = "", alt = false, fmt }) {
 
 /* ---------- Sparkline (SVG) ---------- */
 function Sparkline({ data, color = "var(--cc-accent)", h = 44, fill = true }) {
+  if (!Array.isArray(data) || data.length === 0) return <ChartEmpty compact />;
   const w = 200, max = Math.max(...data), min = Math.min(...data);
   const rng = max - min || 1;
   const pts = data.map((v, i) => [(i / (data.length - 1)) * w, h - 6 - ((v - min) / rng) * (h - 12)]);
@@ -363,6 +229,7 @@ function Sparkline({ data, color = "var(--cc-accent)", h = 44, fill = true }) {
 
 /* ---------- Area chart (larger, with grid + labels) ---------- */
 function AreaChart({ data, labels, color = "var(--cc-accent)", unit = "", fmt, h = 200 }) {
+  if (!Array.isArray(data) || data.length === 0) return <ChartEmpty height={h} />;
   const w = 560;
   const max = Math.max(...data) * 1.1, min = 0;
   const rng = max - min || 1;
@@ -383,6 +250,14 @@ function AreaChart({ data, labels, color = "var(--cc-accent)", unit = "", fmt, h
       {pts.map((p, i) => <circle key={i} cx={p[0]} cy={p[1]} r="3" fill="var(--cc-surface)" stroke={color} strokeWidth="2" />)}
       {labels.map((l, i) => <text key={i} x={pts[i][0]} y={h - 6} fill="var(--cc-fg-mute)" fontSize="10" fontFamily="var(--font-mono)" textAnchor="middle">{l}</text>)}
     </svg>
+  );
+}
+
+function ChartEmpty({ height = 160, compact = false }) {
+  return (
+    <div className="cc-empty-chart" style={{ height: compact ? 44 : height, display: "grid", placeItems: "center", border: "1px dashed var(--cc-border)", borderRadius: 8, color: "var(--cc-fg-3)", fontSize: 12 }}>
+      <span><i className="mdi mdi-chart-line-variant" style={{ marginRight: 6 }}></i>Pendiente de integración</span>
+    </div>
   );
 }
 
@@ -443,11 +318,54 @@ function SectionNotice({ section, empty, demo }) {
     return (
       <div className="cc-alert info" style={{ marginBottom: "var(--gap)" }}>
         <i className="mdi mdi-chart-timeline-variant"></i>
-        <div><p className="t">Visual demo</p><p className="d">Esta gráfica conserva series del mockup hasta conectar métricas históricas reales.</p></div>
+        <div><p className="t">{HAS_VISUAL_DEMO_SERIES ? "Visual Demo" : "Pendiente de integración"}</p><p className="d">{HAS_VISUAL_DEMO_SERIES ? "Esta gráfica conserva series demo solo en entorno de desarrollo." : "Las series históricas no se muestran en staging/producción hasta que el backend las entregue."}</p></div>
       </div>
     );
   }
   return null;
+}
+
+function EmptyState({ icon = "mdi-database-off-outline", title, description, actionLabel, onAction, compact = false }) {
+  return (
+    <div className="cc-card" style={{ padding: compact ? "22px 24px" : "34px 30px", textAlign: "center", display: "grid", justifyItems: "center", gap: 12 }}>
+      <div style={{ width: compact ? 46 : 58, height: compact ? 46 : 58, borderRadius: 16, display: "grid", placeItems: "center", background: "var(--cc-accent-soft)", color: "var(--cc-accent)", fontSize: compact ? 24 : 30 }}>
+        <i className={`mdi ${icon}`}></i>
+      </div>
+      <div>
+        <h3 style={{ margin: 0, font: "700 18px var(--font-display)", color: "var(--cc-fg)" }}>{title}</h3>
+        <p className="muted" style={{ margin: "8px auto 0", maxWidth: 560, fontSize: 13.5, lineHeight: 1.55 }}>{description}</p>
+      </div>
+      {actionLabel && (
+        <button className="cc-btn primary sm" onClick={onAction} style={{ marginTop: 4 }}>
+          <i className="mdi mdi-plus"></i>{actionLabel}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function CreateOrganizationPlaceholder({ onClose }) {
+  return (
+    <Drawer
+      title="Crear organización"
+      subtitle="Flujo pendiente de implementación"
+      onClose={onClose}
+      footer={<button className="cc-btn primary" onClick={onClose}>Entendido</button>}
+    >
+      <div className="cc-alert info" style={{ marginBottom: 18 }}>
+        <i className="mdi mdi-domain-plus"></i>
+        <div>
+          <p className="t">CRUD de organizaciones pendiente</p>
+          <p className="d">El Control Center ya está preparado para consumir organizaciones reales desde el backend. La creación manual se implementará como flujo dedicado sin usar datos demo.</p>
+        </div>
+      </div>
+      <dl className="cc-defs">
+        <div className="row"><dt>Fuente de verdad</dt><dd>Backend /v2/control-center</dd></div>
+        <div className="row"><dt>Resultado actual</dt><dd>No se insertan registros desde React.</dd></div>
+        <div className="row"><dt>Próximo paso</dt><dd>Formulario con organización, instancia inicial, plan y dominio.</dd></div>
+      </dl>
+    </Drawer>
+  );
 }
 
 /* ---------- Drawer ---------- */
@@ -474,7 +392,7 @@ function Drawer({ title, subtitle, children, footer, onClose }) {
 
 /* MedForge Control Center — Overview screen */
 
-function ScreenOverview({ onOpenClient, onNav, env }) {
+function ScreenOverview({ onOpenClient, onNav, env, onCreateOrganization }) {
   const activos = Number(CC_OVERVIEW_SUMMARY.production ?? CC_CLIENTS.filter(c => c.estado === "produccion").length);
   const enRiesgo = CC_CLIENTS.filter(c => c.riesgo === "alto" || c.riesgo === "crítico").length;
   const suspendidos = Number(CC_OVERVIEW_SUMMARY.suspended ?? CC_CLIENTS.filter(c => c.estado === "suspendido").length);
@@ -500,6 +418,17 @@ function ScreenOverview({ onOpenClient, onNav, env }) {
           <button className="cc-btn ghost sm"><i className="mdi mdi-file-pdf-box"></i>Exportar</button>
         </React.Fragment>}
       />
+
+      <SectionNotice section="instances" empty={CC_CLIENTS.length === 0} />
+      {CC_CLIENTS.length === 0 && (
+        <EmptyState
+          icon="mdi-domain-plus"
+          title="No existen organizaciones registradas."
+          description="Este Control Center aún no tiene ninguna organización o instancia configurada desde el backend. Cuando la API devuelva registros reales, aparecerán aquí."
+          actionLabel="Crear organización"
+          onAction={onCreateOrganization}
+        />
+      )}
 
       {/* KPI strip */}
       <div className="cc-grid g4" style={{ marginBottom: "var(--gap)" }}>
@@ -532,7 +461,7 @@ function ScreenOverview({ onOpenClient, onNav, env }) {
       {/* consumption row */}
       <div className="cc-grid g2" style={{ marginBottom: "var(--gap)" }}>
         <Card title="Consumo mensual de IA" icon="mdi-brain"
-              action={<div className="flex ac gap10"><span className="cc-tag">Demo visual</span></div>}>
+              action={<div className="flex ac gap10"><span className="cc-tag">{HAS_VISUAL_DEMO_SERIES ? "Visual Demo" : "Pendiente de integración"}</span></div>}>
           <div className="flex jb ac" style={{ marginBottom: 10 }}>
             <div><div className="cc-kpi-inline" style={{ font: "700 28px var(--font-display)", color: "var(--cc-fg)" }}>{metricDisplay(CC_USAGE_TOTALS.aiTokens, compactNumber)}</div>
               <div className="muted" style={{ fontSize: 12 }}>tokens reales acumulados</div></div>
@@ -540,7 +469,7 @@ function ScreenOverview({ onOpenClient, onNav, env }) {
           <AreaChart data={iaMonthly} labels={CC_MONTHS} color="var(--cc-accent)" h={170} />
         </Card>
         <Card title="Consumo de WhatsApp" icon="mdi-whatsapp"
-              action={<div className="flex ac gap10"><span className="cc-tag">Demo visual</span></div>}>
+              action={<div className="flex ac gap10"><span className="cc-tag">{HAS_VISUAL_DEMO_SERIES ? "Visual Demo" : "Pendiente de integración"}</span></div>}>
           <div className="flex jb ac" style={{ marginBottom: 10 }}>
             <div><div style={{ font: "700 28px var(--font-display)", color: "var(--cc-fg)" }}>{metricDisplay(CC_USAGE_TOTALS.whatsappMessages, compactNumber)}</div>
               <div className="muted" style={{ fontSize: 12 }}>mensajes reales acumulados</div></div>
@@ -577,6 +506,9 @@ function ScreenOverview({ onOpenClient, onNav, env }) {
                   </div>
                 );
               })}
+              {CC_CLIENTS.length === 0 && (
+                <EmptyState compact icon="mdi-server-network-off" title="Aún no existen datos de monitoreo." description="Los servicios se renderizan únicamente desde /v2/control-center/services." />
+              )}
             </div>
           </div>
         </Card>
@@ -596,6 +528,9 @@ function ScreenOverview({ onOpenClient, onNav, env }) {
                   </div>
                 </div>
               ))}
+              {CC_AUDIT.length === 0 && (
+                <p className="muted" style={{ padding: "20px 0" }}>Timeline vacío. No existen eventos de auditoría reales para mostrar.</p>
+              )}
             </div>
           </div>
         </Card>
@@ -619,6 +554,9 @@ function ScreenOverview({ onOpenClient, onNav, env }) {
                   <td style={{ textAlign: "right" }}><i className="mdi mdi-chevron-right" style={{ color: "var(--cc-fg-3)", fontSize: 20 }}></i></td>
                 </tr>
               ))}
+              {CC_CLIENTS.length === 0 && (
+                <tr><td colSpan="7" style={{ padding: 22 }}><EmptyState compact icon="mdi-domain-off" title="No existen organizaciones registradas." description="No se muestran clientes ficticios cuando la API no devuelve datos." actionLabel="Crear organización" onAction={onCreateOrganization} /></td></tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -629,7 +567,7 @@ function ScreenOverview({ onOpenClient, onNav, env }) {
 
 /* MedForge Control Center — Clientes (listado + filtros) */
 
-function ScreenClientes({ onOpenClient }) {
+function ScreenClientes({ onOpenClient, onCreateOrganization }) {
   const [fEstado, setFEstado] = useState("todos");
   const [fPlan, setFPlan] = useState("todos");
   const [fCiudad, setFCiudad] = useState("todas");
@@ -653,11 +591,22 @@ function ScreenClientes({ onOpenClient }) {
         sub="Todas las organizaciones que operan sobre MedForge. Filtra por estado, plan, ciudad o vencimiento."
         actions={<React.Fragment>
           <button className="cc-btn ghost sm" disabled title="Pendiente Fase 2"><i className="mdi mdi-file-excel-box"></i>Exportar</button>
-          <button className="cc-btn primary sm" disabled title="Pendiente Fase 2"><i className="mdi mdi-plus"></i>Nuevo cliente</button>
+          <button className="cc-btn primary sm" onClick={onCreateOrganization}><i className="mdi mdi-plus"></i>Crear organización</button>
         </React.Fragment>}
       />
 
-      <Card style={{ marginBottom: "var(--gap)" }}>
+      <SectionNotice section="instances" empty={CC_CLIENTS.length === 0} />
+      {CC_CLIENTS.length === 0 && (
+        <EmptyState
+          icon="mdi-domain-plus"
+          title="No existen organizaciones registradas."
+          description="Este Control Center aún no tiene ninguna organización configurada. No se muestran datos demo en staging ni producción."
+          actionLabel="Crear organización"
+          onAction={onCreateOrganization}
+        />
+      )}
+
+      {CC_CLIENTS.length > 0 && <Card style={{ marginBottom: "var(--gap)" }}>
         <div className="cc-filters">
           <div className="cc-search" style={{ maxWidth: 260, flex: "0 0 260px" }}>
             <i className="mdi mdi-magnify"></i>
@@ -691,9 +640,9 @@ function ScreenClientes({ onOpenClient }) {
             <i className="mdi mdi-filter-remove-outline"></i>Limpiar
           </button>
         </div>
-      </Card>
+      </Card>}
 
-      <Card flush>
+      {CC_CLIENTS.length > 0 && <Card flush>
         <div className="flex jb ac" style={{ padding: "13px 18px", borderBottom: "1px solid var(--cc-border)" }}>
           <span style={{ fontSize: 12.5, color: "var(--cc-fg-3)" }}>Mostrando <b style={{ color: "var(--cc-fg)" }}>{rows.length}</b> de {CC_CLIENTS.length} clientes</span>
           <span className="cc-tag"><i className="mdi mdi-update" style={{ fontSize: 13 }}></i> Datos del backend</span>
@@ -730,7 +679,7 @@ function ScreenClientes({ onOpenClient }) {
             </tbody>
           </table>
         </div>
-      </Card>
+      </Card>}
     </div>
   );
 }
@@ -951,15 +900,24 @@ function TabResumen({ client }) {
 
 function ClientDetail({ clientId, onBack, onNav, onDataChanged }) {
   const base = CC_CLIENTS.find(c => c.id === clientId);
-  const [estado, setEstado] = useState(base.estado);
+  const [estado, setEstado] = useState(base?.estado || "produccion");
   const [history, setHistory] = useState(CC_STATE_HISTORY[clientId] || []);
   const [tab, setTab] = useState("resumen");
   const [drawer, setDrawer] = useState(false);
   const [flags, setFlags] = useState(() => {
-    const byKey = new Map((base.features || []).map(feature => [feature.key, Boolean(feature.enabled)]));
+    const byKey = new Map((base?.features || []).map(feature => [feature.key, Boolean(feature.enabled)]));
     const o = {}; CC_FEATURES.forEach(f => o[f.id] = byKey.has(f.id) ? byKey.get(f.id) : f.on);
     return o;
   });
+  if (!base) {
+    return (
+      <div className="cc-page fade-in">
+        <PageHead title="Instancia no encontrada" sub="La instancia solicitada no existe en los datos reales cargados desde el backend."
+          actions={<button className="cc-btn line sm" onClick={onBack}><i className="mdi mdi-arrow-left"></i>Volver</button>} />
+        <EmptyState icon="mdi-domain-off" title="No existe esta instancia." description="El backend no devolvió un registro para este identificador. No se reconstruyen datos desde mocks de React." />
+      </div>
+    );
+  }
   const c = { ...base, estado };
 
   const [savingState, setSavingState] = useState(false);
@@ -1043,8 +1001,11 @@ function ScreenLicencias() {
       />
 
       <SectionNotice section="plans" empty={CC_PLAN_CARDS.length === 0} />
+      {CC_PLAN_CARDS.length === 0 && (
+        <EmptyState icon="mdi-license-off" title="No existen planes configurados." description="La sección de planes solo renderiza registros devueltos por /v2/control-center/plans." />
+      )}
 
-      <div className="cc-grid g4" style={{ marginBottom: "var(--gap)", alignItems: "stretch" }}>
+      {CC_PLAN_CARDS.length > 0 && <div className="cc-grid g4" style={{ marginBottom: "var(--gap)", alignItems: "stretch" }}>
         {CC_PLAN_CARDS.map(p => (
           <div key={p.nombre} className="cc-card" style={{ padding: 0, overflow: "hidden", position: "relative", borderColor: p.destacado ? p.color : undefined, borderWidth: p.destacado ? 1.5 : 1 }}>
             <div style={{ height: 4, background: p.color }}></div>
@@ -1068,11 +1029,16 @@ function ScreenLicencias() {
             </div>
           </div>
         ))}
-      </div>
+      </div>}
 
       <Card title="Contratos vigentes" icon="mdi-file-sign" flush>
         <SectionNotice section="organizations" empty={CC_CLIENTS.length === 0} />
-        <div className="cc-tblwrap">
+        {CC_CLIENTS.length === 0 && (
+          <div style={{ padding: 18 }}>
+            <EmptyState compact icon="mdi-file-sign" title="No existen contratos visibles." description="Los contratos/licencias aparecen cuando existen organizaciones e instancias reales." />
+          </div>
+        )}
+        {CC_CLIENTS.length > 0 && <div className="cc-tblwrap">
           <table className="cc-tbl">
             <thead><tr><th>Empresa</th><th>Plan</th><th>Inicio</th><th>Vencimiento</th><th>Usuarios</th><th>Estado pago</th><th>Contrato</th></tr></thead>
             <tbody>
@@ -1092,7 +1058,7 @@ function ScreenLicencias() {
               })}
             </tbody>
           </table>
-        </div>
+        </div>}
       </Card>
     </div>
   );
@@ -1124,6 +1090,9 @@ function DeploysPanel({ client }) {
 }
 
 function ReleaseTimeline({ current }) {
+  if (CC_RELEASES.length === 0) {
+    return <EmptyState icon="mdi-source-branch-off" title="No existen releases registrados." description="El timeline solo muestra deploys/versiones devueltos por /v2/control-center/deployments." />;
+  }
   return (
     <Card title="Timeline de releases" icon="mdi-source-branch" flush>
       <div style={{ padding: "18px 20px 6px" }}>
@@ -1154,7 +1123,10 @@ function ScreenDeploys() {
       <PageHead title="Deploys y Versiones" sub="Gestión de releases por cliente. Controla canales, versiones instaladas y programa actualizaciones."
         actions={<button className="cc-btn ghost sm" disabled title="Pendiente Fase 2"><i className="mdi mdi-source-branch"></i>Canales</button>} />
       <SectionNotice section="deployments" empty={CC_RELEASES.length === 0 && CC_CLIENTS.length === 0} />
-      <Card flush style={{ marginBottom: "var(--gap)" }}>
+      {CC_CLIENTS.length === 0 && (
+        <EmptyState icon="mdi-rocket-launch-outline" title="No existen deployments registrados." description="No hay instancias reales sobre las cuales mostrar versiones o deploys." />
+      )}
+      {CC_CLIENTS.length > 0 && <Card flush style={{ marginBottom: "var(--gap)" }}>
         <div className="cc-tblwrap">
           <table className="cc-tbl">
             <thead><tr><th>Cliente</th><th>Versión actual</th><th>Disponible</th><th>Canal</th><th>Último deploy</th><th>Estado</th><th></th></tr></thead>
@@ -1176,7 +1148,7 @@ function ScreenDeploys() {
             </tbody>
           </table>
         </div>
-      </Card>
+      </Card>}
       <ReleaseTimeline current="2026.6.1" />
     </div>
   );
@@ -1202,11 +1174,15 @@ function ConsumoPanel({ client }) {
 
 function ScreenConsumo() {
   const [vista, setVista] = useState("global");
+  const hasUsage = Object.values(CC_USAGE_TOTALS).some(value => Number(value || 0) > 0);
   return (
     <div className="cc-page fade-in">
       <PageHead title="Consumo" sub="Métricas de uso de la plataforma: IA, WhatsApp, documentos, almacenamiento y API."
         actions={<button className="cc-btn ghost sm" disabled title="Pendiente Fase 2"><i className="mdi mdi-file-excel-box"></i>Exportar</button>} />
-      <SectionNotice section="usage" empty={Object.values(CC_USAGE_TOTALS).every(value => Number(value || 0) === 0)} />
+      <SectionNotice section="usage" empty={!hasUsage} />
+      {!hasUsage && (
+        <EmptyState icon="mdi-chart-areaspline" title="No existen métricas de consumo." description="La pantalla no inventa tokens, mensajes ni costos. Mostrará datos cuando /v2/control-center/usage devuelva registros." />
+      )}
       <div className="cc-grid g4" style={{ marginBottom: "var(--gap)" }}>
         <Kpi icon="mdi-brain" tone="acc" label="Tokens IA usados" value={metricDisplay(CC_USAGE_TOTALS.aiTokens, compactNumber)} delta="Real" deltaDir="flat" foot={<span className="muted">desde /usage</span>} />
         <Kpi icon="mdi-cash" tone="prod" label="Costo estimado IA" value={CC_USAGE_TOTALS.aiCost ? fmtMoney(Math.round(CC_USAGE_TOTALS.aiCost)) : "Pendiente"} delta="Real" deltaDir="flat" foot={<span className="muted">cost registrado</span>} />
@@ -1216,8 +1192,8 @@ function ScreenConsumo() {
 
       <SectionNotice section="usage" demo />
       <div className="cc-grid g2" style={{ marginBottom: "var(--gap)" }}>
-        <Card title="Tokens IA — comparativo mensual" icon="mdi-chart-areaspline" action={<span className="cc-tag">Demo</span>}><AreaChart data={CC_CONSUMO.iaTokens} labels={CC_MONTHS} color="var(--cc-accent)" h={200} /></Card>
-        <Card title="Mensajes WhatsApp enviados" icon="mdi-message-text-outline" action={<span className="cc-tag">Demo</span>}><BarChart data={CC_CONSUMO.waMsgs} labels={CC_MONTHS} alt /></Card>
+        <Card title="Tokens IA — comparativo mensual" icon="mdi-chart-areaspline" action={<span className="cc-tag">{HAS_VISUAL_DEMO_SERIES ? "Visual Demo" : "Pendiente de integración"}</span>}><AreaChart data={CC_CONSUMO.iaTokens} labels={CC_MONTHS} color="var(--cc-accent)" h={200} /></Card>
+        <Card title="Mensajes WhatsApp enviados" icon="mdi-message-text-outline" action={<span className="cc-tag">{HAS_VISUAL_DEMO_SERIES ? "Visual Demo" : "Pendiente de integración"}</span>}><BarChart data={CC_CONSUMO.waMsgs} labels={CC_MONTHS} alt /></Card>
       </div>
 
       <div className="cc-grid g3" style={{ marginBottom: "var(--gap)" }}>
@@ -1227,7 +1203,12 @@ function ScreenConsumo() {
       </div>
 
       <Card title="Consumo por cliente — IA y WhatsApp" icon="mdi-chart-bar-stacked" flush>
-        <div className="cc-tblwrap">
+        {CC_CLIENTS.length === 0 && (
+          <div style={{ padding: 18 }}>
+            <EmptyState compact icon="mdi-domain-off" title="No existen instancias para consumo." description="El consumo por cliente se muestra solo para instancias reales del backend." />
+          </div>
+        )}
+        {CC_CLIENTS.length > 0 && <div className="cc-tblwrap">
           <table className="cc-tbl">
             <thead><tr><th>Cliente</th><th>Tokens IA</th><th>% del plan</th><th>Costo IA</th><th>Mensajes WA</th><th>Storage</th></tr></thead>
             <tbody>
@@ -1243,7 +1224,7 @@ function ScreenConsumo() {
               ))}
             </tbody>
           </table>
-        </div>
+        </div>}
       </Card>
     </div>
   );
@@ -1304,7 +1285,12 @@ const ENV_CLS = { "Producción": "prod", "Beta": "beta", "Experimental": "maint"
 function FeatureFlagsPanel({ flags, setFlags, scope, clientId, onDataChanged }) {
   const onCount = Object.values(flags).filter(Boolean).length;
   if (CC_FEATURES.length === 0) {
-    return <SectionNotice section="details" empty />;
+    return (
+      <React.Fragment>
+        <SectionNotice section="details" empty />
+        <EmptyState icon="mdi-flag-variant-off" title="No existen feature flags configurados." description="Los flags se renderizan desde el detalle real de instancia. No hay catálogo demo en staging ni producción." />
+      </React.Fragment>
+    );
   }
   return (
     <div className="fade-in">
@@ -1354,7 +1340,12 @@ function RiskInline({ r }) {
 function ServicesPanel({ clientId }) {
   const svc = CC_SERVICE_STATE[clientId] || {};
   if (CC_SERVICE_DEFS.length === 0) {
-    return <SectionNotice section="services" empty />;
+    return (
+      <React.Fragment>
+        <SectionNotice section="services" empty />
+        <EmptyState icon="mdi-server-network-off" title="Aún no existen datos de monitoreo." description="Los servicios se renderizan desde /v2/control-center/services y sus snapshots reales." />
+      </React.Fragment>
+    );
   }
   return (
     <div className="fade-in cc-grid g2">
@@ -1404,7 +1395,8 @@ function ScreenFeatures({ selectedClient, onPickClient, onDataChanged }) {
         sub="Activa o desactiva módulos por cliente. Los cambios se propagan al ambiente seleccionado y quedan auditados."
         actions={c ? <ClientPicker c={c} onPick={onPickClient} /> : null}
       />
-      <FeatureFlagsPanel flags={flags} setFlags={setFlags} scope={c?.nombre} clientId={c?.id} onDataChanged={onDataChanged} />
+      {!c ? <EmptyState icon="mdi-domain-off" title="No existen instancias para configurar." description="Crea o carga instancias reales desde el backend antes de administrar feature flags." />
+        : <FeatureFlagsPanel flags={flags} setFlags={setFlags} scope={c?.nombre} clientId={c?.id} onDataChanged={onDataChanged} />}
     </div>
   );
 }
@@ -1423,8 +1415,10 @@ function ScreenServicios({ selectedClient, onPickClient }) {
           <button className={scope === "cliente" ? "on" : ""} onClick={() => setScope("cliente")}><i className="mdi mdi-domain"></i>Por cliente</button>
         </div>}
       />
-      {scope === "cliente" && <div style={{ marginBottom: "var(--gap)" }}><ClientPicker c={c} onPick={onPickClient} /></div>}
-      {scope === "cliente" ? <ServicesPanel clientId={c.id} /> : <ServiceMatrix />}
+      {scope === "cliente" && c && <div style={{ marginBottom: "var(--gap)" }}><ClientPicker c={c} onPick={onPickClient} /></div>}
+      {scope === "cliente"
+        ? (c ? <ServicesPanel clientId={c.id} /> : <EmptyState icon="mdi-domain-off" title="No existen instancias para monitorear." description="No hay servicios por cliente porque el backend no devolvió instancias." />)
+        : <ServiceMatrix />}
     </div>
   );
 }
@@ -1432,7 +1426,12 @@ function ScreenServicios({ selectedClient, onPickClient }) {
 /* ---- Global service matrix (clients × services) ---- */
 function ServiceMatrix() {
   if (CC_SERVICE_DEFS.length === 0) {
-    return <SectionNotice section="services" empty />;
+    return (
+      <React.Fragment>
+        <SectionNotice section="services" empty />
+        <EmptyState icon="mdi-server-network-off" title="Aún no existen datos de monitoreo." description="La matriz global se llena únicamente con snapshots reales del endpoint /services." />
+      </React.Fragment>
+    );
   }
   return (
     <Card flush>
@@ -1806,6 +1805,20 @@ function hydrateControlCenterData(payload) {
   }
 }
 
+function resetControlCenterData() {
+  CC_CLIENTS = [];
+  CC_FEATURES = [];
+  CC_SERVICE_DEFS = [];
+  CC_SERVICE_STATE = {};
+  CC_PLAN_CARDS = [];
+  CC_RELEASES = [];
+  CC_AUDIT = [];
+  CC_STATE_HISTORY = {};
+  CC_OVERVIEW_SUMMARY = {};
+  CC_USAGE_TOTALS = {};
+  CC_SERVICE_DETAILS = {};
+}
+
 async function loadControlCenterData() {
   CC_BACKEND_STATUS = {
     overview: "loading",
@@ -1836,7 +1849,12 @@ async function loadControlCenterData() {
   } else {
     delete CC_BACKEND_ERRORS.details;
   }
-  hydrateControlCenterData({ overview, organizations, instances, services, plans, deployments, usage, audit, details });
+  try {
+    hydrateControlCenterData({ overview, organizations, instances, services, plans, deployments, usage, audit, details });
+  } catch (error) {
+    resetControlCenterData();
+    throw error;
+  }
 }
 
 async function changeInstanceState(clientId, uiState, reason) {
@@ -1910,6 +1928,7 @@ function App() {
   const [theme, setTheme] = useState("dark");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [showCreateOrganization, setShowCreateOrganization] = useState(false);
   const [, bump] = useState(0);
 
   const reload = async (keepDetailId = detailId) => {
@@ -1937,6 +1956,7 @@ function App() {
 
   const openClient = (id) => { setDetailId(String(id)); window.scrollTo(0, 0); };
   const go = (r) => { setRoute(r); setDetailId(null); };
+  const openCreateOrganization = () => setShowCreateOrganization(true);
   CC_NAV[0].items[1].pill = String(CC_CLIENTS.length || '');
   CC_NAV[1].items[0].pill = String(CC_CLIENTS.filter(c => c.estado !== 'produccion').length || '');
   CC_NAV[1].items[2].pill = String(Object.values(CC_SERVICE_STATE).flatMap(x => Object.values(x)).filter(x => ['deg','err'].includes(x)).length || '');
@@ -1948,10 +1968,10 @@ function App() {
     content = <ClientDetail clientId={detailId} onBack={() => setDetailId(null)} onNav={go} onDataChanged={reload} />;
   } else {
     content = {
-      overview:  <ScreenOverview onOpenClient={openClient} onNav={go} env={env} />,
-      clientes:  <ScreenClientes onOpenClient={openClient} />,
+      overview:  <ScreenOverview onOpenClient={openClient} onNav={go} env={env} onCreateOrganization={openCreateOrganization} />,
+      clientes:  <ScreenClientes onOpenClient={openClient} onCreateOrganization={openCreateOrganization} />,
       licencias: <ScreenLicencias />,
-      estado:    <ScreenEstadoGlobal onOpenClient={openClient} />,
+      estado:    <ScreenEstadoGlobal onOpenClient={openClient} onCreateOrganization={openCreateOrganization} />,
       features:  <ScreenFeatures selectedClient={selectedClient || CC_CLIENTS[0]?.id} onPickClient={setSelectedClient} onDataChanged={reload} />,
       servicios: <ScreenServicios selectedClient={selectedClient || CC_CLIENTS[0]?.id} onPickClient={setSelectedClient} />,
       deploys:   <ScreenDeploys />,
@@ -2013,14 +2033,25 @@ function App() {
         {error && <div className="cc-alert danger" style={{ marginBottom: 18 }}><i className="mdi mdi-alert-circle-outline"></i><div><p className="t">No se pudo cargar la consola</p><p className="d">{error}</p></div></div>}
         {content}
       </main>
+      {showCreateOrganization && <CreateOrganizationPlaceholder onClose={() => setShowCreateOrganization(false)} />}
     </div>
   );
 }
 
-function ScreenEstadoGlobal({ onOpenClient }) {
+function ScreenEstadoGlobal({ onOpenClient, onCreateOrganization }) {
   return (
     <div className="cc-page fade-in">
       <PageHead title="Estado Operativo" sub="Modo de operación de cada cliente. Cambia a Producción, Mantenimiento, Solo lectura o Suspendido desde la ficha del cliente." />
+      <SectionNotice section="instances" empty={CC_CLIENTS.length === 0} />
+      {CC_CLIENTS.length === 0 && (
+        <EmptyState
+          icon="mdi-toggle-switch-off-outline"
+          title="No existen instancias con estado operativo."
+          description="El estado operativo vive por instancia y solo se muestra cuando /v2/control-center/instances devuelve registros."
+          actionLabel="Crear organización"
+          onAction={onCreateOrganization}
+        />
+      )}
       <div className="cc-grid g4" style={{ marginBottom: "var(--gap)" }}>
         {Object.values(CC_STATES).map(s => {
           const n = CC_CLIENTS.filter(c => c.estado === s.key).length;
@@ -2033,7 +2064,7 @@ function ScreenEstadoGlobal({ onOpenClient }) {
           );
         })}
       </div>
-      <Card flush>
+      {CC_CLIENTS.length > 0 && <Card flush>
         <div className="cc-tblwrap">
           <table className="cc-tbl">
             <thead><tr><th>Empresa</th><th>Estado operativo</th><th>Impacto</th><th>Usuarios</th><th></th></tr></thead>
@@ -2053,7 +2084,7 @@ function ScreenEstadoGlobal({ onOpenClient }) {
             </tbody>
           </table>
         </div>
-      </Card>
+      </Card>}
     </div>
   );
 }
