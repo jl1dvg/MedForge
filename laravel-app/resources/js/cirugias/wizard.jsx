@@ -584,7 +584,12 @@ function StepProcedimiento({ form, set, setForm, showToast, scraped, setScraped,
               onChange={(e) => updArr('procedimientos', i, 'codigo', e.target.value)} />
             <input value={p.nombre} placeholder="Descripción del procedimiento"
               onChange={(e) => updArr('procedimientos', i, 'nombre', e.target.value)} />
-            <button className="icon-mini" title="Quitar" onClick={() => rmRow('procedimientos', i)}
+            <button className="icon-mini" title="Quitar" onClick={() => {
+                if (p.codigo || p.nombre) {
+                  if (!window.confirm(`¿Eliminar "${p.codigo || p.nombre}"?`)) return;
+                }
+                rmRow('procedimientos', i);
+              }}
               disabled={(form.procedimientos || []).length === 1}><i className="mdi mdi-minus" /></button>
           </div>
         ))}
