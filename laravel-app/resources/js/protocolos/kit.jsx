@@ -184,3 +184,83 @@ export function useCatMeta() {
   const { categorias } = useCatalogs();
   return useCallback((id) => (categorias || []).find((c) => c.id === id) || { id, icon: 'mdi-eye-outline', color: '#5156be' }, [categorias]);
 }
+
+/* ---------- Menciones de insumo en la descripción operatoria (@nombre → [[ID:n]]) ---------- */
+
+export function flattenInsumos(insumosDisponibles) {
+  return Object.values(insumosDisponibles || {}).flat();
+}
+
+export function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+/** Convierte [[ID:n]] guardado en DB a <span class="tag" data-id="n">Nombre</span> para mostrar. */
+export function renderOperatorioHtml(raw, listaInsumos) {
+  return escapeHtml(raw)
+    .replace(/\n/g, '<br>')
+    .replace(/\[\[ID:(\d+)\]\]/g, (match, id) => {
+      const insumo = (listaInsumos || []).find((i) => String(i.id) === String(id));
+      const nombre = insumo ? escapeHtml(insumo.nombre) : `#${id}`;
+      return `<span class="tag" data-id="${id}">${nombre}</span>&nbsp;`;
+    });
+}
+
+/** Convierte el DOM del editor (texto + spans .tag) de vuelta a la cadena con [[ID:n]] para guardar. */
+export function extractOperatorioValue(root) {
+  let result = '';
+  const walk = (node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      result += node.textContent;
+    } else if (node.nodeType === Node.ELEMENT_NODE) {
+      if (node.classList && node.classList.contains('tag')) {
+        result += `[[ID:${node.dataset.id}]]`;
+        return;
+      }
+      if (node.tagName === 'BR') {
+        result += '\n';
+        return;
+      }
+      const isBlock = node.tagName === 'DIV' || node.tagName === 'P';
+      if (isBlock && result && !result.endsWith('\n')) result += '\n';
+      node.childNodes.forEach(walk);
+    }
+  };
+  root.childNodes.forEach(walk);
+  return result;
+}
+
+/**
+ * Un <select> controlado nunca debe "tragarse" en silencio un valor guardado que ya no está
+ * en el catálogo (dato legacy, catálogo editado después, etc.) — el navegador cae al primer
+ * <option> sin avisar, y si el usuario guarda sin notar el cambio, se pierde el valor real.
+ * Estas helpers agregan el valor actual como opción de respaldo cuando no calza con ninguna.
+ */
+export function ensureOption(list, value) {
+  const arr = list || [];
+  if (!value || arr.includes(value)) return arr;
+  return [...arr, value];
+}
+
+export function ensureObjectOption(list, value, getValue) {
+  const arr = list || [];
+  if (!value || arr.some((o) => getValue(o) === value)) return arr;
+  return [...arr, { __orphan: true, value }];
+}
+
+/** Colores fijos legacy para filas de kardex (por responsable). */
+export const RESPONSABLE_ROW_COLOR = {
+  'Anestesiólogo': '#f8d7da',
+  'Cirujano Principal': '#cce5ff',
+  'Asistente': '#d4edda',
+};
+
+const CATEGORIA_PALETTE = ['#d4edda', '#cce5ff', '#fff3cd', '#e9e7fb', '#fde2e7', '#d4f5ee', '#ffe4ad'];
+
+/** Color estable por categoría real de insumo (no hay un set fijo de categorías como en legacy). */
+export function colorForCategoria(categoria) {
+  const s = String(categoria || '');
+  let hash = 0;
+  for (let i = 0; i < s.length; i++) hash = (hash * 31 + s.charCodeAt(i)) >>> 0;
+  return CATEGORIA_PALETTE[hash % CATEGORIA_PALETTE.length];
+}

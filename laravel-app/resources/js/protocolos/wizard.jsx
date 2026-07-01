@@ -1,5 +1,8 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Field, TextInput, TextArea, AIButton, Combo, Modal, useToast, useCatalogs, useCatMeta, rid } from './kit';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import {
+  Field, TextInput, TextArea, AIButton, Combo, Modal, useToast, useCatalogs, useCatMeta, rid,
+  ensureOption, RESPONSABLE_ROW_COLOR, colorForCategoria, flattenInsumos, renderOperatorioHtml, extractOperatorioValue,
+} from './kit';
 import { ProtocolDoc } from './preview';
 
 const emptyData = () => ({
@@ -191,7 +194,89 @@ function StepEquipo({ data, patch, onAI, staffOptions }) {
   );
 }
 
-function StepTecnica({ data, patch, onAI }) {
+const MENTION_RE = /@([a-zA-Z0-9À-ÿ ]*)$/;
+
+/**
+ * Editor de descripción operatoria con menciones "@insumo" → tag en negrita/color.
+ * Se guarda como [[ID:n]] en data.operatorio (mismo formato que el editor legacy),
+ * y la vista previa (preview.jsx) resuelve el mismo placeholder para mostrar el tag.
+ * `resetToken` fuerza un remount (re-sincroniza el HTML) cuando el texto cambia desde
+ * fuera del editor (plantilla base / botón IA), ya que el div es no-controlado mientras se escribe.
+ */
+function OperatorioEditor({ value, onChange, listaInsumos, resetToken }) {
+  const ref = useRef(null);
+  const [ac, setAc] = useState(null);
+
+  useEffect(() => {
+    if (ref.current) ref.current.innerHTML = renderOperatorioHtml(value, listaInsumos);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resetToken]);
+
+  const emit = () => { if (ref.current) onChange(extractOperatorioValue(ref.current)); };
+
+  const updateAutocomplete = () => {
+    const sel = window.getSelection();
+    if (!sel || !sel.rangeCount || !ref.current) { setAc(null); return; }
+    const range = sel.getRangeAt(0);
+    if (!ref.current.contains(range.startContainer)) { setAc(null); return; }
+    const preRange = range.cloneRange();
+    preRange.selectNodeContents(ref.current);
+    preRange.setEnd(range.endContainer, range.endOffset);
+    const match = preRange.toString().match(MENTION_RE);
+    if (!match) { setAc(null); return; }
+    const term = match[1].toLowerCase();
+    const items = (listaInsumos || []).filter((i) => i.nombre.toLowerCase().includes(term)).slice(0, 30);
+    const rect = range.getBoundingClientRect();
+    setAc({ items, top: rect.bottom, left: rect.left, width: ref.current.offsetWidth });
+  };
+
+  const pick = (item) => {
+    const sel = window.getSelection();
+    if (!sel || !sel.rangeCount || !ref.current) return;
+    const range = sel.getRangeAt(0);
+    const preRange = range.cloneRange();
+    preRange.selectNodeContents(ref.current);
+    preRange.setEnd(range.startContainer, range.startOffset);
+    const match = preRange.toString().match(MENTION_RE);
+    if (!match) return;
+    range.setStart(range.startContainer, range.startOffset - match[0].length);
+    range.deleteContents();
+    const span = document.createElement('span');
+    span.className = 'tag';
+    span.setAttribute('data-id', item.id);
+    span.textContent = item.nombre.replace(/\s+/g, ' ').trim();
+    range.insertNode(span);
+    const space = document.createTextNode(' ');
+    span.after(space);
+    range.setStartAfter(space);
+    range.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(range);
+    setAc(null);
+    emit();
+  };
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <div ref={ref} className="ta operatorio-editor" contentEditable suppressContentEditableWarning
+           style={{ minHeight: 180 }}
+           onInput={() => { emit(); updateAutocomplete(); }}
+           onKeyUp={updateAutocomplete}
+           onBlur={() => setTimeout(() => setAc(null), 150)} />
+      {ac && ac.items.length > 0 && (
+        <div className="autocomplete-box" style={{ position: 'fixed', top: ac.top, left: ac.left, width: ac.width }}>
+          {ac.items.map((it) => (
+            <div key={it.id} className="suggestion" onMouseDown={(e) => { e.preventDefault(); pick(it); }}>{it.nombre}</div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StepTecnica({ data, patch, onAI, operatorioVersion }) {
+  const { insumosDisponibles } = useCatalogs();
+  const listaInsumos = useMemo(() => flattenInsumos(insumosDisponibles), [insumosDisponibles]);
   return (
     <div className="wiz-panel">
       <div className="wiz-panel-head">
@@ -205,13 +290,12 @@ function StepTecnica({ data, patch, onAI }) {
         <Field label="Hallazgo" optional><TextArea value={data.hallazgo} onChange={(e) => patch({ hallazgo: e.target.value })} placeholder="Hallazgos…" style={{ minHeight: 70 }} /></Field>
       </div>
       <Field label="Descripción operatoria" required
-             help="Redacción que aparecerá en el parte quirúrgico.">
+             help="Redacción que aparecerá en el parte quirúrgico. Escribe @ para mencionar un insumo.">
         <div className="spread" style={{ marginBottom: 8 }}>
-          <span className="muted-note">Puedes escribir directamente o pedir un borrador.</span>
+          <span className="muted-note">Escribe @ para insertar un insumo, o pide un borrador.</span>
           <AIButton label="Ayúdame a redactar" onRun={onAI} icon="mdi-text-box-edit-outline" small />
         </div>
-        <TextArea value={data.operatorio} onChange={(e) => patch({ operatorio: e.target.value })} style={{ minHeight: 180 }}
-                  placeholder="Describe los tiempos quirúrgicos paso a paso…" />
+        <OperatorioEditor value={data.operatorio} onChange={(v) => patch({ operatorio: v })} listaInsumos={listaInsumos} resetToken={operatorioVersion} />
       </Field>
     </div>
   );
@@ -262,16 +346,22 @@ function StepKardex({ data, patch, onAI }) {
         <thead><tr><th style={{ width: '30%' }}>Medicamento</th><th>Dosis</th><th>Frecuencia</th><th>Vía</th><th>Responsable</th><th style={{ width: 40 }}></th></tr></thead>
         <tbody>
           {data.medicamentos.length === 0 && <tr className="etable-empty"><td colSpan={6}>Sin medicación. Agrega una fila o usa la sugerencia IA.</td></tr>}
-          {data.medicamentos.map((m, i) => (
-            <tr key={m._id || i}>
-              <td><select className="cell-inp" value={m.medicamento} onChange={(e) => set(i, 'medicamento', e.target.value)}>{(opcionesMedicamentos || []).map((x) => <option key={x.id} value={x.medicamento}>{x.medicamento}</option>)}</select></td>
-              <td><input className="cell-inp" value={m.dosis} onChange={(e) => set(i, 'dosis', e.target.value)} placeholder="1 gota" /></td>
-              <td><input className="cell-inp" value={m.frecuencia} onChange={(e) => set(i, 'frecuencia', e.target.value)} placeholder="c/8 h" /></td>
-              <td><select className="cell-inp" value={m.via} onChange={(e) => set(i, 'via', e.target.value)}>{(vias || []).map((x) => <option key={x}>{x}</option>)}</select></td>
-              <td><select className="cell-inp" value={m.responsable} onChange={(e) => set(i, 'responsable', e.target.value)}>{(responsables || []).map((x) => <option key={x}>{x}</option>)}</select></td>
-              <td><button className="row-x" onClick={() => del(i)}><i className="mdi mdi-close"></i></button></td>
-            </tr>
-          ))}
+          {data.medicamentos.map((m, i) => {
+            const bg = RESPONSABLE_ROW_COLOR[m.responsable];
+            const medOptions = ensureOption((opcionesMedicamentos || []).map((x) => x.medicamento), m.medicamento);
+            const viaOptions = ensureOption(vias, m.via);
+            const respOptions = ensureOption(responsables, m.responsable);
+            return (
+              <tr key={m._id || i} style={bg ? { background: bg } : null}>
+                <td><select className="cell-inp" value={m.medicamento} onChange={(e) => set(i, 'medicamento', e.target.value)}>{medOptions.map((x) => <option key={x} value={x}>{x}</option>)}</select></td>
+                <td><input className="cell-inp" value={m.dosis} onChange={(e) => set(i, 'dosis', e.target.value)} placeholder="1 gota" /></td>
+                <td><input className="cell-inp" value={m.frecuencia} onChange={(e) => set(i, 'frecuencia', e.target.value)} placeholder="c/8 h" /></td>
+                <td><select className="cell-inp" value={m.via} onChange={(e) => set(i, 'via', e.target.value)}>{viaOptions.map((x) => <option key={x}>{x}</option>)}</select></td>
+                <td><select className="cell-inp" value={m.responsable} onChange={(e) => set(i, 'responsable', e.target.value)}>{respOptions.map((x) => <option key={x}>{x}</option>)}</select></td>
+                <td><button className="row-x" onClick={() => del(i)}><i className="mdi mdi-close"></i></button></td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
       <button className="btn-add-row" onClick={add}><i className="mdi mdi-plus"></i>Agregar medicamento</button>
@@ -306,14 +396,19 @@ function StepInsumos({ data, patch, onAI }) {
         <thead><tr><th style={{ width: '34%' }}>Categoría</th><th>Insumo</th><th style={{ width: 90 }}>Cantidad</th><th style={{ width: 40 }}></th></tr></thead>
         <tbody>
           {data.insumos.length === 0 && <tr className="etable-empty"><td colSpan={4}>Sin insumos. Agrega una fila o usa la sugerencia IA.</td></tr>}
-          {data.insumos.map((it, i) => (
-            <tr key={it._id || i}>
-              <td><select className="cell-inp" value={it.categoria} onChange={(e) => set(i, 'categoria', e.target.value)}>{cats.map((c) => <option key={c}>{c}</option>)}</select></td>
-              <td><select className="cell-inp" value={it.nombre} onChange={(e) => set(i, 'nombre', e.target.value)}><option value="">Seleccionar…</option>{(insumosDisponibles[it.categoria] || []).map((n) => <option key={n.id} value={n.nombre}>{n.nombre}</option>)}</select></td>
-              <td><input className="cell-inp" type="number" min="1" value={it.cantidad} onChange={(e) => set(i, 'cantidad', e.target.value)} /></td>
-              <td><button className="row-x" onClick={() => del(i)}><i className="mdi mdi-close"></i></button></td>
-            </tr>
-          ))}
+          {data.insumos.map((it, i) => {
+            const bg = it.categoria ? colorForCategoria(it.categoria) : null;
+            const catOptions = ensureOption(cats, it.categoria);
+            const nombreOptions = ensureOption((insumosDisponibles[it.categoria] || []).map((n) => n.nombre), it.nombre);
+            return (
+              <tr key={it._id || i} style={bg ? { background: bg } : null}>
+                <td><select className="cell-inp" value={it.categoria} onChange={(e) => set(i, 'categoria', e.target.value)}>{catOptions.map((c) => <option key={c}>{c}</option>)}</select></td>
+                <td><select className="cell-inp" value={it.nombre} onChange={(e) => set(i, 'nombre', e.target.value)}><option value="">Seleccionar…</option>{nombreOptions.map((n) => <option key={n}>{n}</option>)}</select></td>
+                <td><input className="cell-inp" type="number" min="1" value={it.cantidad} onChange={(e) => set(i, 'cantidad', e.target.value)} /></td>
+                <td><button className="row-x" onClick={() => del(i)}><i className="mdi mdi-close"></i></button></td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
       <button className="btn-add-row" onClick={add}><i className="mdi mdi-plus"></i>Agregar insumo</button>
@@ -366,6 +461,7 @@ export function ProtocolWizard({ initial, mode, duplicandoDe, onExit, onSave, ap
   const [pvOpen, setPvOpen] = useState(false);
   const [loadingTemplateId, setLoadingTemplateId] = useState(null);
   const [staffOptions, setStaffOptions] = useState({});
+  const [operatorioVersion, setOperatorioVersion] = useState(0);
   const [toastNode, showToast] = useToast();
   const patch = useCallback((p) => setData((d) => ({ ...d, ...p })), []);
 
@@ -442,13 +538,18 @@ export function ProtocolWizard({ initial, mode, duplicandoDe, onExit, onSave, ap
       medicamentos: resolveMedsSuggestion(t.data.categoria),
       insumos: resolveInsumosSuggestion(t.data.categoria),
     });
+    setOperatorioVersion((v) => v + 1);
     setLoadingTemplateId(null);
     setStep(1);
     showToast(`Plantilla «${t.nombre}» precargada con IA. Revisa y ajusta.`);
   };
 
   const aiStaff = () => { patch({ staff: resolveStaffSuggestion(data.categoria) }); showToast('Equipo típico autocompletado.'); };
-  const aiOperatorio = () => { patch({ operatorio: operatorioSugerido[data.categoria] || operatorioSugerido.default }); showToast('Borrador de técnica generado. Revísalo y edítalo.'); };
+  const aiOperatorio = () => {
+    patch({ operatorio: operatorioSugerido[data.categoria] || operatorioSugerido.default });
+    setOperatorioVersion((v) => v + 1);
+    showToast('Borrador de técnica generado. Revísalo y edítalo.');
+  };
   const aiMeds = () => {
     const sug = resolveMedsSuggestion(data.categoria);
     patch({ medicamentos: [...data.medicamentos, ...sug] });
@@ -545,7 +646,7 @@ export function ProtocolWizard({ initial, mode, duplicandoDe, onExit, onSave, ap
         {cur.key === 'datos' && <StepDatos data={data} patch={patch} />}
         {cur.key === 'codigos' && <StepCodigos data={data} patch={patch} api={api} />}
         {cur.key === 'equipo' && <StepEquipo data={data} patch={patch} onAI={aiStaff} staffOptions={staffOptions} />}
-        {cur.key === 'tecnica' && <StepTecnica data={data} patch={patch} onAI={aiOperatorio} />}
+        {cur.key === 'tecnica' && <StepTecnica data={data} patch={patch} onAI={aiOperatorio} operatorioVersion={operatorioVersion} />}
         {cur.key === 'evolucion' && <StepEvolucion data={data} patch={patch} />}
         {cur.key === 'kardex' && <StepKardex data={data} patch={patch} onAI={aiMeds} />}
         {cur.key === 'insumos' && <StepInsumos data={data} patch={patch} onAI={aiInsumos} />}

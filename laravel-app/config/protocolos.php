@@ -40,9 +40,12 @@ return [
         'AYUDANTE ANESTESIOLOGO'  => 'anestesiologos',
     ],
 
-    'vias' => ['Tópica', 'Subconjuntival', 'Intravítrea', 'Intravenosa', 'Intramuscular', 'Oral', 'Peribulbar'],
+    // Idénticos a los valores reales ya usados por CirugiasUiController (mismo vocabulario en
+    // toda la app). Si esto no calza con lo guardado en kardex, el <select> cae al primer
+    // valor de la lista sin avisar — por eso deben ser exactamente estos, no los del mockup.
+    'vias' => ['INTRAVENOSA', 'VIA INFILTRATIVA', 'SUBCONJUNTIVAL', 'TOPICA', 'INTRAVITREA'],
 
-    'responsables' => ['Enfermería', 'Anestesiología', 'Cirujano', 'Circulante'],
+    'responsables' => ['Asistente', 'Anestesiólogo', 'Cirujano Principal'],
 
     // Plantillas base del paso "Inicio". El código se resuelve en vivo contra tarifario_2014
     // (GET /v2/cirugias/search-procedimientos) para no repetir la descripción aquí.
@@ -134,18 +137,19 @@ return [
     ],
 
     // "match" se busca contra opcionesMedicamentos[*].medicamento reales.
+    // "via"/"responsable" deben ser exactamente uno de los valores de arriba.
     'sugerencias_medicamentos' => [
         'Catarata' => [
-            ['match' => 'Moxifloxacino', 'dosis' => '1 gota', 'frecuencia' => 'c/6 h', 'via' => 'Tópica', 'responsable' => 'Enfermería'],
-            ['match' => 'Prednisolona', 'dosis' => '1 gota', 'frecuencia' => 'c/6 h', 'via' => 'Tópica', 'responsable' => 'Enfermería'],
-            ['match' => 'Ketorolaco 0.5', 'dosis' => '1 gota', 'frecuencia' => 'c/8 h', 'via' => 'Tópica', 'responsable' => 'Enfermería'],
+            ['match' => 'Moxifloxacino', 'dosis' => '1 gota', 'frecuencia' => 'c/6 h', 'via' => 'TOPICA', 'responsable' => 'Asistente'],
+            ['match' => 'Prednisolona', 'dosis' => '1 gota', 'frecuencia' => 'c/6 h', 'via' => 'TOPICA', 'responsable' => 'Asistente'],
+            ['match' => 'Ketorolaco 0.5', 'dosis' => '1 gota', 'frecuencia' => 'c/8 h', 'via' => 'TOPICA', 'responsable' => 'Asistente'],
         ],
         'Inyecciones' => [
-            ['match' => 'Moxifloxacino', 'dosis' => '1 gota', 'frecuencia' => 'c/6 h', 'via' => 'Tópica', 'responsable' => 'Enfermería'],
+            ['match' => 'Moxifloxacino', 'dosis' => '1 gota', 'frecuencia' => 'c/6 h', 'via' => 'TOPICA', 'responsable' => 'Asistente'],
         ],
         'default' => [
-            ['match' => 'Moxifloxacino', 'dosis' => '1 gota', 'frecuencia' => 'c/6 h', 'via' => 'Tópica', 'responsable' => 'Enfermería'],
-            ['match' => 'Ketorolaco 30 mg', 'dosis' => '1 ampolla', 'frecuencia' => 'Dosis única', 'via' => 'Intramuscular', 'responsable' => 'Anestesiología'],
+            ['match' => 'Moxifloxacino', 'dosis' => '1 gota', 'frecuencia' => 'c/6 h', 'via' => 'TOPICA', 'responsable' => 'Asistente'],
+            ['match' => 'Ketorolaco 30 mg', 'dosis' => '1 ampolla', 'frecuencia' => 'Dosis única', 'via' => 'INTRAVENOSA', 'responsable' => 'Anestesiólogo'],
         ],
     ],
 
