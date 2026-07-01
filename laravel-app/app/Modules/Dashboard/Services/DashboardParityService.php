@@ -583,29 +583,21 @@ class DashboardParityService
             $proc   = strtoupper(trim((string) ($row->procedimiento_proyectado ?? '')));
 
             $columns['revision']['count']++;
-            if (count($columns['revision']['sample']) < 2) {
-                $columns['revision']['sample'][] = $line;
-            }
+            $columns['revision']['sample'][] = $line;
 
             if (in_array($estado, $llegadoStates, true)) {
                 $columns['espera']['count']++;
-                if (count($columns['espera']['sample']) < 2) {
-                    $columns['espera']['sample'][] = $line;
-                }
+                $columns['espera']['sample'][] = $line;
             }
 
             if (in_array($estado, $consultaStates, true)) {
                 $columns['sala']['count']++;
-                if (count($columns['sala']['sample']) < 2) {
-                    $columns['sala']['sample'][] = $line;
-                }
+                $columns['sala']['sample'][] = $line;
             }
 
             if (str_starts_with($proc, 'CIRUGIAS')) {
                 $columns['lista']['count']++;
-                if (count($columns['lista']['sample']) < 2) {
-                    $columns['lista']['sample'][] = $line;
-                }
+                $columns['lista']['sample'][] = $line;
             }
         }
 
