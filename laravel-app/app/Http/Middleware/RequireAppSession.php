@@ -82,10 +82,21 @@ class RequireAppSession
 
     private function isAllowlisted(Request $request): bool
     {
+        if (!in_array($request->method(), self::SAFE_METHODS, true)) {
+            return false;
+        }
+
         $path = trim($request->path(), '/');
 
         foreach ((array) config('control_center.allowlist', []) as $allowedPath) {
             if ($path === trim((string) $allowedPath, '/')) {
+                return true;
+            }
+        }
+
+        foreach ((array) config('control_center.allowlist_prefixes', []) as $allowedPrefix) {
+            $prefix = trim((string) $allowedPrefix, '/');
+            if ($prefix !== '' && str_starts_with($path . '/', $prefix . '/')) {
                 return true;
             }
         }

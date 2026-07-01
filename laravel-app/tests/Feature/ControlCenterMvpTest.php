@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\User;
 use App\Modules\Shared\Support\LegacySessionAuth;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
@@ -146,6 +147,34 @@ class ControlCenterMvpTest extends TestCase
             'client_id' => 1,
             'event_type' => 'feature',
             'action' => 'feature.updated',
+        ]);
+    }
+
+    public function test_control_center_seeder_is_idempotent_and_preserves_operational_data(): void
+    {
+        DB::table('control_center_clients')->where('slug', 'cive')->update(['status' => 'readonly']);
+        DB::table('control_center_client_features')
+            ->where('client_id', 1)
+            ->where('feature_id', DB::table('control_center_features')->where('key', 'ia')->value('id'))
+            ->update(['enabled' => false, 'override_reason' => 'Manual staging override']);
+
+        $clientCount = DB::table('control_center_clients')->count();
+        $featureRows = DB::table('control_center_client_features')->count();
+
+        $this->artisan('db:seed', [
+            '--class' => 'Database\\Seeders\\ControlCenterSeeder',
+        ])->run();
+
+        $this->assertSame($clientCount, DB::table('control_center_clients')->count());
+        $this->assertSame($featureRows, DB::table('control_center_client_features')->count());
+        $this->assertDatabaseHas('control_center_clients', [
+            'slug' => 'cive',
+            'status' => 'readonly',
+        ]);
+        $this->assertDatabaseHas('control_center_client_features', [
+            'client_id' => 1,
+            'enabled' => 0,
+            'override_reason' => 'Manual staging override',
         ]);
     }
 
