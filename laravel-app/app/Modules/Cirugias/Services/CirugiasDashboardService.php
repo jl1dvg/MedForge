@@ -1290,6 +1290,13 @@ class CirugiasDashboardService
                     MAX(fecha_inicio) AS fecha_inicio,
                     MAX(lateralidad) AS lateralidad
                 FROM protocolo_data
+                WHERE CAST(form_id AS CHAR) IN (
+                    SELECT DISTINCT NULLIF(TRIM(meta_value), '')
+                    FROM solicitud_crm_meta
+                    WHERE meta_key = 'cirugia_confirmada_form_id'
+                      AND meta_value IS NOT NULL
+                      AND TRIM(meta_value) <> ''
+                )
                 GROUP BY CAST(form_id AS CHAR)
             ) pd
                 ON CONVERT(pd.form_id USING utf8mb4) COLLATE utf8mb4_unicode_ci
