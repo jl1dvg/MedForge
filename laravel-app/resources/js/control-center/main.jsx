@@ -3,7 +3,8 @@ import '../../css/control-center.css';
 import React, { useEffect, useState, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 
-/* MedForge Control Center — mock data (realistic, Spanish). Exposed on window. */
+/* MedForge Control Center — approved visual mockup placeholders.
+   Runtime data is hydrated from /v2/control-center endpoints below. */
 
 /* ---- operational state metadata ---- */
 let CC_STATES = {
@@ -226,6 +227,22 @@ let CC_STATE_HISTORY = {
   ],
 };
 
+let CC_BACKEND_STATUS = {
+  overview: "idle",
+  organizations: "idle",
+  instances: "idle",
+  details: "idle",
+  services: "idle",
+  plans: "idle",
+  deployments: "idle",
+  usage: "idle",
+  audit: "idle",
+};
+let CC_BACKEND_ERRORS = {};
+let CC_OVERVIEW_SUMMARY = {};
+let CC_USAGE_TOTALS = {};
+let CC_SERVICE_DETAILS = {};
+
 const fmtNum = (n) => n.toLocaleString("es-EC");
 const fmtMoney = (n) => "$" + n.toLocaleString("es-EC");
 
@@ -405,6 +422,34 @@ function PageHead({ crumbs, title, sub, actions }) {
   );
 }
 
+function SectionNotice({ section, empty, demo }) {
+  if (CC_BACKEND_STATUS[section] === "error") {
+    return (
+      <div className="cc-alert warn" style={{ marginBottom: "var(--gap)" }}>
+        <i className="mdi mdi-alert-circle-outline"></i>
+        <div><p className="t">Datos no disponibles</p><p className="d">{CC_BACKEND_ERRORS[section] || "No se pudo cargar esta sección."}</p></div>
+      </div>
+    );
+  }
+  if (empty) {
+    return (
+      <div className="cc-alert info" style={{ marginBottom: "var(--gap)" }}>
+        <i className="mdi mdi-database-off-outline"></i>
+        <div><p className="t">Sin datos reales todavía</p><p className="d">El endpoint respondió, pero no hay registros para mostrar.</p></div>
+      </div>
+    );
+  }
+  if (demo) {
+    return (
+      <div className="cc-alert info" style={{ marginBottom: "var(--gap)" }}>
+        <i className="mdi mdi-chart-timeline-variant"></i>
+        <div><p className="t">Visual demo</p><p className="d">Esta gráfica conserva series del mockup hasta conectar métricas históricas reales.</p></div>
+      </div>
+    );
+  }
+  return null;
+}
+
 /* ---------- Drawer ---------- */
 function Drawer({ title, subtitle, children, footer, onClose }) {
   useEffect(() => {
@@ -430,15 +475,17 @@ function Drawer({ title, subtitle, children, footer, onClose }) {
 /* MedForge Control Center — Overview screen */
 
 function ScreenOverview({ onOpenClient, onNav, env }) {
-  const activos = CC_CLIENTS.filter(c => c.estado === "produccion").length;
+  const activos = Number(CC_OVERVIEW_SUMMARY.production ?? CC_CLIENTS.filter(c => c.estado === "produccion").length);
   const enRiesgo = CC_CLIENTS.filter(c => c.riesgo === "alto" || c.riesgo === "crítico").length;
-  const suspendidos = CC_CLIENTS.filter(c => c.estado === "suspendido").length;
-  const porVencer = CC_CLIENTS.filter(c => ["09 jul 2026", "04 ago 2026", "19 ene 2026", "08 feb 2026"].includes(c.vence)).length;
+  const suspendidos = Number(CC_OVERVIEW_SUMMARY.suspended ?? CC_CLIENTS.filter(c => c.estado === "suspendido").length);
+  const porVencer = null;
+  const firstSuspended = CC_CLIENTS.find(c => c.estado === "suspendido");
+  const firstReadonly = CC_CLIENTS.find(c => c.estado === "lectura");
 
   // global service health counts
   let counts = { operativo: 0, degradado: 0, error: 0, pausado: 0, no_config: 0 };
   Object.values(CC_SERVICE_STATE).forEach(svc => Object.values(svc).forEach(v => counts[SVC_KEYMAP[v]]++));
-  const totalSvc = Object.values(counts).reduce((a, b) => a + b, 0);
+  const totalSvc = Object.values(counts).reduce((a, b) => a + b, 0) || 1;
 
   const iaMonthly = CC_CONSUMO.iaTokens;
   const waMonthly = CC_CONSUMO.waMsgs;
@@ -449,7 +496,7 @@ function ScreenOverview({ onOpenClient, onNav, env }) {
         title="Overview"
         sub="Estado global de la plataforma MedForge — clientes, operación, consumo y eventos críticos en un solo lugar."
         actions={<React.Fragment>
-          <button className="cc-btn line sm"><i className="mdi mdi-calendar-range"></i>Junio 2026</button>
+          <button className="cc-btn line sm"><i className="mdi mdi-calendar-range"></i>Periodo actual</button>
           <button className="cc-btn ghost sm"><i className="mdi mdi-file-pdf-box"></i>Exportar</button>
         </React.Fragment>}
       />
@@ -458,43 +505,45 @@ function ScreenOverview({ onOpenClient, onNav, env }) {
       <div className="cc-grid g4" style={{ marginBottom: "var(--gap)" }}>
         <Kpi icon="mdi-domain" tone="prod" label="Clientes activos" value={activos} delta="100% SLA" deltaDir="up"
              foot={<span className="muted">de {CC_CLIENTS.length} cuentas totales</span>} />
-        <Kpi icon="mdi-alert-rhombus-outline" tone="susp" label="Clientes en riesgo" value={enRiesgo} delta="+1" deltaDir="dn"
+        <Kpi icon="mdi-alert-rhombus-outline" tone="susp" label="Clientes en riesgo" value={enRiesgo} delta={suspendidos ? `${suspendidos} suspendido(s)` : "0 suspendidos"} deltaDir="flat"
              foot={<span className="muted">pago vencido o incidencias</span>} />
         <Kpi icon="mdi-server-off" tone="maint" label="Servicios con incidencia" value={counts.error + counts.degradado} delta={counts.error + " en error"} deltaDir="flat"
              foot={<span className="muted">{counts.pausado} pausados por suspensión</span>} />
-        <Kpi icon="mdi-license" tone="read" label="Licencias por vencer" value={porVencer} delta="≤ 30 días" deltaDir="flat"
-             foot={<span className="muted">requieren renovación</span>} />
+        <Kpi icon="mdi-license" tone="read" label="Licencias por vencer" value={porVencer ?? "Pendiente"} delta="Fase 2" deltaDir="flat"
+             foot={<span className="muted">pendiente de integración contractual</span>} />
       </div>
 
       {/* critical alerts */}
-      <div className="cc-grid g2" style={{ marginBottom: "var(--gap)" }}>
-        <div className="cc-alert danger">
-          <i className="mdi mdi-cancel"></i>
-          <div><p className="t">Hospital Quito está suspendido</p>
-            <p className="d">Acceso bloqueado desde el 10 mar 2026 por contrato vencido y mora. 12 tickets abiertos pendientes de gestión administrativa.</p></div>
+      {(firstSuspended || firstReadonly) && (
+        <div className="cc-grid g2" style={{ marginBottom: "var(--gap)" }}>
+          {firstSuspended && <div className="cc-alert danger">
+            <i className="mdi mdi-cancel"></i>
+            <div><p className="t">{firstSuspended.nombre} está suspendido</p>
+              <p className="d">Estado operativo real reportado por Control Center. La causa específica depende de auditoría/contrato.</p></div>
+          </div>}
+          {firstReadonly && <div className="cc-alert warn">
+            <i className="mdi mdi-eye-lock-outline"></i>
+            <div><p className="t">{firstReadonly.nombre} en Solo lectura</p>
+              <p className="d">Estado operativo real reportado por Control Center. Los usuarios solo pueden consultar información.</p></div>
+          </div>}
         </div>
-        <div className="cc-alert warn">
-          <i className="mdi mdi-eye-lock-outline"></i>
-          <div><p className="t">Salud Visual en Solo lectura</p>
-            <p className="d">Suspensión parcial automática por factura vencida. Los usuarios solo pueden consultar información hasta regularizar el pago.</p></div>
-        </div>
-      </div>
+      )}
 
       {/* consumption row */}
       <div className="cc-grid g2" style={{ marginBottom: "var(--gap)" }}>
         <Card title="Consumo mensual de IA" icon="mdi-brain"
-              action={<div className="flex ac gap10"><span className="cc-tag">{fmtMoney(883)} jun</span><span className="cc-delta up"><i className="mdi mdi-arrow-up-thin"></i>32%</span></div>}>
+              action={<div className="flex ac gap10"><span className="cc-tag">Demo visual</span></div>}>
           <div className="flex jb ac" style={{ marginBottom: 10 }}>
-            <div><div className="cc-kpi-inline" style={{ font: "700 28px var(--font-display)", color: "var(--cc-fg)" }}>6.9M</div>
-              <div className="muted" style={{ fontSize: 12 }}>tokens consumidos este mes</div></div>
+            <div><div className="cc-kpi-inline" style={{ font: "700 28px var(--font-display)", color: "var(--cc-fg)" }}>{metricDisplay(CC_USAGE_TOTALS.aiTokens, compactNumber)}</div>
+              <div className="muted" style={{ fontSize: 12 }}>tokens reales acumulados</div></div>
           </div>
           <AreaChart data={iaMonthly} labels={CC_MONTHS} color="var(--cc-accent)" h={170} />
         </Card>
         <Card title="Consumo de WhatsApp" icon="mdi-whatsapp"
-              action={<div className="flex ac gap10"><span className="cc-tag">28.0K msj</span><span className="cc-delta up"><i className="mdi mdi-arrow-up-thin"></i>4.5%</span></div>}>
+              action={<div className="flex ac gap10"><span className="cc-tag">Demo visual</span></div>}>
           <div className="flex jb ac" style={{ marginBottom: 10 }}>
-            <div><div style={{ font: "700 28px var(--font-display)", color: "var(--cc-fg)" }}>4.700</div>
-              <div className="muted" style={{ fontSize: 12 }}>conversaciones activas este mes</div></div>
+            <div><div style={{ font: "700 28px var(--font-display)", color: "var(--cc-fg)" }}>{metricDisplay(CC_USAGE_TOTALS.whatsappMessages, compactNumber)}</div>
+              <div className="muted" style={{ fontSize: 12 }}>mensajes reales acumulados</div></div>
           </div>
           <AreaChart data={waMonthly} labels={CC_MONTHS} color="var(--cc-accent-2)" h={170} fmt={(v)=>v+"K"} />
         </Card>
@@ -603,8 +652,8 @@ function ScreenClientes({ onOpenClient }) {
         title="Clientes"
         sub="Todas las organizaciones que operan sobre MedForge. Filtra por estado, plan, ciudad o vencimiento."
         actions={<React.Fragment>
-          <button className="cc-btn ghost sm"><i className="mdi mdi-file-excel-box"></i>Exportar</button>
-          <button className="cc-btn primary sm"><i className="mdi mdi-plus"></i>Nuevo cliente</button>
+          <button className="cc-btn ghost sm" disabled title="Pendiente Fase 2"><i className="mdi mdi-file-excel-box"></i>Exportar</button>
+          <button className="cc-btn primary sm" disabled title="Pendiente Fase 2"><i className="mdi mdi-plus"></i>Nuevo cliente</button>
         </React.Fragment>}
       />
 
@@ -647,7 +696,7 @@ function ScreenClientes({ onOpenClient }) {
       <Card flush>
         <div className="flex jb ac" style={{ padding: "13px 18px", borderBottom: "1px solid var(--cc-border)" }}>
           <span style={{ fontSize: 12.5, color: "var(--cc-fg-3)" }}>Mostrando <b style={{ color: "var(--cc-fg)" }}>{rows.length}</b> de {CC_CLIENTS.length} clientes</span>
-          <span className="cc-tag"><i className="mdi mdi-update" style={{ fontSize: 13 }}></i> Actualizado hace 1 min</span>
+          <span className="cc-tag"><i className="mdi mdi-update" style={{ fontSize: 13 }}></i> Datos del backend</span>
         </div>
         <div className="cc-tblwrap">
           <table className="cc-tbl">
@@ -990,8 +1039,10 @@ function ScreenLicencias() {
       <PageHead
         title="Licencias y Planes"
         sub="Catálogo de planes comerciales, límites incluidos y estado de los contratos vigentes."
-        actions={<button className="cc-btn primary sm"><i className="mdi mdi-plus"></i>Nuevo plan</button>}
+        actions={<button className="cc-btn primary sm" disabled title="Pendiente Fase 2"><i className="mdi mdi-plus"></i>Nuevo plan</button>}
       />
+
+      <SectionNotice section="plans" empty={CC_PLAN_CARDS.length === 0} />
 
       <div className="cc-grid g4" style={{ marginBottom: "var(--gap)", alignItems: "stretch" }}>
         {CC_PLAN_CARDS.map(p => (
@@ -1020,6 +1071,7 @@ function ScreenLicencias() {
       </div>
 
       <Card title="Contratos vigentes" icon="mdi-file-sign" flush>
+        <SectionNotice section="organizations" empty={CC_CLIENTS.length === 0} />
         <div className="cc-tblwrap">
           <table className="cc-tbl">
             <thead><tr><th>Empresa</th><th>Plan</th><th>Inicio</th><th>Vencimiento</th><th>Usuarios</th><th>Estado pago</th><th>Contrato</th></tr></thead>
@@ -1100,7 +1152,8 @@ function ScreenDeploys() {
   return (
     <div className="cc-page fade-in">
       <PageHead title="Deploys y Versiones" sub="Gestión de releases por cliente. Controla canales, versiones instaladas y programa actualizaciones."
-        actions={<button className="cc-btn ghost sm"><i className="mdi mdi-source-branch"></i>Canales</button>} />
+        actions={<button className="cc-btn ghost sm" disabled title="Pendiente Fase 2"><i className="mdi mdi-source-branch"></i>Canales</button>} />
+      <SectionNotice section="deployments" empty={CC_RELEASES.length === 0 && CC_CLIENTS.length === 0} />
       <Card flush style={{ marginBottom: "var(--gap)" }}>
         <div className="cc-tblwrap">
           <table className="cc-tbl">
@@ -1116,7 +1169,7 @@ function ScreenDeploys() {
                     <td><span className={`cc-badge ${c.canal === "Stable" ? "prod" : "beta"}`}>{c.canal}</span></td>
                     <td className="cc-mono" style={{ fontSize: 12 }}>{c.ultimoDeploy}</td>
                     <td>{behind ? <span className="cc-badge maint">Desactualizado</span> : <span className="cc-badge prod"><span className="led"></span>Al día</span>}</td>
-                    <td style={{ textAlign: "right" }}><button className="cc-btn line sm" disabled={c.estado === "suspendido"}><i className="mdi mdi-calendar-clock"></i>Programar</button></td>
+                    <td style={{ textAlign: "right" }}><button className="cc-btn line sm" disabled title="Pendiente Fase 2"><i className="mdi mdi-calendar-clock"></i>Programar</button></td>
                   </tr>
                 );
               })}
@@ -1152,23 +1205,25 @@ function ScreenConsumo() {
   return (
     <div className="cc-page fade-in">
       <PageHead title="Consumo" sub="Métricas de uso de la plataforma: IA, WhatsApp, documentos, almacenamiento y API."
-        actions={<button className="cc-btn ghost sm"><i className="mdi mdi-file-excel-box"></i>Exportar</button>} />
+        actions={<button className="cc-btn ghost sm" disabled title="Pendiente Fase 2"><i className="mdi mdi-file-excel-box"></i>Exportar</button>} />
+      <SectionNotice section="usage" empty={Object.values(CC_USAGE_TOTALS).every(value => Number(value || 0) === 0)} />
       <div className="cc-grid g4" style={{ marginBottom: "var(--gap)" }}>
-        <Kpi icon="mdi-brain" tone="acc" label="Tokens IA usados" value="6.9M" delta="32%" deltaDir="up" foot={<span className="muted">global · junio</span>} />
-        <Kpi icon="mdi-cash" tone="prod" label="Costo estimado IA" value={fmtMoney(883)} delta="32%" deltaDir="dn" foot={<span className="muted">vs. {fmtMoney(668)} en may</span>} />
-        <Kpi icon="mdi-whatsapp" tone="read" label="Mensajes WhatsApp" value="28.0K" delta="4.5%" deltaDir="up" foot={<span className="muted">4.700 conversaciones</span>} />
-        <Kpi icon="mdi-folder-outline" tone="beta" label="Storage usado" value="611" unit="GB" delta="8%" deltaDir="up" foot={<span className="muted">de 1.525 GB</span>} />
+        <Kpi icon="mdi-brain" tone="acc" label="Tokens IA usados" value={metricDisplay(CC_USAGE_TOTALS.aiTokens, compactNumber)} delta="Real" deltaDir="flat" foot={<span className="muted">desde /usage</span>} />
+        <Kpi icon="mdi-cash" tone="prod" label="Costo estimado IA" value={CC_USAGE_TOTALS.aiCost ? fmtMoney(Math.round(CC_USAGE_TOTALS.aiCost)) : "Pendiente"} delta="Real" deltaDir="flat" foot={<span className="muted">cost registrado</span>} />
+        <Kpi icon="mdi-whatsapp" tone="read" label="Mensajes WhatsApp" value={metricDisplay(CC_USAGE_TOTALS.whatsappMessages, compactNumber)} delta="Real" deltaDir="flat" foot={<span className="muted">desde /usage</span>} />
+        <Kpi icon="mdi-folder-outline" tone="beta" label="Storage usado" value={metricDisplay(CC_USAGE_TOTALS.storageGb, compactNumber)} unit={CC_USAGE_TOTALS.storageGb ? "GB" : ""} delta="Real" deltaDir="flat" foot={<span className="muted">desde /usage</span>} />
       </div>
 
+      <SectionNotice section="usage" demo />
       <div className="cc-grid g2" style={{ marginBottom: "var(--gap)" }}>
-        <Card title="Tokens IA — comparativo mensual" icon="mdi-chart-areaspline" action={<span className="cc-tag">millones</span>}><AreaChart data={CC_CONSUMO.iaTokens} labels={CC_MONTHS} color="var(--cc-accent)" h={200} /></Card>
-        <Card title="Mensajes WhatsApp enviados" icon="mdi-message-text-outline" action={<span className="cc-tag">miles</span>}><BarChart data={CC_CONSUMO.waMsgs} labels={CC_MONTHS} alt /></Card>
+        <Card title="Tokens IA — comparativo mensual" icon="mdi-chart-areaspline" action={<span className="cc-tag">Demo</span>}><AreaChart data={CC_CONSUMO.iaTokens} labels={CC_MONTHS} color="var(--cc-accent)" h={200} /></Card>
+        <Card title="Mensajes WhatsApp enviados" icon="mdi-message-text-outline" action={<span className="cc-tag">Demo</span>}><BarChart data={CC_CONSUMO.waMsgs} labels={CC_MONTHS} alt /></Card>
       </div>
 
       <div className="cc-grid g3" style={{ marginBottom: "var(--gap)" }}>
-        <Card title="PDFs generados" icon="mdi-file-pdf-box"><div style={{ font: "700 24px var(--font-display)", color: "var(--cc-fg)", marginBottom: 8 }}>14.600</div><BarChart data={CC_CONSUMO.pdfs} labels={CC_MONTHS} /></Card>
-        <Card title="Reportes exportados" icon="mdi-chart-box-outline"><div style={{ font: "700 24px var(--font-display)", color: "var(--cc-fg)", marginBottom: 8 }}>647</div><BarChart data={CC_CONSUMO.reportes} labels={CC_MONTHS} /></Card>
-        <Card title="Llamadas API" icon="mdi-api"><div style={{ font: "700 24px var(--font-display)", color: "var(--cc-fg)", marginBottom: 8 }}>2.1M</div><BarChart data={CC_CONSUMO.api} labels={CC_MONTHS} alt /></Card>
+        <Card title="PDFs generados" icon="mdi-file-pdf-box"><div style={{ font: "700 24px var(--font-display)", color: "var(--cc-fg)", marginBottom: 8 }}>{metricDisplay(CC_USAGE_TOTALS.pdfs, compactNumber)}</div><BarChart data={CC_CONSUMO.pdfs} labels={CC_MONTHS} /></Card>
+        <Card title="Reportes exportados" icon="mdi-chart-box-outline"><div style={{ font: "700 24px var(--font-display)", color: "var(--cc-fg)", marginBottom: 8 }}>{metricDisplay(CC_USAGE_TOTALS.reports, compactNumber)}</div><BarChart data={CC_CONSUMO.reportes} labels={CC_MONTHS} /></Card>
+        <Card title="Llamadas API" icon="mdi-api"><div style={{ font: "700 24px var(--font-display)", color: "var(--cc-fg)", marginBottom: 8 }}>{metricDisplay(CC_USAGE_TOTALS.apiCalls, compactNumber)}</div><BarChart data={CC_CONSUMO.api} labels={CC_MONTHS} alt /></Card>
       </div>
 
       <Card title="Consumo por cliente — IA y WhatsApp" icon="mdi-chart-bar-stacked" flush>
@@ -1211,7 +1266,8 @@ function ScreenAuditoria() {
   return (
     <div className="cc-page fade-in">
       <PageHead title="Auditoría" sub="Registro cronológico global de todas las acciones sensibles sobre la plataforma y sus clientes."
-        actions={<button className="cc-btn ghost sm"><i className="mdi mdi-download"></i>Exportar registro</button>} />
+        actions={<button className="cc-btn ghost sm" disabled title="Pendiente Fase 2"><i className="mdi mdi-download"></i>Exportar registro</button>} />
+      <SectionNotice section="audit" empty={CC_AUDIT.length === 0} />
       <div className="flex ac wrap gap6" style={{ marginBottom: "var(--gap)" }}>
         {tipos.map(t => (
           <button key={t.id} className={`cc-btn ${filtro === t.id ? "primary" : "line"} sm`} onClick={() => setFiltro(t.id)}>
@@ -1247,6 +1303,9 @@ const ENV_CLS = { "Producción": "prod", "Beta": "beta", "Experimental": "maint"
 /* ---- Feature flags panel (reused in detail + standalone) ---- */
 function FeatureFlagsPanel({ flags, setFlags, scope, clientId, onDataChanged }) {
   const onCount = Object.values(flags).filter(Boolean).length;
+  if (CC_FEATURES.length === 0) {
+    return <SectionNotice section="details" empty />;
+  }
   return (
     <div className="fade-in">
       <div className="flex jb ac wrap gap10" style={{ marginBottom: 14 }}>
@@ -1293,12 +1352,20 @@ function RiskInline({ r }) {
 
 /* ---- Services panel (per client) ---- */
 function ServicesPanel({ clientId }) {
-  const svc = CC_SERVICE_STATE[clientId];
+  const svc = CC_SERVICE_STATE[clientId] || {};
+  if (CC_SERVICE_DEFS.length === 0) {
+    return <SectionNotice section="services" empty />;
+  }
   return (
     <div className="fade-in cc-grid g2">
       {CC_SERVICE_DEFS.map(d => {
-        const state = SVC_KEYMAP[svc[d.id]];
+        const state = SVC_KEYMAP[svc[d.id] || 'none'];
         const m = CC_SVC_META[state];
+        const detail = CC_SERVICE_DETAILS[`${clientId}:${d.id}`];
+        const serviceText = detail?.message
+          || (detail?.latency_ms != null || detail?.uptime_pct != null
+            ? `${detail?.latency_ms != null ? `Latencia ${detail.latency_ms}ms` : 'Latencia pendiente'} · ${detail?.uptime_pct != null ? `uptime ${detail.uptime_pct}%` : 'uptime pendiente'}`
+            : 'Pendiente de healthcheck real');
         return (
           <div key={d.id} className="cc-card" style={{ padding: "15px 18px", display: "flex", alignItems: "center", gap: 14 }}>
             <div style={{ width: 42, height: 42, borderRadius: 11, background: `${m.color}1f`, color: m.color, display: "grid", placeItems: "center", fontSize: 21, flexShrink: 0 }}>
@@ -1307,7 +1374,7 @@ function ServicesPanel({ clientId }) {
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ font: "600 14px var(--font-body)", color: "var(--cc-fg)" }}>{d.nombre}</div>
               <div className="muted" style={{ fontSize: 11.5, fontFamily: "var(--font-mono)" }}>
-                {state === "operativo" ? "Latencia 42ms · uptime 99.9%" : state === "degradado" ? "Latencia elevada · 1.2s" : state === "error" ? "Sin respuesta · 503" : state === "pausado" ? "Detenido por suspensión" : "No aprovisionado"}
+                {serviceText}
               </div>
             </div>
             <ServicePill state={state} />
@@ -1319,7 +1386,7 @@ function ServicesPanel({ clientId }) {
 }
 
 /* ---- Standalone: Feature Flags screen (with client selector) ---- */
-function ScreenFeatures({ selectedClient, onPickClient }) {
+function ScreenFeatures({ selectedClient, onPickClient, onDataChanged }) {
   const c = CC_CLIENTS.find(x => x.id === selectedClient) || CC_CLIENTS[0];
   const [flags, setFlags] = useState(() => {
     const byKey = new Map((c?.features || []).map(feature => [feature.key, Boolean(feature.enabled)]));
@@ -1335,9 +1402,9 @@ function ScreenFeatures({ selectedClient, onPickClient }) {
       <PageHead
         title="Feature Flags"
         sub="Activa o desactiva módulos por cliente. Los cambios se propagan al ambiente seleccionado y quedan auditados."
-        actions={<ClientPicker c={c} onPick={onPickClient} />}
+        actions={c ? <ClientPicker c={c} onPick={onPickClient} /> : null}
       />
-      <FeatureFlagsPanel flags={flags} setFlags={setFlags} scope={c?.nombre} clientId={c?.id} />
+      <FeatureFlagsPanel flags={flags} setFlags={setFlags} scope={c?.nombre} clientId={c?.id} onDataChanged={onDataChanged} />
     </div>
   );
 }
@@ -1364,6 +1431,9 @@ function ScreenServicios({ selectedClient, onPickClient }) {
 
 /* ---- Global service matrix (clients × services) ---- */
 function ServiceMatrix() {
+  if (CC_SERVICE_DEFS.length === 0) {
+    return <SectionNotice section="services" empty />;
+  }
   return (
     <Card flush>
       <div className="cc-tblwrap">
@@ -1484,9 +1554,73 @@ function normalizeCollection(payload) {
   return [];
 }
 
+function normalizeWrappedResponse(payload, key) {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.[key])) return payload[key];
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.data?.[key])) return payload.data[key];
+  return [];
+}
+
+function normalizeServicesResponse(payload) {
+  return normalizeWrappedResponse(payload, "services");
+}
+
+function normalizePlansResponse(payload) {
+  return normalizeWrappedResponse(payload, "plans");
+}
+
+function normalizeDeploymentsResponse(payload) {
+  return normalizeWrappedResponse(payload, "deployments");
+}
+
+function normalizeUsageResponse(payload) {
+  return normalizeWrappedResponse(payload, "usage");
+}
+
+function normalizeAuditResponse(payload) {
+  return normalizeWrappedResponse(payload, "audit");
+}
+
+async function loadSection(key, path, normalizer = (payload) => payload) {
+  try {
+    const data = normalizer(await ccRequest(path));
+    CC_BACKEND_STATUS[key] = "ready";
+    delete CC_BACKEND_ERRORS[key];
+    return data;
+  } catch (error) {
+    CC_BACKEND_STATUS[key] = "error";
+    CC_BACKEND_ERRORS[key] = error.message || "No se pudo cargar esta seccion.";
+    return Array.isArray(normalizer({})) ? [] : null;
+  }
+}
+
 function firstMetric(rows, instanceId, names, fallback = 0) {
   const row = rows.find(r => Number(r.instance_id) === Number(instanceId) && names.includes(r.metric));
   return row ? Number(row.value || 0) : fallback;
+}
+
+function usageTotal(rows, names) {
+  return rows
+    .filter(row => names.includes(row.metric))
+    .reduce((total, row) => total + Number(row.value || 0), 0);
+}
+
+function usageCost(rows, names) {
+  return rows
+    .filter(row => names.includes(row.metric))
+    .reduce((total, row) => total + Number(row.cost || 0), 0);
+}
+
+function metricDisplay(value, formatter = fmtNum, empty = "Pendiente") {
+  return Number(value || 0) > 0 ? formatter(value) : empty;
+}
+
+function compactNumber(value) {
+  const n = Number(value || 0);
+  if (n >= 1000000) return (n / 1000000).toFixed(n >= 10000000 ? 0 : 1) + "M";
+  if (n >= 1000) return (n / 1000).toFixed(n >= 10000 ? 0 : 1) + "K";
+  return String(Math.round(n));
 }
 
 function dateShort(value, fallback = "—") {
@@ -1549,6 +1683,7 @@ function clientFromInstance(instance, org, usageRows, deployments) {
     riesgo: uiState === 'suspendido' ? 'crítico' : uiState === 'lectura' ? 'alto' : uiState === 'mantenimiento' ? 'medio' : 'bajo',
     contactoAdmin: { n: org?.name || instance.organization_name || 'Equipo cliente', c: '—', t: '—' },
     contactoTec: { n: 'Equipo MedForge', c: 'soporte@medforge.app', t: '—' },
+    placeholderFields: ['ruc', 'inicio', 'vence', 'ultimoBackup', 'tickets', 'contactos'],
     iaTokens: tokens,
     iaCosto: Math.round(tokens / 1000000 * 127),
     iaPct: Math.min(100, Math.round(tokens ? tokens / 80000 : 0)),
@@ -1564,12 +1699,23 @@ function clientFromInstance(instance, org, usageRows, deployments) {
 
 function hydrateControlCenterData(payload) {
   const overview = payload.overview || {};
-  const orgs = payload.organizations.length ? payload.organizations : normalizeCollection(overview.organizations);
-  const instances = payload.instances.length ? payload.instances : normalizeCollection(overview.instances);
-  const deployments = payload.deployments;
-  const usageRows = payload.usage.length ? payload.usage : [];
+  const orgs = payload.organizations?.length ? payload.organizations : normalizeCollection(overview.organizations);
+  const instances = payload.instances?.length ? payload.instances : normalizeCollection(overview.instances);
+  const deployments = payload.deployments || [];
+  const usageRows = payload.usage || [];
+  const auditRows = payload.audit?.length ? payload.audit : normalizeCollection(overview.audit);
+  CC_OVERVIEW_SUMMARY = overview.summary || {};
+  CC_USAGE_TOTALS = {
+    aiTokens: usageTotal(usageRows, ['ai_tokens', 'ia_tokens']),
+    aiCost: usageCost(usageRows, ['ai_tokens', 'ia_tokens']),
+    whatsappMessages: usageTotal(usageRows, ['whatsapp_messages', 'wa_messages']),
+    storageGb: usageTotal(usageRows, ['storage_gb', 'storage']),
+    pdfs: usageTotal(usageRows, ['pdfs', 'pdf_documents']),
+    reports: usageTotal(usageRows, ['reports', 'reportes']),
+    apiCalls: usageTotal(usageRows, ['api_calls']),
+  };
   const orgById = new Map(orgs.map(o => [Number(o.id), o]));
-  const detailByInstance = new Map(payload.details.map(detail => [Number(detail.instance?.id), detail]));
+  const detailByInstance = new Map((payload.details || []).map(detail => [Number(detail.instance?.id), detail]));
   CC_CLIENTS = instances.map(instance => {
     const client = clientFromInstance(instance, orgById.get(Number(instance.organization_id)), usageRows, deployments);
     const detail = detailByInstance.get(Number(instance.id));
@@ -1580,16 +1726,18 @@ function hydrateControlCenterData(payload) {
 
   const serviceDefs = new Map();
   CC_SERVICE_STATE = {};
+  CC_SERVICE_DETAILS = {};
   for (const c of CC_CLIENTS) CC_SERVICE_STATE[c.id] = {};
-  for (const service of payload.services) {
+  for (const service of (payload.services || [])) {
     serviceDefs.set(service.key, { id: service.key, nombre: service.name, icon: service.icon || 'mdi-server' });
     const client = CC_CLIENTS.find(c => Number(c.instanceId) === Number(service.instance_id));
     if (client) {
       const uiState = serviceApiToUi[service.state] || service.state;
       CC_SERVICE_STATE[client.id][service.key] = serviceUiToCompact[uiState] || "none";
+      CC_SERVICE_DETAILS[`${client.id}:${service.key}`] = service;
     }
   }
-  CC_SERVICE_DEFS = serviceDefs.size ? Array.from(serviceDefs.values()) : CC_SERVICE_DEFS;
+  CC_SERVICE_DEFS = serviceDefs.size ? Array.from(serviceDefs.values()) : [];
   for (const c of CC_CLIENTS) {
     for (const svc of CC_SERVICE_DEFS) CC_SERVICE_STATE[c.id][svc.id] ||= 'none';
   }
@@ -1608,9 +1756,11 @@ function hydrateControlCenterData(payload) {
       resp: feature.requires_review ? "Plataforma" : "Operaciones",
       desc: feature.description || feature.module || "Feature flag de instancia.",
     }));
+  } else {
+    CC_FEATURES = [];
   }
 
-  CC_PLAN_CARDS = (payload.plans.length ? payload.plans : CC_PLAN_CARDS).map(plan => ({
+  CC_PLAN_CARDS = (payload.plans?.length ? payload.plans : []).map(plan => ({
     nombre: plan.name || plan.nombre,
     precio: plan.monthly_price ?? plan.precio ?? null,
     color: CC_PLANS[plan.name]?.color || '#7b80ff',
@@ -1635,7 +1785,7 @@ function hydrateControlCenterData(payload) {
     cls: (d.channel || '').toLowerCase().includes('beta') ? 'beta' : 'prod',
   }));
 
-  CC_AUDIT = (payload.audit.length ? payload.audit : normalizeCollection(overview.audit)).map(entry => ({
+  CC_AUDIT = auditRows.map(entry => ({
     tipo: entry.event_type || 'estado',
     icon: entry.event_type === 'feature' ? 'mdi-toggle-switch-outline' : entry.event_type === 'deploy' ? 'mdi-rocket-launch-outline' : 'mdi-clipboard-text-clock-outline',
     cls: entry.event_type === 'feature' ? 'prod' : entry.event_type === 'state' ? 'read' : 'acc',
@@ -1647,7 +1797,7 @@ function hydrateControlCenterData(payload) {
   }));
 
   CC_STATE_HISTORY = {};
-  for (const entry of payload.audit) {
+  for (const entry of auditRows) {
     if (entry.event_type !== 'state' || !entry.instance_id) continue;
     const key = String(entry.instance_id);
     const state = stateApiToUi[entry.after?.state] || 'produccion';
@@ -1657,17 +1807,35 @@ function hydrateControlCenterData(payload) {
 }
 
 async function loadControlCenterData() {
+  CC_BACKEND_STATUS = {
+    overview: "loading",
+    organizations: "loading",
+    instances: "loading",
+    details: "loading",
+    services: "loading",
+    plans: "loading",
+    deployments: "loading",
+    usage: "loading",
+    audit: "loading",
+  };
   const [overview, organizations, instances, services, plans, deployments, usage, audit] = await Promise.all([
-    ccRequest('/v2/control-center/overview'),
-    ccRequest('/v2/control-center/organizations?per_page=100').then(normalizeCollection),
-    ccRequest('/v2/control-center/instances?per_page=100').then(normalizeCollection),
-    ccRequest('/v2/control-center/services'),
-    ccRequest('/v2/control-center/plans'),
-    ccRequest('/v2/control-center/deployments'),
-    ccRequest('/v2/control-center/usage'),
-    ccRequest('/v2/control-center/audit'),
+    loadSection('overview', '/v2/control-center/overview', (payload) => payload || {}),
+    loadSection('organizations', '/v2/control-center/organizations?per_page=100', normalizeCollection),
+    loadSection('instances', '/v2/control-center/instances?per_page=100', normalizeCollection),
+    loadSection('services', '/v2/control-center/services', normalizeServicesResponse),
+    loadSection('plans', '/v2/control-center/plans', normalizePlansResponse),
+    loadSection('deployments', '/v2/control-center/deployments', normalizeDeploymentsResponse),
+    loadSection('usage', '/v2/control-center/usage', normalizeUsageResponse),
+    loadSection('audit', '/v2/control-center/audit', normalizeAuditResponse),
   ]);
-  const details = await Promise.all(instances.map(instance => ccRequest(`/v2/control-center/instances/${instance.id}`)));
+  const detailResults = await Promise.allSettled((instances || []).map(instance => ccRequest(`/v2/control-center/instances/${instance.id}`)));
+  const details = detailResults.filter(result => result.status === 'fulfilled').map(result => result.value);
+  CC_BACKEND_STATUS.details = detailResults.some(result => result.status === 'rejected') ? 'error' : 'ready';
+  if (detailResults.some(result => result.status === 'rejected')) {
+    CC_BACKEND_ERRORS.details = 'Algunos detalles de instancia no se pudieron cargar.';
+  } else {
+    delete CC_BACKEND_ERRORS.details;
+  }
   hydrateControlCenterData({ overview, organizations, instances, services, plans, deployments, usage, audit, details });
 }
 
@@ -1784,7 +1952,7 @@ function App() {
       clientes:  <ScreenClientes onOpenClient={openClient} />,
       licencias: <ScreenLicencias />,
       estado:    <ScreenEstadoGlobal onOpenClient={openClient} />,
-      features:  <ScreenFeatures selectedClient={selectedClient || CC_CLIENTS[0]?.id} onPickClient={setSelectedClient} />,
+      features:  <ScreenFeatures selectedClient={selectedClient || CC_CLIENTS[0]?.id} onPickClient={setSelectedClient} onDataChanged={reload} />,
       servicios: <ScreenServicios selectedClient={selectedClient || CC_CLIENTS[0]?.id} onPickClient={setSelectedClient} />,
       deploys:   <ScreenDeploys />,
       consumo:   <ScreenConsumo />,
