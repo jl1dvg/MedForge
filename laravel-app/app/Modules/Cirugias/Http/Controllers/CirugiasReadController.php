@@ -213,7 +213,7 @@ class CirugiasReadController
             'procedimiento_id'        => $cirugia->procedimiento_id,
             'procedimiento_proyectado' => $cirugia->procedimiento_proyectado,
             'membrete'    => $cirugia->membrete,
-            'lateralidad' => $cirugia->lateralidad,
+            'lateralidad' => $this->normalizeLateralidad((string) ($cirugia->lateralidad ?? '')),
             // Tiempos
             'fecha_inicio' => $cirugia->fecha_inicio,
             'fecha_fin'    => $cirugia->fecha_fin ?? '',
@@ -240,6 +240,15 @@ class CirugiasReadController
             // Audit
             'auditoria' => $auditoria,
         ]);
+    }
+
+    private function normalizeLateralidad(string $raw): string
+    {
+        $u = strtoupper(trim($raw));
+        if (str_contains($u, 'AMBOS') || $u === 'AO' || str_contains($u, 'BILATERAL')) return 'AO';
+        if (str_contains($u, 'IZQUIERDO') || $u === 'OI' || str_contains($u, 'LEFT'))  return 'OI';
+        if (str_contains($u, 'DERECHO')   || $u === 'OD' || str_contains($u, 'RIGHT')) return 'OD';
+        return $raw;
     }
 
     private function buildDoctorName(?string $firstName, ?string $lastName): string
