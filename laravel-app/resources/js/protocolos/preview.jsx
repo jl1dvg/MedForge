@@ -1,5 +1,5 @@
-import React from 'react';
-import { useCatMeta } from './kit';
+import React, { useMemo } from 'react';
+import { useCatMeta, useCatalogs, flattenInsumos, renderOperatorioHtml } from './kit';
 
 function DocSection({ title, icon, empty, children }) {
   return (
@@ -12,6 +12,8 @@ function DocSection({ title, icon, empty, children }) {
 
 export function ProtocolDoc({ data, logoUrl }) {
   const catMeta = useCatMeta();
+  const { insumosDisponibles } = useCatalogs();
+  const listaInsumos = useMemo(() => flattenInsumos(insumosDisponibles), [insumosDisponibles]);
   const cm = catMeta(data.categoria);
   const codigos = data.codigos || [];
   const staff = (data.staff || []).filter((s) => s.nombre);
@@ -71,7 +73,7 @@ export function ProtocolDoc({ data, logoUrl }) {
               {data.hallazgo && <div className="doc-kv"><span className="k">Hallazgo</span><span className="v" style={{ fontWeight: 400 }}>{data.hallazgo}</span></div>}
             </div>
           )}
-          {data.operatorio && <p className="doc-p">{data.operatorio}</p>}
+          {data.operatorio && <p className="doc-p" dangerouslySetInnerHTML={{ __html: renderOperatorioHtml(data.operatorio, listaInsumos) }} />}
         </DocSection>
 
         <DocSection title="Evolución e indicaciones" icon="mdi-clipboard-pulse-outline"
