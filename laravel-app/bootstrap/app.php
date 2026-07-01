@@ -12,6 +12,7 @@ use App\Http\Middleware\RequireLegacyPermission;
 use App\Http\Middleware\RequireLegacySession;
 use App\Http\Middleware\RequireOwnerAccess;
 use App\Console\Commands\ControlCenterRecordDeploymentCommand;
+use App\Console\Commands\ControlCenterSendTelemetryCommand;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -27,6 +28,7 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withCommands([
         ControlCenterRecordDeploymentCommand::class,
+        ControlCenterSendTelemetryCommand::class,
     ])
     ->withEvents(false)
     ->withMiddleware(function (Middleware $middleware): void {
