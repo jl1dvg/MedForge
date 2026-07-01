@@ -34,7 +34,6 @@ class FlowRuntimeExecutionService
         private readonly FlowAiAgentPreviewService  $aiAgentPreviewService = new FlowAiAgentPreviewService(),
         private readonly WhatsappAppointmentReminderService $appointmentReminderService = new WhatsappAppointmentReminderService(),
         private readonly WhatsappAuditService       $auditService = new WhatsappAuditService(),
-        private readonly WhatsappOperationalEventService $operationalEvents = new WhatsappOperationalEventService(),
     )
     {
     }
@@ -825,14 +824,6 @@ class FlowRuntimeExecutionService
                 continue;
             }
 
-            $inboundRoute = $this->matchingInboundRoute($action, $inboundMessage, $text);
-            if ($inboundRoute !== null) {
-                $run = $this->executeRouteActions($inboundRoute, $context, $conversation, $inboundMessage, $text, $scenarioId);
-                $context = $run['context'];
-                $messagesSent += $run['messages_sent'];
-                continue;
-            }
-
             if ($type === 'lookup_patient') {
                 $context = $this->lookupPatient($action, $context, $conversation, $text);
                 continue;
@@ -898,11 +889,6 @@ class FlowRuntimeExecutionService
 
                 $slowOperations = ['list_times', 'list_days', 'book_appointment', 'cancel_appointment', 'list_doctors_by_name'];
                 $currentOperation = $this->normalizeSigcenterOperation((string)($action['operation'] ?? ''));
-                if ($this->isAvailabilityOperation($currentOperation)) {
-                    $this->recordOperationalFlowEvent($conversation, 'availability_requested', [
-                        'operation' => $currentOperation,
-                    ], reason: $currentOperation);
-                }
                 if (in_array($currentOperation, $slowOperations, true)) {
                     $waitingMessages = [
                         'book_appointment'    => '📋 Confirmando tu cita...',
@@ -915,12 +901,6 @@ class FlowRuntimeExecutionService
                         'type' => 'text',
                         'body' => $waitingMessages[$currentOperation] ?? '🔍 Consultando disponibilidad...',
                     ], $context);
-                }
-
-                if ($currentOperation === 'book_appointment') {
-                    $this->recordOperationalFlowEvent($conversation, 'booking_attempted', [
-                        'operation' => $currentOperation,
-                    ], reason: 'sigcenter_booking_attempt');
                 }
 
                 $preview = $this->sigcenterAgendaService->execute($action, $context, [
@@ -951,13 +931,6 @@ class FlowRuntimeExecutionService
                     }
                 }
 
-                if ($this->isAvailabilityOperation($currentOperation) && $this->previewHasEmptyAvailability($preview)) {
-                    $this->recordOperationalFlowEvent($conversation, 'availability_empty', [
-                        'operation' => $currentOperation,
-                        'preview_ok' => (bool) ($preview['ok'] ?? false),
-                    ], reason: $currentOperation);
-                }
-
                 if (($preview['operation'] ?? null) === 'list_procedimientos') {
                     $context['resolved_cita_tipo'] = (string)($preview['resolved_cita_tipo'] ?? 'sin_clasificacion');
                     $context['resolved_procedimiento_ids'] = is_array($preview['resolved_procedimiento_ids'] ?? null)
@@ -973,14 +946,6 @@ class FlowRuntimeExecutionService
                         $context['procedimiento_id_label'] = $autoProcedure['label'];
                         $context['procedimiento_nombre'] = $autoProcedure['label'];
                     }
-                }
-
-                $resultRoute = $this->matchingResultRoute($action, $this->sigcenterRouteHandles($preview));
-                if ($resultRoute !== null) {
-                    $run = $this->executeRouteActions($resultRoute, $context, $conversation, $inboundMessage, $text, $scenarioId);
-                    $context = $run['context'];
-                    $messagesSent += $run['messages_sent'];
-                    continue;
                 }
 
                 if (($preview['operation'] ?? null) === 'book_appointment') {
@@ -999,10 +964,6 @@ class FlowRuntimeExecutionService
                         $messagesSent++;
                         $context['state'] = 'agenda_confirmar_cita';
                     } else {
-                        $this->recordOperationalFlowEvent($conversation, 'booking_failed', [
-                            'operation' => $currentOperation,
-                            'error' => (string) ($preview['error'] ?? ''),
-                        ], reason: 'sigcenter_booking_failed');
                         $this->sendFlowMessage($conversation, $this->bookingFailureMessage((string)($preview['error'] ?? '')), $context);
                         $messagesSent++;
                     }
@@ -1148,171 +1109,10 @@ class FlowRuntimeExecutionService
                         ? 'high'
                         : 'normal';
                 }
-
-                $resultRoute = $this->matchingResultRoute($action, $this->aiRouteHandles($preview));
-                if ($resultRoute !== null) {
-                    $run = $this->executeRouteActions($resultRoute, $context, $conversation, $inboundMessage, $text, $scenarioId);
-                    $context = $run['context'];
-                    $messagesSent += $run['messages_sent'];
-                }
             }
         }
 
         return ['context' => $context, 'messages_sent' => $messagesSent];
-    }
-
-    /**
-     * @param array<string, mixed> $action
-     * @return array<string, mixed>|null
-     */
-    private function matchingInboundRoute(array $action, WhatsappMessage $inboundMessage, string $text): ?array
-    {
-        $routes = array_values(array_filter($action['routes'] ?? [], static fn(mixed $route): bool => is_array($route)));
-        if ($routes === []) {
-            return null;
-        }
-
-        $candidates = $this->inboundRouteHandles($inboundMessage, $text);
-        foreach ($routes as $route) {
-            $handle = $this->normalizeRouteHandle((string)($route['handle'] ?? ''));
-            if ($handle !== '' && in_array($handle, $candidates, true)) {
-                return $route;
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * @return array<int, string>
-     */
-    private function inboundRouteHandles(WhatsappMessage $inboundMessage, string $text): array
-    {
-        [$replyId, $replyTitle] = $this->resolveCapturedInputValue($text, $inboundMessage);
-        $values = array_values(array_filter([
-            $replyId,
-            $replyTitle,
-            $text,
-            $this->normalizeText($replyId),
-            $this->normalizeText($replyTitle),
-            $this->normalizeText($text),
-        ], static fn(string $value): bool => trim($value) !== ''));
-
-        $handles = [];
-        foreach ($values as $value) {
-            $normalized = $this->normalizeRouteHandle($value);
-            if ($normalized === '') {
-                continue;
-            }
-            $handles[] = $normalized;
-            $handles[] = 'button:' . $normalized;
-            $handles[] = 'list:' . $normalized;
-            $handles[] = 'reply:' . $normalized;
-        }
-
-        return array_values(array_unique($handles));
-    }
-
-    private function normalizeRouteHandle(string $handle): string
-    {
-        $handle = trim($handle);
-        if ($handle === '') {
-            return '';
-        }
-
-        if (str_contains($handle, ':')) {
-            [$prefix, $value] = explode(':', $handle, 2);
-            $value = $this->normalizeRouteHandle($value);
-            return trim(strtolower($prefix)) . ':' . $value;
-        }
-
-        $handle = mb_strtolower($handle, 'UTF-8');
-        $handle = strtr($handle, [
-            'á' => 'a',
-            'é' => 'e',
-            'í' => 'i',
-            'ó' => 'o',
-            'ú' => 'u',
-            'ü' => 'u',
-            'ñ' => 'n',
-        ]);
-        $handle = preg_replace('/[^a-z0-9_ ]+/u', '', $handle) ?? $handle;
-        $handle = preg_replace('/\s+/u', '_', $handle) ?? $handle;
-
-        return trim($handle, '_');
-    }
-
-    /**
-     * @param array<string, mixed> $route
-     * @param array<string, mixed> $context
-     * @return array{context:array<string,mixed>,messages_sent:int}
-     */
-    private function executeRouteActions(array $route, array $context, WhatsappConversation $conversation, WhatsappMessage $inboundMessage, string $text, string $scenarioId): array
-    {
-        $actions = array_values(array_filter($route['actions'] ?? [], static fn(mixed $action): bool => is_array($action)));
-        if ($actions === []) {
-            return ['context' => $context, 'messages_sent' => 0];
-        }
-
-        return $this->executeActions($actions, $context, $conversation, $inboundMessage, $text, $scenarioId, false);
-    }
-
-    /**
-     * @param array<string, mixed> $action
-     * @param array<int, string> $handles
-     * @return array<string, mixed>|null
-     */
-    private function matchingResultRoute(array $action, array $handles): ?array
-    {
-        $routes = array_values(array_filter($action['routes'] ?? [], static fn(mixed $route): bool => is_array($route)));
-        if ($routes === [] || $handles === []) {
-            return null;
-        }
-
-        $normalizedHandles = array_values(array_unique(array_map(fn(string $handle): string => $this->normalizeRouteHandle($handle), $handles)));
-        foreach ($routes as $route) {
-            $handle = $this->normalizeRouteHandle((string)($route['handle'] ?? ''));
-            if ($handle !== '' && in_array($handle, $normalizedHandles, true)) {
-                return $route;
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * @param array<string, mixed> $preview
-     * @return array<int, string>
-     */
-    private function sigcenterRouteHandles(array $preview): array
-    {
-        if (!empty($preview['missing_fields'])) {
-            return ['missing_data'];
-        }
-
-        if (!empty($preview['handoff_requested']) || (!empty($preview['error']) && empty($preview['ok']))) {
-            return ['error'];
-        }
-
-        $data = $preview['data'] ?? null;
-        if (!empty($preview['ok']) && is_array($data) && $data === []) {
-            return ['empty'];
-        }
-
-        if (!empty($preview['ok']) || !empty($preview['ready'])) {
-            return ['success'];
-        }
-
-        return ['error'];
-    }
-
-    /**
-     * @param array<string, mixed> $preview
-     * @return array<int, string>
-     */
-    private function aiRouteHandles(array $preview): array
-    {
-        return !empty($preview['suggested_handoff']) ? ['handoff'] : ['resolved'];
     }
 
     /**
@@ -1335,7 +1135,7 @@ class FlowRuntimeExecutionService
         $fechaInicio = $this->parseDateTime($payload['fecha_inicio'] ?? $context['fecha_inicio'] ?? null);
         $now = now();
 
-        $bookingId = DB::table('whatsapp_sigcenter_bookings')->insertGetId([
+        DB::table('whatsapp_sigcenter_bookings')->insert([
             'conversation_id' => $conversation->id,
             'wa_number' => (string)$conversation->wa_number,
             'inbound_message_id' => $inboundMessage->wa_message_id,
@@ -1357,15 +1157,6 @@ class FlowRuntimeExecutionService
             'created_at' => $now,
             'updated_at' => $now,
         ]);
-
-        if ($success) {
-            $this->operationalEvents->recordBookingCreated((int) $bookingId);
-        } else {
-            $this->recordOperationalFlowEvent($conversation, 'booking_failed', [
-                'booking_id' => (int) $bookingId,
-                'error' => $this->scalarOrNull($preview['error'] ?? null),
-            ], reason: 'sigcenter_booking_failed');
-        }
 
         return $context;
     }
@@ -1933,58 +1724,10 @@ class FlowRuntimeExecutionService
 
         return match ($type) {
             'always' => true,
-            'all' => $this->actionConditionsAllMatch($condition, $context),
-            'any' => $this->actionConditionsAnyMatch($condition, $context),
             'patient_found' => (bool)($condition['value'] ?? true) === (bool)($context['patient_found'] ?? isset($context['patient'])),
             'context_flag' => $this->contextActionFlagMatches($condition, $context),
-            'context_equals' => $this->contextActionValueMatches($condition, $context, false),
-            'context_contains' => $this->contextActionValueMatches($condition, $context, true),
-            'state_equals' => ($context['state'] ?? null) === ($condition['value'] ?? null),
             default => false,
         };
-    }
-
-    private function actionConditionsAllMatch(array $condition, array $context): bool
-    {
-        $conditions = is_array($condition['conditions'] ?? null) ? $condition['conditions'] : [];
-        if ($conditions === []) {
-            return true;
-        }
-
-        foreach ($conditions as $child) {
-            if (!is_array($child) || !$this->actionConditionMatches($child, $context)) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private function actionConditionsAnyMatch(array $condition, array $context): bool
-    {
-        $conditions = is_array($condition['conditions'] ?? null) ? $condition['conditions'] : [];
-        foreach ($conditions as $child) {
-            if (is_array($child) && $this->actionConditionMatches($child, $context)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private function contextActionValueMatches(array $condition, array $context, bool $contains): bool
-    {
-        $key = (string)($condition['field'] ?? $condition['variable'] ?? $condition['key'] ?? '');
-        if ($key === '') {
-            return false;
-        }
-
-        $actual = $this->normalizeText((string)($context[$key] ?? ''));
-        $expected = $this->normalizeText((string)($condition['value'] ?? ''));
-
-        return $contains
-            ? $expected !== '' && str_contains($actual, $expected)
-            : $actual === $expected;
     }
 
     /**
@@ -3179,69 +2922,6 @@ class FlowRuntimeExecutionService
         ], true);
     }
 
-    private function isAvailabilityOperation(string $operation): bool
-    {
-        return in_array($operation, [
-            'list_specialties',
-            'list_sedes',
-            'list_doctors',
-            'list_doctors_by_name',
-            'list_days',
-            'list_times',
-            'list_procedimientos',
-        ], true);
-    }
-
-    /**
-     * @param array<string,mixed> $preview
-     */
-    private function previewHasEmptyAvailability(array $preview): bool
-    {
-        if (empty($preview['ok'])) {
-            return false;
-        }
-
-        $data = $preview['data'] ?? null;
-        if (is_array($data)) {
-            return count($data) === 0;
-        }
-
-        return $data === null && !empty($preview['ready']);
-    }
-
-    /**
-     * @param array<string,mixed> $payload
-     */
-    private function recordOperationalFlowEvent(
-        WhatsappConversation $conversation,
-        string $eventType,
-        array $payload,
-        ?string $reason = null,
-    ): void {
-        try {
-            if (!Schema::hasTable('whatsapp_operational_events')) {
-                return;
-            }
-
-            $this->operationalEvents->recordForConversation($conversation, $eventType, 'flow_runtime_execution', [
-                'event_at' => now(),
-                'actor_type' => 'bot',
-                'reason' => $reason,
-                'payload' => $payload,
-                'idempotency_key' => sha1(implode('|', [
-                    'flow_runtime_execution',
-                    (string) $conversation->id,
-                    $eventType,
-                    $reason ?? '',
-                    now()->format('Y-m-d H:i'),
-                    json_encode($payload, JSON_UNESCAPED_UNICODE),
-                ])),
-            ]);
-        } catch (\Throwable) {
-            // Event recording must not alter the patient-facing flow.
-        }
-    }
-
     /**
      * @param array<string, mixed> $message
      * @param array<string, mixed> $context
@@ -3502,67 +3182,18 @@ class FlowRuntimeExecutionService
 
         return match ($type) {
             'always' => true,
-            'all' => $this->conditionsAllMatch($condition, $facts),
-            'any' => $this->conditionsAnyMatch($condition, $facts),
             'is_first_time' => (bool)($condition['value'] ?? false) === (bool)($facts['is_first_time'] ?? false),
             'has_consent' => (bool)($condition['value'] ?? false) === (bool)($facts['has_consent'] ?? false),
             'state_is' => ($facts['state'] ?? null) === ($condition['value'] ?? null),
-            'state_equals' => ($facts['state'] ?? null) === ($condition['value'] ?? null),
             'awaiting_is' => ($facts['awaiting_field'] ?? null) === ($condition['value'] ?? null),
             'message_in' => $this->messageIn($condition, $facts),
             'message_contains' => $this->messageContains($condition, $facts),
-            'message_equals' => $this->messageIn(['values' => [$condition['value'] ?? '']], $facts),
             'message_matches' => $this->messageMatches($condition, $facts),
             'last_interaction_gt' => (int)($facts['minutes_since_last'] ?? 0) >= max(0, (int)($condition['minutes'] ?? 0)),
             'patient_found' => (bool)($facts['patient_found'] ?? false),
             'context_flag' => $this->contextFlagMatches($condition, $facts),
-            'context_equals' => $this->contextValueMatches($condition, $facts, false),
-            'context_contains' => $this->contextValueMatches($condition, $facts, true),
             default => false,
         };
-    }
-
-    private function conditionsAllMatch(array $condition, array $facts): bool
-    {
-        $conditions = is_array($condition['conditions'] ?? null) ? $condition['conditions'] : [];
-        if ($conditions === []) {
-            return true;
-        }
-
-        foreach ($conditions as $child) {
-            if (!is_array($child) || !$this->evaluateCondition($child, $facts)) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private function conditionsAnyMatch(array $condition, array $facts): bool
-    {
-        $conditions = is_array($condition['conditions'] ?? null) ? $condition['conditions'] : [];
-        foreach ($conditions as $child) {
-            if (is_array($child) && $this->evaluateCondition($child, $facts)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private function contextValueMatches(array $condition, array $facts, bool $contains): bool
-    {
-        $field = (string)($condition['field'] ?? $condition['variable'] ?? $condition['key'] ?? '');
-        if ($field === '') {
-            return false;
-        }
-
-        $actual = $this->normalizeText((string)($facts[$field] ?? ''));
-        $expected = $this->normalizeText((string)($condition['value'] ?? ''));
-
-        return $contains
-            ? $expected !== '' && str_contains($actual, $expected)
-            : $actual === $expected;
     }
 
     /**

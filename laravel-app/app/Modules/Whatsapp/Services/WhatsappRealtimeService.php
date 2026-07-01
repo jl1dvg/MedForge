@@ -12,7 +12,6 @@ class WhatsappRealtimeService
 {
     public const EVENT_INBOUND_MESSAGE = 'whatsapp.inbound-message';
     public const EVENT_CONVERSATION_UPDATED = 'whatsapp.conversation-updated';
-    public const EVENT_HANDOFF_OPERATIONAL = 'whatsapp.handoff-operational';
     private const CHANNEL = 'whatsapp-ops';
 
     /**
@@ -121,21 +120,6 @@ class WhatsappRealtimeService
     }
 
     /**
-     * @param array<string,mixed> $payload
-     */
-    public function broadcastHandoffOperationalEvent(array $payload): void
-    {
-        $event = trim((string) ($payload['event'] ?? ''));
-        if ($event === '') {
-            return;
-        }
-
-        $payload['timestamp'] = (string) ($payload['timestamp'] ?? now()->toISOString());
-
-        $this->trigger($payload, self::EVENT_HANDOFF_OPERATIONAL);
-    }
-
-    /**
      * @return array<string, mixed>
      */
     private function getConfig(): array
@@ -216,7 +200,7 @@ class WhatsappRealtimeService
             );
 
             $pusher->trigger(self::CHANNEL, $event, $payload);
-        } catch (\Throwable) {
+        } catch (Throwable) {
             // Realtime must not block chat/webhook flow.
         }
     }

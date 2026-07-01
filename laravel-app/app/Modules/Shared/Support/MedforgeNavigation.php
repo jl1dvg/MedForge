@@ -149,14 +149,6 @@ class MedforgeNavigation
             $permissions,
             ['administrativo', 'whatsapp.manage', 'whatsapp.chat.supervise', 'whatsapp.chat.assign', 'settings.manage']
         );
-        $canAccessWhatsAppHotOpps = LegacyPermissionCatalog::containsAny(
-            $permissions,
-            ['administrativo', 'whatsapp.manage', 'whatsapp.chat.supervise', 'settings.manage']
-        );
-        $canAccessWhatsAppOperationalAlerts = LegacyPermissionCatalog::containsAny(
-            $permissions,
-            ['administrativo', 'whatsapp.manage', 'whatsapp.chat.supervise', 'settings.manage']
-        );
         $canAccessCronManager = LegacyPermissionCatalog::containsAny(
             $permissions,
             ['administrativo', 'settings.manage']
@@ -225,9 +217,8 @@ class MedforgeNavigation
         // ── Consulta ────────────────────────────────────────────────────────────
         $consulta = $group('Consulta', 'mdi mdi-stethoscope', array_filter([
             $canAccessAgenda
-                ? $link('Agenda', '/v2/agenda/v3?view=agenda', 'mdi mdi-calendar-month-outline', [
-                'exact' => ['/v2/agenda/v3'],
-                'query' => ['view' => 'agenda'],
+                ? $link('Agenda', '/v2/agenda', 'mdi mdi-calendar-clock-outline', [
+                'prefix' => ['/v2/agenda'],
             ])
                 : null,
             $canAccessAgenda
@@ -246,21 +237,8 @@ class MedforgeNavigation
             ])
                 : null,
             $canAccessPacientesFlujo
-                ? $link('Flujo de Pacientes', '/v2/agenda/v3?view=flowboard', 'mdi mdi-monitor-dashboard', [
-                'exact' => ['/v2/agenda/v3'],
-                'query' => ['view' => 'flowboard'],
-            ])
-                : null,
-            $canAccessAgenda
-                ? $link('Mi agenda (médico)', '/v2/agenda/v3?view=miagenda', 'mdi mdi-calendar-account-outline', [
-                'exact' => ['/v2/agenda/v3'],
-                'query' => ['view' => 'miagenda'],
-            ])
-                : null,
-            $canAccessAgenda
-                ? $link('Configuración base', '/v2/agenda/v3?view=config', 'mdi mdi-cog-outline', [
-                'exact' => ['/v2/agenda/v3'],
-                'query' => ['view' => 'config'],
+                ? $link('Flujo de Pacientes', '/v2/pacientes/flujo', 'mdi mdi-transit-connection-variant', [
+                'prefix' => ['/v2/pacientes/flujo'],
             ])
                 : null,
             $canAccessPatientVerification
@@ -352,16 +330,6 @@ class MedforgeNavigation
                 'prefix' => ['/v3/whatsapp/chat'],
             ])
                 : null,
-            $canAccessWhatsAppHotOpps
-                ? $link('Colas Operacionales', '/v2/whatsapp/hot-opportunities', 'mdi mdi-lightning-bolt-outline', [
-                'prefix' => ['/v2/whatsapp/hot-opportunities', '/v2/whatsapp/operational-queues'],
-            ])
-                : null,
-            $canAccessWhatsAppOperationalAlerts
-                ? $link('Alertas Operacionales', '/v2/whatsapp/operational-alerts', 'mdi mdi-bell-alert-outline', [
-                'prefix' => ['/v2/whatsapp/operational-alerts'],
-            ])
-                : null,
             $canAccessWhatsAppCampaigns
                 ? $link('Campanas', '/v2/whatsapp/campaigns', 'mdi mdi-bullhorn-outline', [
                 'prefix' => ['/v2/whatsapp/campaigns'],
@@ -383,8 +351,8 @@ class MedforgeNavigation
             ])
                 : null,
             $canAccessWhatsAppFlowmaker
-                ? $link('Flowmaker', '/v3/whatsapp/flowmaker', 'mdi mdi-robot-outline', [
-                'prefix' => ['/v3/whatsapp/flowmaker'],
+                ? $link('Flowmaker', '/v2/whatsapp/flowmaker', 'mdi mdi-robot-outline', [
+                'prefix' => ['/v2/whatsapp/flowmaker'],
             ])
                 : null,
             $canAccessWhatsAppTemplates
@@ -419,12 +387,6 @@ class MedforgeNavigation
             $canAccessFarmacia
                 ? $link('Dashboard farmacia', '/v2/farmacia', 'mdi mdi-medical-bag', [
                 'prefix' => ['/farmacia', '/v2/farmacia'],
-                'exclude_prefix' => ['/v2/pharmacy'],
-            ])
-                : null,
-            $canAccessFarmacia
-                ? $link('Farmacia Pro', '/v2/pharmacy/dashboard', 'mdi mdi-pill', [
-                'prefix' => ['/v2/pharmacy'],
             ])
                 : null,
         ]));
@@ -533,8 +495,8 @@ class MedforgeNavigation
             ] : null,
             $canAccessAgenda ? [
                 'label' => 'Agenda',
-                'href' => '/v2/agenda/v3?view=agenda',
-                'icon' => 'mdi mdi-calendar-month-outline',
+                'href' => '/v2/agenda',
+                'icon' => 'mdi mdi-calendar-clock-outline',
             ] : null,
             $canAccessSolicitudes ? [
                 'label' => 'Solicitudes',

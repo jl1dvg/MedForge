@@ -59,8 +59,6 @@ class WhatsappAppointmentReminderServiceTest extends TestCase
             $table->unsignedBigInteger('conversation_id');
             $table->string('wa_message_id', 191)->nullable();
             $table->string('direction', 16);
-            $table->string('sender_type', 32)->nullable();
-            $table->unsignedBigInteger('sender_id')->nullable();
             $table->string('message_type', 64)->default('text');
             $table->longText('body')->nullable();
             $table->json('raw_payload')->nullable();
@@ -450,7 +448,7 @@ class WhatsappAppointmentReminderServiceTest extends TestCase
         $service = app(WhatsappAppointmentReminderService::class);
         $result = $service->dispatchWindow('24h', false, 50, ['ignore_window' => true]);
 
-        $this->assertSame(1, $result['sent'], json_encode($result, JSON_UNESCAPED_UNICODE));
+        $this->assertSame(1, $result['sent']);
         $this->assertDatabaseCount('whatsapp_appointment_reminders', 1);
         $this->assertDatabaseHas('whatsapp_appointment_reminders', [
             'form_id' => 6001,
@@ -512,7 +510,7 @@ class WhatsappAppointmentReminderServiceTest extends TestCase
         ]);
         $result = $service->dispatchWindow('24h', false, 50);
 
-        $this->assertSame(1, $result['sent'], json_encode($result, JSON_UNESCAPED_UNICODE));
+        $this->assertSame(1, $result['sent']);
 
         $reminder = \App\Models\WhatsappAppointmentReminder::query()->where('form_id', 9001)->firstOrFail();
         $payload = is_array($reminder->payload) ? $reminder->payload : [];
@@ -525,106 +523,7 @@ class WhatsappAppointmentReminderServiceTest extends TestCase
             'CONSULTA POSTERIOR PROCEDIMIENTO QUIRURGICO',
             'Matriz',
             'https://maps.app.goo.gl/matriz-test',
-        ], array_slice($payload['template_variables'] ?? [], 0, 7));
-    }
-
-    public function test_it_sends_location_header_when_reminder_template_header_type_is_uppercase_location(): void
-    {
-        $eventAt = Carbon::now('America/Guayaquil')->addMinutes(1440);
-
-        \DB::table('whatsapp_template_revisions')
-            ->where('id', 11)
-            ->update([
-                'header_type' => 'LOCATION',
-                'header_text' => null,
-            ]);
-
-        \DB::table('patient_data')->insert([
-            'hc_number' => 'HC-LOC',
-            'fname' => 'Laura',
-            'lname' => 'Mora',
-            'celular' => '0999000999',
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-
-        \DB::table('procedimiento_proyectado')->insert([
-            'form_id' => 9201,
-            'procedimiento_proyectado' => 'CONSULTA OFTALMOLOGICA CONTROL',
-            'doctor' => 'Pamela Guillen',
-            'hc_number' => 'HC-LOC',
-            'sede_departamento' => 'Villa Club',
-            'estado_agenda' => 'AGENDADO',
-            'fecha' => $eventAt->toDateString(),
-            'hora' => $eventAt->format('H:i:s'),
-            'sigcenter_present' => 1,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-
-        $service = new WhatsappAppointmentReminderService(settingsOverride: [
-            'whatsapp_reminder_site_lat_villa_club' => '-1.9254',
-            'whatsapp_reminder_site_lng_villa_club' => '-80.0011',
-        ]);
-        $result = $service->dispatchWindow('24h', false, 50);
-
-        $this->assertSame(1, $result['sent'], json_encode($result, JSON_UNESCAPED_UNICODE));
-
-        $message = \App\Models\WhatsappMessage::query()->latest('id')->firstOrFail();
-        $payload = is_array($message->raw_payload) ? $message->raw_payload : [];
-        $components = data_get($payload, 'template.components', []);
-
-        $this->assertSame('header', $components[0]['type'] ?? null);
-        $this->assertSame('location', data_get($components, '0.parameters.0.type'));
-        $this->assertSame('-1.9254', data_get($components, '0.parameters.0.location.latitude'));
-        $this->assertSame('-80.0011', data_get($components, '0.parameters.0.location.longitude'));
-        $this->assertSame('Villa Club', data_get($components, '0.parameters.0.location.name'));
-    }
-
-    public function test_it_records_normalized_failure_reason_when_location_header_lacks_coordinates(): void
-    {
-        $eventAt = Carbon::now('America/Guayaquil')->addMinutes(1440);
-
-        \DB::table('whatsapp_template_revisions')
-            ->where('id', 11)
-            ->update([
-                'header_type' => 'location',
-                'header_text' => null,
-            ]);
-
-        \DB::table('patient_data')->insert([
-            'hc_number' => 'HC-NOLOC',
-            'fname' => 'Pedro',
-            'lname' => 'Rivas',
-            'celular' => '0999000112',
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-
-        \DB::table('procedimiento_proyectado')->insert([
-            'form_id' => 9202,
-            'procedimiento_proyectado' => 'CONSULTA OFTALMOLOGICA CONTROL',
-            'doctor' => 'Pamela Guillen',
-            'hc_number' => 'HC-NOLOC',
-            'sede_departamento' => 'Villa Club',
-            'estado_agenda' => 'AGENDADO',
-            'fecha' => $eventAt->toDateString(),
-            'hora' => $eventAt->format('H:i:s'),
-            'sigcenter_present' => 1,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-
-        $service = app(WhatsappAppointmentReminderService::class);
-        $result = $service->dispatchWindow('24h', false, 50);
-
-        $this->assertSame(1, $result['failed']);
-
-        $reminder = \App\Models\WhatsappAppointmentReminder::query()->where('form_id', 9202)->firstOrFail();
-        $payload = is_array($reminder->payload) ? $reminder->payload : [];
-
-        $this->assertSame('failed', $reminder->status);
-        $this->assertSame('location_header_missing_coordinates', $payload['failure_reason'] ?? null);
+        ], $payload['template_variables'] ?? []);
     }
 
     public function test_it_skips_optometry_reminders_even_when_procedure_matches_images(): void

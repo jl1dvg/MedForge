@@ -32,7 +32,6 @@ class WhatsappFlowmakerTest extends TestCase
             'whatsapp_autoresponder_flow_versions',
             'whatsapp_autoresponder_flows',
             'whatsapp_flow_shadow_runs',
-            'app_settings',
             'roles',
             'users',
         ] as $table) {
@@ -158,7 +157,6 @@ class WhatsappFlowmakerTest extends TestCase
             $table->string('awaiting')->nullable();
             $table->json('context')->nullable();
             $table->json('last_payload')->nullable();
-            $table->unsignedInteger('session_version')->default(0);
             $table->timestamp('last_interaction_at')->nullable();
             $table->timestamps();
         });
@@ -222,7 +220,6 @@ class WhatsappFlowmakerTest extends TestCase
             $table->unsignedBigInteger('conversation_id');
             $table->string('wa_message_id')->nullable();
             $table->string('direction');
-            $table->string('sender_type')->nullable();
             $table->string('message_type');
             $table->text('body')->nullable();
             $table->json('raw_payload')->nullable();
@@ -452,17 +449,7 @@ class WhatsappFlowmakerTest extends TestCase
         $response
             ->assertOk()
             ->assertJsonPath('constraints.buttonLimit', 3)
-            ->assertJsonPath('storage.flow_key', 'default')
-            ->assertJsonPath('catalogs.variables.0.token', '{{nombre}}')
-            ->assertJsonFragment(['id' => 'telefono', 'token' => '{{telefono}}'])
-            ->assertJsonFragment(['id' => 'cedula', 'token' => '{{cedula}}'])
-            ->assertJsonFragment(['id' => 'medico_nombre', 'token' => '{{medico_nombre}}'])
-            ->assertJsonFragment(['id' => 'procedimiento_nombre', 'token' => '{{procedimiento_nombre}}'])
-            ->assertJsonFragment(['id' => 'patient_new', 'token' => '{{patient_new}}'])
-            ->assertJsonFragment(['id' => 'patient_found', 'token' => '{{patient_found}}'])
-            ->assertJsonFragment(['id' => 'agenda_branch', 'token' => '{{agenda_branch}}'])
-            ->assertJsonFragment(['id' => 'lead_email', 'token' => '{{lead_email}}'])
-            ->assertJsonFragment(['id' => 'crm_lead_id', 'token' => '{{crm_lead_id}}']);
+            ->assertJsonPath('storage.flow_key', 'default');
     }
 
     public function test_it_publishes_flowmaker_version_in_laravel_tables(): void
@@ -650,8 +637,8 @@ class WhatsappFlowmakerTest extends TestCase
             ->assertOk()
             ->assertJsonPath('ok', true)
             ->assertJsonPath('attempted_method', 'LOCAL_DB')
-            ->assertJsonPath('data.especialidades.0.subespecialidad', 'Retina y Vítreo')
-            ->assertJsonPath('data.especialidades.1.subespecialidad', 'Córnea');
+            ->assertJsonPath('data.especialidades.0', 'Córnea')
+            ->assertJsonPath('data.especialidades.1', 'Retina y Vítreo');
     }
 
     public function test_it_lists_scheduling_doctors_by_subspecialty(): void
@@ -704,8 +691,8 @@ class WhatsappFlowmakerTest extends TestCase
             ->assertJsonPath('next_state', 'agenda_esperando_subespecialidad')
             ->assertJsonPath('outbound_message.type', 'list')
             ->assertJsonPath('outbound_message.body', '¿Qué especialidad necesitas?')
-            ->assertJsonPath('outbound_message.sections.0.rows.0.title', 'Retina y Vítreo')
-            ->assertJsonPath('outbound_message.sections.0.rows.1.id', 'Córnea');
+            ->assertJsonPath('outbound_message.sections.0.rows.0.title', 'Córnea')
+            ->assertJsonPath('outbound_message.sections.0.rows.1.id', 'Retina y Vítreo');
     }
 
     public function test_it_marks_context_as_waiting_when_simulating_dynamic_scheduling_list(): void
@@ -883,68 +870,6 @@ class WhatsappFlowmakerTest extends TestCase
             ->assertJsonPath('actions.0.outbound_message.type', 'list');
     }
 
-    public function test_it_simulates_any_condition_group_from_v3_builder(): void
-    {
-        $flow = [
-            'name' => 'Draft builder',
-            'description' => 'Condiciones OR desde V3',
-            'settings' => [],
-            'scenarios' => [[
-                'id' => 'condicion_or',
-                'name' => 'Condición OR',
-                'status' => 'published',
-                'stage' => 'custom',
-                'conditions' => [[
-                    'type' => 'any',
-                    'conditions' => [
-                        ['type' => 'message_contains', 'keywords' => ['agenda']],
-                        ['type' => 'message_equals', 'value' => 'menu'],
-                    ],
-                ]],
-                'actions' => [[
-                    'type' => 'send_message',
-                    'message' => ['body' => 'OR ejecutado'],
-                ]],
-            ]],
-        ];
-
-        $matched = $this
-            ->withoutMiddleware([
-                LegacySessionBridge::class,
-                RequireLegacySession::class,
-                RequireLegacyPermission::class,
-            ])
-            ->postJson('/v2/whatsapp/api/flowmaker/simulate', [
-                'wa_number' => '593999111222',
-                'text' => 'menu',
-                'context' => '{}',
-                'flow' => $flow,
-            ]);
-
-        $matched
-            ->assertOk()
-            ->assertJsonPath('matched', true)
-            ->assertJsonPath('scenario.id', 'condicion_or')
-            ->assertJsonPath('actions.0.message.body', 'OR ejecutado');
-
-        $missed = $this
-            ->withoutMiddleware([
-                LegacySessionBridge::class,
-                RequireLegacySession::class,
-                RequireLegacyPermission::class,
-            ])
-            ->postJson('/v2/whatsapp/api/flowmaker/simulate', [
-                'wa_number' => '593999111222',
-                'text' => 'precio',
-                'context' => '{}',
-                'flow' => $flow,
-            ]);
-
-        $missed
-            ->assertOk()
-            ->assertJsonPath('matched', false);
-    }
-
     public function test_it_builds_dynamic_whatsapp_list_for_sigcenter_sedes_shape(): void
     {
         \Illuminate\Support\Facades\Http::fake([
@@ -969,8 +894,8 @@ class WhatsappFlowmakerTest extends TestCase
             ->postJson('/v2/whatsapp/api/flowmaker/sigcenter-agenda/execute', [
                 'action' => [
                     'type' => 'sigcenter_agenda',
-                    'operation' => 'list_sedes_by_doctor',
-                    'trabajador_id' => '777',
+                    'operation' => 'list_sedes',
+                    'trabajador_id' => '64',
                     'send_result' => true,
                     'save_response_as' => 'sede_id',
                     'next_state' => 'agenda_esperando_sede',
@@ -1018,8 +943,6 @@ class WhatsappFlowmakerTest extends TestCase
                     'type' => 'sigcenter_agenda',
                     'operation' => 'list_procedimientos',
                     'trabajador_id' => '64',
-                    'allowed_procedimiento_ids' => ['530', '531', '532', '534'],
-                    'procedimiento_labels' => ['534' => 'Revisión exámenes'],
                     'send_result' => true,
                     'save_response_as' => 'procedimiento_id',
                     'next_state' => 'agenda_esperando_procedimiento',
@@ -1248,291 +1171,6 @@ class WhatsappFlowmakerTest extends TestCase
             ->assertJsonPath('matched', true)
             ->assertJsonPath('scenario.id', 'primer_contacto')
             ->assertJsonPath('actions.0.type', 'send_message');
-    }
-
-    public function test_runtime_executes_button_route_actions_without_resending_source_prompt(): void
-    {
-        $this->ensureAppSettingsTable();
-
-        $this
-            ->withoutMiddleware([
-                LegacySessionBridge::class,
-                RequireLegacySession::class,
-                RequireLegacyPermission::class,
-            ])
-            ->postJson('/v2/whatsapp/api/flowmaker/publish', [
-                'flow' => [
-                    'name' => 'Flow rutas',
-                    'description' => 'Prueba de rutas no-code',
-                    'settings' => ['timezone' => 'America/Guayaquil'],
-                    'scenarios' => [
-                        [
-                            'id' => 'consentimiento',
-                            'name' => 'Consentimiento',
-                            'status' => 'published',
-                            'stage' => 'arrival',
-                            'conditions' => [['type' => 'always']],
-                            'actions' => [
-                                [
-                                    'type' => 'send_buttons',
-                                    'message' => [
-                                        'type' => 'buttons',
-                                        'body' => '¿Autorizas el uso de tus datos?',
-                                        'buttons' => [
-                                            ['id' => 'acepto', 'title' => 'Acepto'],
-                                            ['id' => 'no_autorizo', 'title' => 'No autorizo'],
-                                        ],
-                                    ],
-                                    'routes' => [
-                                        [
-                                            'handle' => 'button:acepto',
-                                            'label' => 'Acepto',
-                                            'target_node_id' => 'accepted_node',
-                                            'target_action_type' => 'send_message',
-                                            'actions' => [
-                                                [
-                                                    'type' => 'send_message',
-                                                    'message' => [
-                                                        'type' => 'text',
-                                                        'body' => 'Autorización registrada.',
-                                                    ],
-                                                ],
-                                            ],
-                                        ],
-                                    ],
-                                ],
-                            ],
-                        ],
-                    ],
-                ],
-            ])
-            ->assertOk();
-
-        \DB::table('whatsapp_conversations')->where('id', 1)->update([
-            'needs_human' => false,
-            'assigned_user_id' => null,
-            'assigned_at' => null,
-        ]);
-
-        $conversation = \App\Models\WhatsappConversation::query()->findOrFail(1);
-        $message = \App\Models\WhatsappMessage::query()->create([
-            'conversation_id' => $conversation->id,
-            'wa_message_id' => 'wamid.route.button',
-            'direction' => 'inbound',
-            'message_type' => 'interactive',
-            'body' => 'Acepto',
-            'raw_payload' => [
-                'interactive' => [
-                    'button_reply' => [
-                        'id' => 'acepto',
-                        'title' => 'Acepto',
-                    ],
-                ],
-            ],
-            'message_timestamp' => now(),
-        ]);
-
-        $result = app(\App\Modules\Whatsapp\Services\FlowRuntimeExecutionService::class)
-            ->executeInbound($conversation, $message, $message->raw_payload ?? []);
-
-        $this->assertTrue($result['executed']);
-        $this->assertTrue($result['matched']);
-        $this->assertSame(1, $result['messages_sent']);
-        $this->assertDatabaseHas('whatsapp_messages', [
-            'conversation_id' => 1,
-            'direction' => 'outbound',
-            'body' => 'Autorización registrada.',
-        ]);
-        $this->assertDatabaseMissing('whatsapp_messages', [
-            'conversation_id' => 1,
-            'direction' => 'outbound',
-            'body' => '¿Autorizas el uso de tus datos?',
-        ]);
-    }
-
-    public function test_runtime_executes_list_route_actions_without_resending_source_prompt(): void
-    {
-        $this->ensureAppSettingsTable();
-
-        $this
-            ->withoutMiddleware([
-                LegacySessionBridge::class,
-                RequireLegacySession::class,
-                RequireLegacyPermission::class,
-            ])
-            ->postJson('/v2/whatsapp/api/flowmaker/publish', [
-                'flow' => [
-                    'name' => 'Flow lista rutas',
-                    'description' => 'Prueba de rutas de listas no-code',
-                    'settings' => ['timezone' => 'America/Guayaquil'],
-                    'scenarios' => [
-                        [
-                            'id' => 'menu_lista',
-                            'name' => 'Menú lista',
-                            'status' => 'published',
-                            'stage' => 'arrival',
-                            'conditions' => [['type' => 'always']],
-                            'actions' => [
-                                [
-                                    'type' => 'send_list',
-                                    'message' => [
-                                        'type' => 'list',
-                                        'body' => '¿Qué necesitas?',
-                                        'button_text' => 'Ver opciones',
-                                        'sections' => [[
-                                            'title' => 'Agenda',
-                                            'rows' => [
-                                                ['id' => 'agendar', 'title' => 'Agendar cita'],
-                                                ['id' => 'mis_citas', 'title' => 'Mis citas'],
-                                            ],
-                                        ]],
-                                    ],
-                                    'routes' => [
-                                        [
-                                            'handle' => 'list:agendar',
-                                            'label' => 'Agendar cita',
-                                            'target_node_id' => 'agenda_node',
-                                            'target_action_type' => 'send_message',
-                                            'actions' => [
-                                                [
-                                                    'type' => 'send_message',
-                                                    'message' => [
-                                                        'type' => 'text',
-                                                        'body' => 'Vamos a agendar tu cita.',
-                                                    ],
-                                                ],
-                                            ],
-                                        ],
-                                    ],
-                                ],
-                            ],
-                        ],
-                    ],
-                ],
-            ])
-            ->assertOk();
-
-        \DB::table('whatsapp_conversations')->where('id', 1)->update([
-            'needs_human' => false,
-            'assigned_user_id' => null,
-            'assigned_at' => null,
-        ]);
-
-        $conversation = \App\Models\WhatsappConversation::query()->findOrFail(1);
-        $message = \App\Models\WhatsappMessage::query()->create([
-            'conversation_id' => $conversation->id,
-            'wa_message_id' => 'wamid.route.list',
-            'direction' => 'inbound',
-            'message_type' => 'interactive',
-            'body' => 'Agendar cita',
-            'raw_payload' => [
-                'interactive' => [
-                    'list_reply' => [
-                        'id' => 'agendar',
-                        'title' => 'Agendar cita',
-                    ],
-                ],
-            ],
-            'message_timestamp' => now(),
-        ]);
-
-        $result = app(\App\Modules\Whatsapp\Services\FlowRuntimeExecutionService::class)
-            ->executeInbound($conversation, $message, $message->raw_payload ?? []);
-
-        $this->assertTrue($result['executed']);
-        $this->assertTrue($result['matched']);
-        $this->assertSame(1, $result['messages_sent']);
-        $this->assertDatabaseHas('whatsapp_messages', [
-            'conversation_id' => 1,
-            'direction' => 'outbound',
-            'body' => 'Vamos a agendar tu cita.',
-        ]);
-        $this->assertDatabaseMissing('whatsapp_messages', [
-            'conversation_id' => 1,
-            'direction' => 'outbound',
-            'body' => '¿Qué necesitas?',
-        ]);
-    }
-
-    public function test_runtime_executes_sigcenter_result_route_actions(): void
-    {
-        $this->ensureAppSettingsTable();
-
-        $this
-            ->withoutMiddleware([
-                LegacySessionBridge::class,
-                RequireLegacySession::class,
-                RequireLegacyPermission::class,
-            ])
-            ->postJson('/v2/whatsapp/api/flowmaker/publish', [
-                'flow' => [
-                    'name' => 'Flow agenda rutas',
-                    'description' => 'Prueba de rutas por resultado Sigcenter',
-                    'settings' => ['timezone' => 'America/Guayaquil'],
-                    'scenarios' => [
-                        [
-                            'id' => 'agenda_horarios',
-                            'name' => 'Agenda horarios',
-                            'status' => 'published',
-                            'stage' => 'scheduling',
-                            'conditions' => [['type' => 'message_contains', 'keywords' => ['horarios']]],
-                            'actions' => [
-                                [
-                                    'type' => 'sigcenter_agenda',
-                                    'operation' => 'list_times',
-                                    'send_result' => true,
-                                    'routes' => [
-                                        [
-                                            'handle' => 'missing_data',
-                                            'label' => 'Dato faltante',
-                                            'target_node_id' => 'missing_data_message',
-                                            'target_action_type' => 'send_message',
-                                            'actions' => [
-                                                [
-                                                    'type' => 'send_message',
-                                                    'message' => [
-                                                        'type' => 'text',
-                                                        'body' => 'Primero elige médico y fecha para buscar horarios.',
-                                                    ],
-                                                ],
-                                            ],
-                                        ],
-                                    ],
-                                ],
-                            ],
-                        ],
-                    ],
-                ],
-            ])
-            ->assertOk();
-
-        \DB::table('whatsapp_conversations')->where('id', 1)->update([
-            'needs_human' => false,
-            'assigned_user_id' => null,
-            'assigned_at' => null,
-        ]);
-
-        $conversation = \App\Models\WhatsappConversation::query()->findOrFail(1);
-        $message = \App\Models\WhatsappMessage::query()->create([
-            'conversation_id' => $conversation->id,
-            'wa_message_id' => 'wamid.route.sigcenter',
-            'direction' => 'inbound',
-            'message_type' => 'text',
-            'body' => 'horarios',
-            'raw_payload' => ['text' => ['body' => 'horarios']],
-            'message_timestamp' => now(),
-        ]);
-
-        $result = app(\App\Modules\Whatsapp\Services\FlowRuntimeExecutionService::class)
-            ->executeInbound($conversation, $message, $message->raw_payload ?? []);
-
-        $this->assertTrue($result['executed']);
-        $this->assertTrue($result['matched']);
-        $this->assertDatabaseHas('whatsapp_messages', [
-            'conversation_id' => 1,
-            'direction' => 'outbound',
-            'body' => 'Primero elige médico y fecha para buscar horarios.',
-        ]);
     }
 
     public function test_it_compares_laravel_flow_against_legacy_source(): void
@@ -2006,22 +1644,5 @@ class WhatsappFlowmakerTest extends TestCase
             ])
             ->postJson('/v2/whatsapp/api/flowmaker/publish', $this->defaultFlowPayload())
             ->assertOk();
-    }
-
-    private function ensureAppSettingsTable(): void
-    {
-        if (Schema::hasTable('app_settings')) {
-            return;
-        }
-
-        Schema::create('app_settings', function (Blueprint $table): void {
-            $table->id();
-            $table->string('category')->nullable();
-            $table->string('name')->unique();
-            $table->text('value')->nullable();
-            $table->string('type')->nullable();
-            $table->boolean('autoload')->default(true);
-            $table->timestamps();
-        });
     }
 }

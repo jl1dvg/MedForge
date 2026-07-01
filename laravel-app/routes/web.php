@@ -1,6 +1,5 @@
 <?php
 
-use App\Http\Controllers\Owner\CompaniesController as OwnerCompaniesController;
 use App\Modules\Dashboard\Http\Controllers\DashboardUiController;
 use App\Modules\Consultas\Http\Controllers\ConsultasUiController;
 use App\Modules\Cirugias\Http\Controllers\ProtocolosLegacyBridgeController;
@@ -21,49 +20,11 @@ use App\Modules\Shared\Http\Controllers\FeedbackWriteController;
 use App\Modules\Usuarios\Http\Controllers\RolesUiController;
 use App\Modules\Usuarios\Http\Controllers\UsuariosUiController;
 use App\Modules\Whatsapp\Http\Controllers\WhatsappUiController;
-use App\Modules\Whatsapp\Http\Controllers\ConversationReadController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
     return view('welcome');
 });
-
-Route::get('/control-center/{path?}', function (?string $path = null) {
-    $relativePath = $path ?: 'index.html';
-    $relativePath = str_replace('\\', '/', $relativePath);
-
-    if (str_contains($relativePath, '..')) {
-        abort(404);
-    }
-
-    $basePath = realpath(public_path('control-center'));
-    $filePath = public_path('control-center/' . ltrim($relativePath, '/'));
-    $realPath = is_file($filePath) ? realpath($filePath) : false;
-
-    if (!$basePath || !$realPath || !str_starts_with($realPath, $basePath . DIRECTORY_SEPARATOR)) {
-        abort(404);
-    }
-
-    $extension = strtolower(pathinfo($realPath, PATHINFO_EXTENSION));
-    $mimeTypes = [
-        'css' => 'text/css; charset=utf-8',
-        'html' => 'text/html; charset=utf-8',
-        'ico' => 'image/x-icon',
-        'jpg' => 'image/jpeg',
-        'jpeg' => 'image/jpeg',
-        'js' => 'text/javascript; charset=utf-8',
-        'jsx' => 'text/plain; charset=utf-8',
-        'png' => 'image/png',
-        'svg' => 'image/svg+xml',
-        'ttf' => 'font/ttf',
-        'woff' => 'font/woff',
-        'woff2' => 'font/woff2',
-    ];
-
-    return response()->file($realPath, [
-        'Content-Type' => $mimeTypes[$extension] ?? 'application/octet-stream',
-    ]);
-})->where('path', '.*');
 
 Route::get('/auth/login', [LoginController::class, 'show'])->name('login');
 Route::post('/auth/login', [LoginController::class, 'login']);
@@ -159,10 +120,6 @@ Route::middleware(['app.auth', 'app.permission:administrativo,farmacia.view,insu
     Route::get('/v2/farmacia', [FarmaciaUiController::class, 'dashboard']);
     Route::get('/v2/farmacia/export/pdf', [FarmaciaUiController::class, 'exportPdf']);
     Route::get('/v2/farmacia/export/excel', [FarmaciaUiController::class, 'exportExcel']);
-});
-
-Route::middleware(['app.auth', 'app.permission:administrativo,farmacia.view,insumos.view,insumos.manage'])->group(function (): void {
-    require __DIR__ . '/v2/pharmacy.php';
 });
 
 $registerUsuariosReadRoutes = static function (string $basePath): void {
@@ -282,18 +239,7 @@ Route::middleware(['app.auth'])->group(function (): void {
     Route::get('/v2/whatsapp/dashboard-v3/live', [WhatsappUiController::class, 'dashboardV3Live'])
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.view,whatsapp.chat.supervise,settings.manage')
         ->middleware('whatsapp.feature:ui,/whatsapp/dashboard');
-    Route::get('/v2/whatsapp/hot-opportunities', [WhatsappUiController::class, 'hotOpportunities'])
-        ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.supervise,settings.manage')
-        ->middleware('whatsapp.feature:ui,/whatsapp/dashboard');
-    Route::get('/v2/whatsapp/operational-queues', [WhatsappUiController::class, 'hotOpportunities'])
-        ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.supervise,settings.manage')
-        ->middleware('whatsapp.feature:ui,/whatsapp/dashboard');
-    Route::get('/v2/whatsapp/api/hot-opportunities', [ConversationReadController::class, 'hotOpportunities'])
-        ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.supervise,settings.manage');
     Route::get('/v2/whatsapp/flowmaker', [WhatsappUiController::class, 'flowmaker'])
-        ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.autoresponder.manage,settings.manage')
-        ->middleware('whatsapp.feature:ui,/whatsapp/flowmaker');
-    Route::get('/v3/whatsapp/flowmaker', [WhatsappUiController::class, 'flowmakerV3'])
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.autoresponder.manage,settings.manage')
         ->middleware('whatsapp.feature:ui,/whatsapp/flowmaker');
     Route::get('/v2/whatsapp/kb', [WhatsappUiController::class, 'knowledgeBase'])
@@ -302,10 +248,6 @@ Route::middleware(['app.auth'])->group(function (): void {
     Route::get('/v2/whatsapp/ai-agent', [WhatsappUiController::class, 'aiAgent'])
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.autoresponder.manage,settings.manage')
         ->middleware('whatsapp.feature:ui,/whatsapp/flowmaker');
-    Route::get('/v2/whatsapp/operational-alerts', [WhatsappUiController::class, 'operationalAlerts'])
-        ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.supervise,settings.manage');
-    Route::get('/v2/whatsapp/alerts', [WhatsappUiController::class, 'operationalAlerts'])
-        ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.supervise,settings.manage');
     Route::get('/v2/whatsapp/leads', [WhatsappUiController::class, 'leads'])
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.supervise,whatsapp.chat.assign,settings.manage')
         ->middleware('whatsapp.feature:ui,/whatsapp/chat');
@@ -330,10 +272,3 @@ Route::middleware(['app.auth', 'app.permission:administrativo,crm.view,crm.manag
 
 Route::redirect('/crm', '/v2/crm');
 Route::redirect('/leads', '/v2/crm');
-
-// Platform-owner panel: access restricted by MEDFORGE_OWNER_EMAIL
-Route::middleware(['app.auth', 'owner.access'])->prefix('owner')->group(function (): void {
-    Route::get('/companies', [OwnerCompaniesController::class, 'index']);
-    Route::get('/companies/{id}/edit', [OwnerCompaniesController::class, 'edit'])->whereNumber('id');
-    Route::put('/companies/{id}', [OwnerCompaniesController::class, 'update'])->whereNumber('id');
-});

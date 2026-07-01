@@ -103,13 +103,6 @@ class ConversationReadService
             'scheduled',
             'closed',
             'critical_backlog',
-            'hot_open',
-            'hot_needs_template',
-            'hot_opportunities',
-            'rescue_opportunities',
-            'historical_backlog',
-            'expired_or_lost',
-            'lost_opportunities',
             'captacion',
             'operacion',
             'informacion',
@@ -442,246 +435,8 @@ class ConversationReadService
     }
 
     /**
-     * Returns active hot opportunity conversations for the hot-opportunities cockpit.
-     *
-     * @return array<int, array<string, mixed>>
+     * @return array<string, mixed>
      */
-    public function findHotOpportunities(?int $viewerUserId = null, bool $includeAssignedOthers = true): array
-    {
-        return $this->findOperationalOpportunityBuckets($viewerUserId, $includeAssignedOthers)['hot_open'];
-    }
-
-    /**
-     * Separates operational opportunities by age.
-     *
-     * HOT and RESCUE are current operational KPIs. BACKLOG and LOST are historical debt.
-     *
-     * @return array{hot_open: array<int, array<string, mixed>>, hot_needs_template: array<int, array<string, mixed>>, hot_opportunities: array<int, array<string, mixed>>, rescue_opportunities: array<int, array<string, mixed>>, historical_backlog: array<int, array<string, mixed>>, lost_opportunities: array<int, array<string, mixed>>, expired_or_lost: array<int, array<string, mixed>>, counts: array<string, int>}
-     */
-    public function findOperationalOpportunityBuckets(?int $viewerUserId = null, bool $includeAssignedOthers = true): array
-    {
-        $hotOpen = $this->findOpportunityBucket('hot_open', $viewerUserId, $includeAssignedOthers);
-        $hotNeedsTemplate = $this->findOpportunityBucket('hot_needs_template', $viewerUserId, $includeAssignedOthers);
-        $rescue = $this->findOpportunityBucket('rescue_opportunities', $viewerUserId, $includeAssignedOthers);
-        $backlog = $this->findOpportunityBucket('historical_backlog', $viewerUserId, $includeAssignedOthers);
-        $lost = $this->findOpportunityBucket('lost_opportunities', $viewerUserId, $includeAssignedOthers);
-
-        return [
-            'hot_open' => $hotOpen,
-            'hot_needs_template' => $hotNeedsTemplate,
-            'hot_opportunities' => $hotOpen,
-            'rescue_opportunities' => $rescue,
-            'historical_backlog' => $backlog,
-            'lost_opportunities' => $lost,
-            'expired_or_lost' => $lost,
-            'counts' => [
-                'hot_open' => count($hotOpen),
-                'hot_needs_template' => count($hotNeedsTemplate),
-                'hot_opportunities' => count($hotOpen),
-                'rescue_opportunities' => count($rescue),
-                'historical_backlog' => count($backlog),
-                'lost_opportunities' => count($lost),
-                'expired_or_lost' => count($lost),
-                'executive_operational' => count($hotOpen) + count($hotNeedsTemplate) + count($rescue),
-                'historical_debt' => count($backlog) + count($lost),
-                'hot' => count($hotOpen),
-                'rescue' => count($rescue),
-                'backlog' => count($backlog),
-                'lost' => count($lost),
-            ],
-        ];
-    }
-
-    /**
-     * @return array<int, array<string, mixed>>
-     */
-    private function findOpportunityBucket(string $bucket, ?int $viewerUserId, bool $includeAssignedOthers): array
-    {
-        $paginator = $this->paginateConversations(
-            search: '',
-            perPage: null,
-            filter: $bucket,
-            viewerUserId: $viewerUserId,
-            includeAssignedOthers: $includeAssignedOthers,
-        );
-
-        return $this->serializeConversationPage($paginator, $viewerUserId);
-    }
-
-    /**
-     * Returns failed appointment reminders from the last 7 days,
-     * with appointment still in the future (or up to 3h in the past).
-     *
-     * @return array<int, array<string, mixed>>
-     */
-    public function findFailedReminders(): array
-    {
-        if (!Schema::hasTable('whatsapp_appointment_reminders')) {
-            return [];
-        }
-
-        $rows = DB::table('whatsapp_appointment_reminders as r')
-            ->leftJoin('whatsapp_conversations as c', 'c.id', '=', 'r.conversation_id')
-            ->select([
-                'r.id',
-                'r.conversation_id',
-                'r.hc_number',
-                'r.wa_number',
-                'r.event_at',
-                'r.failed_at',
-                'r.payload',
-                'r.notes',
-                'r.template_code',
-                'r.reminder_window',
-                DB::raw("COALESCE(c.display_name, c.patient_full_name, r.wa_number, '') AS patient_name"),
-            ])
-            ->where('r.status', 'failed')
-            ->where('r.event_at', '>=', DB::raw('NOW() - INTERVAL 3 HOUR'))
-            ->where('r.event_at', '<=', DB::raw('NOW() + INTERVAL 7 DAY'))
-            ->orderBy('r.event_at')
-            ->limit(100)
-            ->get();
-
-        return $rows->map(function (object $row): array {
-            $payload = [];
-            if (is_string($row->payload) && $row->payload !== '') {
-                $payload = json_decode($row->payload, true) ?? [];
-            }
-
-            $failureReason = trim((string) ($payload['failure_reason'] ?? ''));
-            if ($failureReason === '') {
-                $failureReason = $this->inferFailureReasonFromNotes((string) ($row->notes ?? ''));
-            }
-
-            $eventAt = $row->event_at ? new \DateTimeImmutable($row->event_at) : null;
-            $now = new \DateTimeImmutable();
-            $minutesFromNow = $eventAt ? (int) round(($eventAt->getTimestamp() - $now->getTimestamp()) / 60) : null;
-
-            $windowState = $row->conversation_id === null ? 'needs_template' : 'open';
-
-            $doctorName = trim((string) ($payload['doctor_name'] ?? $payload['professional_name'] ?? ''));
-            $sede = trim((string) ($payload['sede'] ?? $payload['location'] ?? ''));
-
-            return [
-                'id' => (string) $row->id,
-                'conversation_id' => $row->conversation_id,
-                'patient_name' => $row->patient_name !== '' ? $row->patient_name : ('HC ' . $row->hc_number),
-                'hc_number' => $row->hc_number,
-                'wa_number' => $row->wa_number,
-                'appointment_at' => $eventAt?->format('c'),
-                'appointment_minutes_from_now' => $minutesFromNow,
-                'doctor_name' => $doctorName !== '' ? $doctorName : null,
-                'sede' => $sede !== '' ? $sede : null,
-                'failure_reason' => $failureReason !== '' ? $failureReason : 'unknown',
-                'failed_at' => $row->failed_at,
-                'retry_count' => (int) ($payload['retry_count'] ?? 0),
-                'window_state' => $windowState,
-                'template_code' => $row->template_code,
-                'reminder_window' => $row->reminder_window,
-            ];
-        })->values()->all();
-    }
-
-    /**
-     * Returns workload summary for agents currently handling active conversations.
-     *
-     * @return array<int, array<string, mixed>>
-     */
-    public function getAgentWorkloads(): array
-    {
-        // Users with at least one active handoff conversation assigned
-        $agentIds = DB::table('whatsapp_conversations')
-            ->whereNotNull('assigned_user_id')
-            ->where('needs_human', true)
-            ->distinct()
-            ->pluck('assigned_user_id');
-
-        if ($agentIds->isEmpty()) {
-            return [];
-        }
-
-        // Two separate queries to avoid ONLY_FULL_GROUP_BY issues on older MySQL.
-        $userCols = Schema::getColumnListing('users');
-        $nameExpr = match (true) {
-            in_array('nombre', $userCols)     => DB::raw("COALESCE(NULLIF(TRIM(nombre),''), NULLIF(TRIM(username),''), CONCAT('Agente #', id)) AS display_name"),
-            in_array('first_name', $userCols) => DB::raw("COALESCE(NULLIF(TRIM(CONCAT(first_name,' ',COALESCE(last_name,''))),''), NULLIF(TRIM(username),''), CONCAT('Agente #', id)) AS display_name"),
-            in_array('name', $userCols)       => DB::raw("COALESCE(NULLIF(TRIM(name),''), CONCAT('Agente #', id)) AS display_name"),
-            default                           => DB::raw("CONCAT('Agente #', id) AS display_name"),
-        };
-
-        $userNames = DB::table('users')
-            ->select(['id', $nameExpr])
-            ->whereIn('id', $agentIds)
-            ->get()
-            ->keyBy('id');
-
-        $counts = DB::table('whatsapp_conversations')
-            ->select([
-                'assigned_user_id',
-                DB::raw('COUNT(DISTINCT id) AS assigned_open_count'),
-                DB::raw('SUM(CASE WHEN unread_count > 0 THEN 1 ELSE 0 END) AS unread_open_count'),
-            ])
-            ->where('needs_human', true)
-            ->whereIn('assigned_user_id', $agentIds)
-            ->groupBy('assigned_user_id')
-            ->get()
-            ->keyBy('assigned_user_id');
-
-        return $agentIds
-            ->map(function (int $uid) use ($userNames, $counts): array {
-                $u = $userNames->get($uid);
-                $c = $counts->get($uid);
-                $name = trim((string) ($u->display_name ?? ''));
-                if ($name === '') {
-                    $name = 'Agente #' . $uid;
-                }
-                $assigned = (int) ($c->assigned_open_count ?? 0);
-
-                return [
-                    'id' => $uid,
-                    'name' => $name,
-                    'initials' => $this->makeInitials($name),
-                    'assigned_open_count' => $assigned,
-                    'unread_open_count' => (int) ($c->unread_open_count ?? 0),
-                    'presence_status' => 'available',
-                    'color' => $this->agentColor($uid),
-                ];
-            })
-            ->sortByDesc('assigned_open_count')
-            ->take(30)
-            ->values()
-            ->all();
-    }
-
-    private function inferFailureReasonFromNotes(string $notes): string
-    {
-        if (str_contains($notes, 'coordinates') || str_contains($notes, 'LOCATION')) {
-            return 'location_header_missing_coordinates';
-        }
-        if (str_contains($notes, 'template') || str_contains($notes, 'header')) {
-            return 'template_header_location_mismatch';
-        }
-        if (str_contains($notes, 'whatsapp_messages') || str_contains($notes, 'table')) {
-            return 'whatsapp_messages_table_missing';
-        }
-        return '';
-    }
-
-    private function makeInitials(string $name): string
-    {
-        $parts = array_filter(explode(' ', $name));
-        if (count($parts) >= 2) {
-            return mb_strtoupper(mb_substr($parts[0], 0, 1) . mb_substr($parts[1], 0, 1));
-        }
-        return mb_strtoupper(mb_substr($name, 0, 2));
-    }
-
-    private function agentColor(int $userId): string
-    {
-        $colors = ['#5156be', '#3596f7', '#05825f', '#d59623', '#d34b5b', '#3d7ac7', '#6f67d8'];
-        return $colors[$userId % count($colors)];
-    }
-
     public function serializeConversationDetail(WhatsappConversation $conversation, ?int $viewerUserId = null): array
     {
         $messages = $conversation->whatsapp_messages
@@ -851,13 +606,6 @@ class ConversationReadService
             'closed' => $this->applyOperationalStatusFilter($query, 'closed', $viewerUserId),
             'new' => $this->applyOperationalStatusFilter($query, 'new', $viewerUserId),
             'critical_backlog' => $this->applyCriticalBacklogFilter($query),
-            'hot_open' => $this->applyOpportunityBucketFilter($query, 'hot_open'),
-            'hot_needs_template' => $this->applyOpportunityBucketFilter($query, 'hot_needs_template'),
-            'hot_opportunities' => $this->applyOpportunityBucketFilter($query, 'hot_opportunities'),
-            'rescue_opportunities' => $this->applyOpportunityBucketFilter($query, 'rescue_opportunities'),
-            'historical_backlog' => $this->applyOpportunityBucketFilter($query, 'historical_backlog'),
-            'expired_or_lost' => $this->applyOpportunityBucketFilter($query, 'expired_or_lost'),
-            'lost_opportunities' => $this->applyOpportunityBucketFilter($query, 'lost_opportunities'),
             'captacion' => $this->applyOperationalQueueFilter($query, 'captacion'),
             'operacion' => $this->applyOperationalQueueFilter($query, 'operacion'),
             'informacion' => $this->applyOperationalQueueFilter($query, 'informacion'),
@@ -865,7 +613,6 @@ class ConversationReadService
             'mine' => $viewerUserId !== null && $viewerUserId > 0
                 ? $query->where('whatsapp_conversations.assigned_user_id', $viewerUserId)->where('whatsapp_conversations.needs_human', true)
                 : $query->whereRaw('1 = 0'),
-            'active_handoffs' => $query->where('whatsapp_conversations.needs_human', true),
             'handoff', 'pending' => $query->where('whatsapp_conversations.needs_human', true)->whereNull('whatsapp_conversations.assigned_user_id'),
             'window_open' => $this->applyWindowOpenFilter($query->where('whatsapp_conversations.needs_human', true)),
             'needs_template' => $this->applyNeedsTemplateFilter($query->where('whatsapp_conversations.needs_human', true)),
@@ -1059,64 +806,6 @@ class ConversationReadService
             ->where('whatsapp_conversations.needs_human', true)
             ->whereNull('whatsapp_conversations.assigned_user_id')
             ->whereRaw($this->criticalBacklogSql(), [now()->toImmutable()->subHours(24)->format('Y-m-d H:i:s')]);
-    }
-
-    private function applyOpportunityBucketFilter(Builder $query, string $bucket): Builder
-    {
-        $ageSql = $this->opportunityAgeSql();
-
-        $query
-            ->where('whatsapp_conversations.needs_human', true)
-            ->whereNull('whatsapp_conversations.closed_at')
-            ->whereRaw($ageSql . ' IS NOT NULL');
-
-        $query = $this->excludeScheduled($query);
-
-        return match ($bucket) {
-            'hot_open', 'hot_opportunities' => $this->applyWindowOpenFilter($this->applyHotOpportunitySignals($query
-                ->whereRaw($ageSql . ' >= ?', [now()->toImmutable()->subHours(24)->format('Y-m-d H:i:s')]))),
-            'hot_needs_template' => $this->applyNeedsTemplateFilter($this->applyHotOpportunitySignals($query
-                ->whereRaw($ageSql . ' >= ?', [now()->toImmutable()->subHours(24)->format('Y-m-d H:i:s')]))),
-            'rescue_opportunities' => $query
-                ->whereRaw($ageSql . ' < ?', [now()->toImmutable()->subHours(24)->format('Y-m-d H:i:s')])
-                ->whereRaw($ageSql . ' >= ?', [now()->toImmutable()->subDays(7)->format('Y-m-d H:i:s')]),
-            'historical_backlog' => $query
-                ->whereRaw($ageSql . ' < ?', [now()->toImmutable()->subDays(7)->format('Y-m-d H:i:s')])
-                ->whereRaw($ageSql . ' >= ?', [now()->toImmutable()->subDays(30)->format('Y-m-d H:i:s')]),
-            'expired_or_lost', 'lost_opportunities' => $query
-                ->whereRaw($ageSql . ' < ?', [now()->toImmutable()->subDays(30)->format('Y-m-d H:i:s')]),
-            default => $query->whereRaw('1 = 0'),
-        };
-    }
-
-    private function applyHotOpportunitySignals(Builder $query): Builder
-    {
-        $topicSql = $this->activeHandoffTopicSql();
-        $initialIntentSql = $this->attributionColumnSql('initial_intent');
-        $conversationTypeSql = $this->attributionColumnSql('conversation_type');
-        $patientSegmentSql = $this->attributionColumnSql('patient_segment');
-
-        return $query->where(function (Builder $builder) use ($topicSql, $initialIntentSql, $conversationTypeSql, $patientSegmentSql): void {
-            $builder
-                ->whereNotNull('whatsapp_conversations.patient_hc_number')
-                ->where('whatsapp_conversations.patient_hc_number', '<>', '')
-                ->orWhereRaw($topicSql . ' LIKE ?', ['captacion_%'])
-                ->orWhereRaw($topicSql . ' LIKE ?', ['operacion_%'])
-                ->orWhereIn(DB::raw($topicSql), [
-                    'agenda_sin_disponibilidad',
-                    'faq_escalada',
-                    'operacion_cita_vigente',
-                    'operacion_reagenda',
-                ])
-                ->orWhere(DB::raw($initialIntentSql), 'booking')
-                ->orWhereIn(DB::raw($conversationTypeSql), [
-                    'reschedule',
-                    'cancel',
-                    'human_help',
-                    'campaign_response',
-                ])
-                ->orWhere(DB::raw($patientSegmentSql), 'retorno');
-        });
     }
 
     private function applyOperationalQueueFilter(Builder $query, string $queue): Builder
@@ -1626,11 +1315,6 @@ class ConversationReadService
         return Schema::hasTable('whatsapp_handoffs')
             ? 'COALESCE(wh_active_handoff.queued_at, whatsapp_conversations.handoff_requested_at)'
             : 'whatsapp_conversations.handoff_requested_at';
-    }
-
-    private function opportunityAgeSql(): string
-    {
-        return 'COALESCE(' . $this->activeHandoffQueuedAtSql() . ', whatsapp_conversations.last_message_at, whatsapp_conversations.created_at)';
     }
 
     private function activeHandoffPrioritySql(): string
