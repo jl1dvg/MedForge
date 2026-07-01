@@ -82,8 +82,16 @@ ob_start();
         </tr>
         <tr>
             <td colspan='2' class='verde_left'>Realizado:</td>
-            <td class='blanco_left'
-                colspan='18'><?php echo strtoupper($realizedProcedure) . ' ' . $codes_concatenados; ?></td>
+            <td class='blanco_left' colspan='18'><?php
+                $nombres = strtoupper(isset($nombres_procedimientos) && $nombres_procedimientos !== ''
+                    ? $nombres_procedimientos
+                    : $realizedProcedure);
+                $codigos = $codes_concatenados ?? '';
+                echo $nombres;
+                if ($codigos !== '') {
+                    echo '<br>' . $codigos;
+                }
+            ?></td>
         </tr>
     </table>
     <table>

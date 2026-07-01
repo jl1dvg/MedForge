@@ -37,9 +37,9 @@ class ProtocolReportDataService
         $datos['nombre_procedimiento_proyectado'] = $this->extractProjectedProcedureName(
             isset($datos['procedimiento_proyectado']) ? (string) $datos['procedimiento_proyectado'] : ''
         );
-        $datos['codigos_concatenados'] = $this->extractProcedureCodes(
-            isset($datos['procedimientos']) ? (string) $datos['procedimientos'] : ''
-        );
+        $procedimientosJson = isset($datos['procedimientos']) ? (string) $datos['procedimientos'] : '';
+        $datos['codigos_concatenados']  = $this->extractProcedureCodes($procedimientosJson);
+        $datos['nombres_procedimientos'] = $this->extractProcedureNames($procedimientosJson);
 
         $datos['diagnosticos_previos'] = $this->formatDiagnosticosPrevios(
             $this->fetchDiagnosticosPreviosRaw($hcNumber, $formId)
@@ -186,28 +186,44 @@ class ProtocolReportDataService
         return $parts[2] ?? '';
     }
 
+    /**
+     * Extract numeric/alphanumeric codes (e.g. "66984") from a procedures JSON.
+     * Supports both new format {codigo, nombre} and legacy {procInterno: "LABEL - CODE - Nombre"}.
+     */
     private function extractProcedureCodes(string $proceduresJson): string
     {
-        $procedures = $this->decodeJsonArray($proceduresJson);
         $codes = [];
-
-        foreach ($procedures as $procedure) {
-            if (!is_array($procedure)) {
-                continue;
+        foreach ($this->decodeJsonArray($proceduresJson) as $p) {
+            if (!is_array($p)) continue;
+            $code = trim((string) ($p['codigo'] ?? ''));
+            if ($code === '' && isset($p['procInterno'])) {
+                // Legacy: "LABEL - CODE - Nombre" → parts[0]=LABEL, parts[1]=CODE
+                $parts = explode(' - ', (string) $p['procInterno']);
+                $code = trim((string) ($parts[1] ?? ''));
             }
-
-            $rawProcedure = isset($procedure['procInterno']) ? (string) $procedure['procInterno'] : '';
-            if ($rawProcedure === '') {
-                continue;
-            }
-
-            $parts = explode(' - ', $rawProcedure);
-            if (isset($parts[1]) && trim($parts[1]) !== '') {
-                $codes[] = trim($parts[1]);
-            }
+            if ($code !== '') $codes[] = $code;
         }
-
         return implode('/', $codes);
+    }
+
+    /**
+     * Extract human-readable procedure descriptions from a procedures JSON.
+     * Supports both new format {nombre} and legacy {procInterno: "LABEL - CODE - Nombre"}.
+     */
+    private function extractProcedureNames(string $proceduresJson): string
+    {
+        $names = [];
+        foreach ($this->decodeJsonArray($proceduresJson) as $p) {
+            if (!is_array($p)) continue;
+            $name = trim((string) ($p['nombre'] ?? ''));
+            if ($name === '' && isset($p['procInterno'])) {
+                // Legacy: last part after last " - "
+                $parts = explode(' - ', (string) $p['procInterno']);
+                $name = trim((string) end($parts));
+            }
+            if ($name !== '') $names[] = $name;
+        }
+        return implode('/', $names);
     }
 
     /**
