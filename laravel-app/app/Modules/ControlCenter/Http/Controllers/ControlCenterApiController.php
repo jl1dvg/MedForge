@@ -59,6 +59,61 @@ class ControlCenterApiController
         return response()->json(['ok' => true, 'data' => $this->service->instance($id)]);
     }
 
+    public function createOrganization(Request $request): JsonResponse
+    {
+        return response()->json(['ok' => true, 'data' => $this->service->createOrganization($request)], 201);
+    }
+
+    public function updateOrganization(int $id, Request $request): JsonResponse
+    {
+        return response()->json(['ok' => true, 'data' => $this->service->updateOrganization($id, $request)]);
+    }
+
+    public function createInstance(Request $request): JsonResponse
+    {
+        return response()->json(['ok' => true, 'data' => $this->service->createInstance($request)], 201);
+    }
+
+    public function updateInstance(int $id, Request $request): JsonResponse
+    {
+        return response()->json(['ok' => true, 'data' => $this->service->updateInstance($id, $request)]);
+    }
+
+    public function createPlan(Request $request): JsonResponse
+    {
+        return response()->json(['ok' => true, 'data' => $this->service->createPlan($request)], 201);
+    }
+
+    public function updatePlan(int $id, Request $request): JsonResponse
+    {
+        return response()->json(['ok' => true, 'data' => $this->service->updatePlan($id, $request)]);
+    }
+
+    public function createContract(Request $request): JsonResponse
+    {
+        return response()->json(['ok' => true, 'data' => $this->service->createContract($request)], 201);
+    }
+
+    public function updateContract(int $id, Request $request): JsonResponse
+    {
+        return response()->json(['ok' => true, 'data' => $this->service->updateContract($id, $request)]);
+    }
+
+    public function createService(Request $request): JsonResponse
+    {
+        return response()->json(['ok' => true, 'data' => $this->service->createService($request)], 201);
+    }
+
+    public function updateService(int $id, Request $request): JsonResponse
+    {
+        return response()->json(['ok' => true, 'data' => $this->service->updateService($id, $request)]);
+    }
+
+    public function telemetryHeartbeat(Request $request): JsonResponse
+    {
+        return response()->json(['ok' => true, 'data' => $this->service->recordTelemetryHeartbeat($request)]);
+    }
+
     public function changeState(int $id, Request $request): JsonResponse
     {
         return response()->json(['ok' => true, 'data' => $this->service->changeState($id, $request)]);
