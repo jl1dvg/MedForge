@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import Select from 'react-select';
+import AsyncSelect from 'react-select/async';
 import Creatable from 'react-select/creatable';
 import { AuditPanel } from './components';
 
@@ -505,6 +506,22 @@ function StepProcedimiento({ form, set, setForm, showToast, scraped, setScraped,
   const addRow = (key, blank) => setForm((f) => ({ ...f, [key]: [...f[key], blank] }));
   const rmRow = (key, i) => setForm((f) => ({ ...f, [key]: f[key].filter((_, k) => k !== i) }));
 
+  // Async search against tarifario_2014 for procedure codes
+  const searchProcedimientos = useCallback((inputValue) => {
+    if (!inputValue || inputValue.length < 2) return Promise.resolve([]);
+    return fetch(`/v2/codes/api/search?q=${encodeURIComponent(inputValue)}&limit=20`, {
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
+    })
+      .then((r) => r.json())
+      .then((res) => (res.data || []).map((c) => ({
+        value: c.codigo,
+        label: `${c.codigo} — ${c.descripcion}`,
+        codigo: c.codigo,
+        nombre: c.descripcion,
+      })))
+      .catch(() => []);
+  }, []);
+
   const doScrape = () => {
     if (!endpoints.scrapeDerivacion) return;
     setScraping(true);
@@ -580,10 +597,21 @@ function StepProcedimiento({ form, set, setForm, showToast, scraped, setScraped,
             Por ahora se guarda {codigo, nombre} para compatibilidad con el backend actual. */}
         {(form.procedimientos || []).map((p, i) => (
           <div className="rep-row proc" key={i}>
-            <input value={p.codigo} placeholder="Código" style={{ fontFamily: 'var(--font-mono)' }}
-              onChange={(e) => updArr('procedimientos', i, 'codigo', e.target.value)} />
-            <input value={p.nombre} placeholder="Descripción del procedimiento"
-              onChange={(e) => updArr('procedimientos', i, 'nombre', e.target.value)} />
+            <AsyncSelect
+              classNamePrefix="rs"
+              isClearable
+              placeholder="Buscar código o descripción..."
+              noOptionsMessage={({ inputValue }) => inputValue.length < 2 ? 'Escribe al menos 2 caracteres' : 'Sin resultados'}
+              loadingMessage={() => 'Buscando...'}
+              loadOptions={searchProcedimientos}
+              value={p.codigo ? { value: p.codigo, label: `${p.codigo} — ${p.nombre}` } : null}
+              onChange={(opt) => {
+                const a = (form.procedimientos || []).slice();
+                a[i] = { ...a[i], codigo: opt ? opt.codigo : '', nombre: opt ? opt.nombre : '' };
+                setForm((f) => ({ ...f, procedimientos: a }));
+              }}
+              styles={{ container: (b) => ({ ...b, flex: 1 }) }}
+            />
             <button className="icon-mini" title="Quitar" onClick={() => {
                 if (p.codigo || p.nombre) {
                   if (!window.confirm(`¿Eliminar "${p.codigo || p.nombre}"?`)) return;
