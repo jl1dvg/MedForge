@@ -22,7 +22,6 @@ use App\Modules\Usuarios\Http\Controllers\RolesUiController;
 use App\Modules\Usuarios\Http\Controllers\UsuariosUiController;
 use App\Modules\Whatsapp\Http\Controllers\WhatsappUiController;
 use App\Modules\Whatsapp\Http\Controllers\ConversationReadController;
-use App\Modules\Reportes\Http\Controllers\ReportesController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -104,12 +103,6 @@ Route::middleware(['app.auth', 'app.permission:administrativo,solicitudes.dashbo
 
 Route::middleware(['app.auth', 'app.permission:administrativo,solicitudes.turnero,solicitudes.update,solicitudes.manage,solicitudes.view'])->group(function (): void {
     Route::get('/v2/solicitudes/turnero', [SolicitudesUiController::class, 'turnero']);
-});
-
-Route::middleware(['app.auth', 'app.permission:administrativo,cirugias.dashboard.view,examenes.view,examenes.manage'])->group(function (): void {
-    Route::get('/v2/reportes',               [ReportesController::class, 'index']);
-    Route::get('/v2/reportes/api/cirugias',  [ReportesController::class, 'apiCirugias']);
-    Route::get('/v2/reportes/api/imagenes',  [ReportesController::class, 'apiImagenes']);
 });
 
 Route::middleware(['app.auth', 'app.permission:administrativo,examenes.view,examenes.manage'])->group(function (): void {
