@@ -3,7 +3,7 @@
 namespace Services;
 
 use PDO;
-use Exception;
+use Throwable;
 use Models\BillingMainModel;
 use Models\BillingProcedimientosModel;
 use Models\BillingDerechosModel;
@@ -52,19 +52,29 @@ class BillingService
     public function guardar(array $data): array
     {
         try {
+            $formId = trim((string)($data['form_id'] ?? ''));
+            $hcNumber = trim((string)($data['hcNumber'] ?? ''));
+
+            if ($formId === '' || $hcNumber === '') {
+                return [
+                    "success" => false,
+                    "message" => "Datos no válidos o incompletos: form_id y hcNumber son obligatorios"
+                ];
+            }
+
             $this->db->beginTransaction();
 
             $userId = isset($data['user_id']) ? (int)$data['user_id'] : (int)($_SESSION['user_id'] ?? 0);
 
             // Billing main
-            $billing = $this->billingMainModel->findByFormId($data['form_id']);
+            $billing = $this->billingMainModel->findByFormId($formId);
             if ($billing) {
                 $billingId = $billing['id'];
                 $this->borrarDetalles($billingId);
-                $this->billingMainModel->update($data['hcNumber'], $billingId);
+                $this->billingMainModel->update($hcNumber, $billingId);
                 $this->billingMainModel->assignFacturador($billingId, $userId ?: null);
             } else {
-                $billingId = $this->billingMainModel->insert($data['hcNumber'], $data['form_id'], $userId ?: null);
+                $billingId = $this->billingMainModel->insert($hcNumber, $formId, $userId ?: null);
             }
 
             // Actualizar fecha de creación si existe en protocolo
@@ -99,8 +109,10 @@ class BillingService
 
             $this->db->commit();
             return ["success" => true, "message" => "Billing guardado correctamente", "billing_id" => $billingId];
-        } catch (Exception $e) {
-            $this->db->rollBack();
+        } catch (Throwable $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
             return ["success" => false, "message" => "Error al guardar billing: " . $e->getMessage()];
         }
     }
