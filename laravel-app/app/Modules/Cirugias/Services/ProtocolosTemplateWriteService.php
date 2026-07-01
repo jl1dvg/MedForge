@@ -67,11 +67,11 @@ class ProtocolosTemplateWriteService
                 $data['alta_indicacion'], $data['id'],
             ]);
 
-            $insumos = $data['insumos'] !== '' ? $data['insumos'] : json_encode(['equipos' => [], 'quirurgicos' => [], 'anestesia' => []]);
-            $this->upsertJsonByProcedure('insumos_pack', 'insumos', $data['id'], $insumos);
+            $insumos = is_array($data['insumos'] ?? null) ? $data['insumos'] : [];
+            $this->upsertJsonByProcedure('insumos_pack', 'insumos', $data['id'], json_encode($insumos));
 
-            $medicamentos = $data['medicamentos'] !== '' ? $data['medicamentos'] : json_encode([]);
-            $this->upsertJsonByProcedure('kardex', 'medicamentos', $data['id'], $medicamentos);
+            $medicamentos = is_array($data['medicamentos'] ?? null) ? $data['medicamentos'] : [];
+            $this->upsertJsonByProcedure('kardex', 'medicamentos', $data['id'], json_encode($medicamentos));
 
             $this->saveProcedureCodes($data['id'], $data);
             $this->saveProcedureStaff($data['id'], $data);
@@ -125,59 +125,68 @@ class ProtocolosTemplateWriteService
         $stmt->execute([$procedureId, $payload]);
     }
 
+    /**
+     * @param array<int, array{codigo?: string, nombre?: string}> $codigos
+     */
     private function saveProcedureCodes(string $procedureId, array $data): void
     {
         $codes = is_array($data['codigos'] ?? null) ? $data['codigos'] : [];
-        $lateralities = is_array($data['lateralidades'] ?? null) ? $data['lateralidades'] : [];
-        $selectors = $data['selectores_codigos'] ?? ($data['selectores'] ?? []);
-        $selectors = is_array($selectors) ? $selectors : [];
 
         $this->db->prepare('DELETE FROM procedimientos_codigos WHERE procedimiento_id = ?')->execute([$procedureId]);
-        $insert = $this->db->prepare('INSERT INTO procedimientos_codigos (procedimiento_id, nombre, lateralidad, selector) VALUES (?, ?, ?, ?)');
+        $insert = $this->db->prepare('INSERT INTO procedimientos_codigos (procedimiento_id, codigo, nombre, lateralidad, selector) VALUES (?, ?, ?, ?, ?)');
 
-        foreach ($codes as $index => $code) {
-            $name = trim((string) $code);
+        $index = 0;
+        foreach ($codes as $code) {
+            $name = trim((string) ($code['nombre'] ?? ''));
             if ($name === '') {
                 continue;
             }
 
             $insert->execute([
                 $procedureId,
+                trim((string) ($code['codigo'] ?? '')) ?: null,
                 $name,
-                (string) ($lateralities[$index] ?? ''),
-                (string) ($selectors[$index] ?? ''),
+                // Selectores CSS que consume la extensión de Chrome al poblar el formulario
+                // de consulta subsecuente en SigCenter; se regeneran por índice, nunca los edita el usuario.
+                '#select2-consultasubsecuente-procedimientoprotocolo-' . $index . '-lateralidadprocedimiento-container',
+                '#select2-consultasubsecuente-procedimientoprotocolo-' . $index . '-procinterno-container',
             ]);
+            $index++;
         }
     }
 
+    /**
+     * @param array<int, array{funcion?: string, nombre?: string, trabajador_id?: int|string|null}> $staff
+     */
     private function saveProcedureStaff(string $procedureId, array $data): void
     {
-        $functions = is_array($data['funciones'] ?? null) ? $data['funciones'] : [];
-        $workers = is_array($data['trabajadores'] ?? null) ? $data['trabajadores'] : [];
-        $names = is_array($data['nombres_staff'] ?? null) ? $data['nombres_staff'] : [];
+        $staff = is_array($data['staff'] ?? null) ? $data['staff'] : [];
 
         $this->db->prepare('DELETE FROM procedimientos_tecnicos WHERE procedimiento_id = ?')->execute([$procedureId]);
-        $insert = $this->db->prepare('INSERT INTO procedimientos_tecnicos (procedimiento_id, funcion, trabajador, nombre, selector) VALUES (?, ?, ?, ?, ?)');
+        $insert = $this->db->prepare('INSERT INTO procedimientos_tecnicos (procedimiento_id, funcion, trabajador_id, trabajador, nombre, selector) VALUES (?, ?, ?, ?, ?, ?)');
 
-        foreach ($functions as $index => $function) {
-            $function = trim((string) $function);
-            $name = trim((string) ($names[$index] ?? ''));
+        $index = 0;
+        foreach ($staff as $member) {
+            $function = trim((string) ($member['funcion'] ?? ''));
+            $name = trim((string) ($member['nombre'] ?? ''));
             if ($function === '' || $name === '') {
                 continue;
             }
 
-            $workerSelector = trim((string) ($workers[$index] ?? ''));
-            if ($workerSelector === '') {
-                $workerSelector = '#select2-consultasubsecuente-trabajadorprotocolo-' . $index . '-doctor-container';
-            }
+            $trabajadorId = $member['trabajador_id'] ?? null;
+            $trabajadorId = is_numeric($trabajadorId) ? (int) $trabajadorId : null;
 
             $insert->execute([
                 $procedureId,
                 $function,
-                $workerSelector,
+                $trabajadorId,
+                // Selectores CSS que consume la extensión de Chrome; se regeneran por índice,
+                // el vínculo real al personal va en trabajador_id.
+                '#select2-consultasubsecuente-trabajadorprotocolo-' . $index . '-doctor-container',
                 $name,
                 '#select2-consultasubsecuente-trabajadorprotocolo-' . $index . '-funcion-container',
             ]);
+            $index++;
         }
     }
 }

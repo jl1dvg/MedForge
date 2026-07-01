@@ -13,10 +13,11 @@ use Illuminate\Database\Eloquent\Model;
  * 
  * @property int $id
  * @property string|null $procedimiento_id
+ * @property string|null $codigo
  * @property string|null $nombre
  * @property string|null $lateralidad
  * @property string|null $selector
- * 
+ *
  * @property Procedimiento|null $procedimiento
  *
  * @package App\Models
@@ -28,6 +29,7 @@ class ProcedimientosCodigo extends Model
 
 	protected $fillable = [
 		'procedimiento_id',
+		'codigo',
 		'nombre',
 		'lateralidad',
 		'selector'

@@ -9,7 +9,6 @@ use App\Modules\Cirugias\Services\ProtocolosTemplateReadService;
 use App\Modules\Shared\Support\LegacyCurrentUser;
 use App\Modules\Shared\Support\LegacyPermissionResolver;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\View\View;
@@ -45,21 +44,15 @@ class ProtocolosLegacyBridgeController
         $this->readService = new ProtocolosTemplateReadService($pdo);
     }
 
-    public function index(Request $request): Response
+    public function index(Request $request): View|Response
     {
         if (!$this->canAny($request, self::READ_PERMISSIONS)) {
             return response('Acceso denegado', 403);
         }
 
         $this->bootstrapLegacyRuntime($request);
-        return response()->view('protocolos.index', [
-            'pageTitle' => 'Editor de Protocolos',
-            'currentUser' => LegacyCurrentUser::resolve($request),
-            'procedimientosPorCategoria' => $this->readService->obtenerProcedimientosAgrupados(),
-            'mensajeExito' => $request->query('deleted') !== null ? 'Protocolo eliminado correctamente.' : ($request->query('saved') !== null ? 'Protocolo guardado correctamente.' : null),
-            'mensajeError' => $request->query('error') !== null ? 'No se pudo completar la operación solicitada.' : null,
-            'canManage' => $this->canAny($request, self::WRITE_PERMISSIONS),
-        ]);
+
+        return $this->renderApp($request, ['name' => 'list']);
     }
 
     public function create(Request $request): View|Response
@@ -72,13 +65,10 @@ class ProtocolosLegacyBridgeController
         $categoria = trim((string) $request->query('categoria', ''));
         $protocolo = $this->readService->crearProtocoloVacio($categoria !== '' ? $categoria : null);
 
-        return $this->viewEditLegacy($request, $protocolo, [
-            'pageTitle' => 'Nuevo protocolo',
-            'esNuevo' => true,
-        ]);
+        return $this->renderApp($request, ['name' => 'new', 'protocolo' => $this->toWizardShape($protocolo)]);
     }
 
-    public function edit(Request $request): View|RedirectResponse|Response
+    public function edit(Request $request): View|Response
     {
         if (!$this->canAny($request, self::WRITE_PERMISSIONS)) {
             return response('Acceso denegado', 403);
@@ -91,7 +81,7 @@ class ProtocolosLegacyBridgeController
         if ($duplicarId !== '') {
             $original = $this->readService->obtenerProtocoloPorId($duplicarId);
             if (!$original) {
-                return redirect('/v2/protocolos?error=1');
+                return $this->renderApp($request, ['name' => 'list', 'error' => 'No se encontró el protocolo a duplicar.']);
             }
 
             $protocolo = $original;
@@ -101,20 +91,20 @@ class ProtocolosLegacyBridgeController
             $protocolo['insumos'] = $this->readService->obtenerInsumosDeProtocolo($duplicarId);
             $protocolo['medicamentos'] = $this->readService->obtenerMedicamentosDeProtocolo($duplicarId);
 
-            return $this->viewEditLegacy($request, $protocolo, [
-                'pageTitle' => 'Duplicar protocolo',
-                'duplicando' => true,
-                'duplicarId' => $duplicarId,
+            return $this->renderApp($request, [
+                'name' => 'edit',
+                'protocolo' => $this->toWizardShape($protocolo),
+                'duplicandoDe' => $original['membrete'] ?? null,
             ]);
         }
 
         if ($id === '') {
-            return redirect('/v2/protocolos?error=1');
+            return $this->renderApp($request, ['name' => 'list', 'error' => 'Selecciona un protocolo para editar.']);
         }
 
         $protocolo = $this->readService->obtenerProtocoloPorId($id);
         if (!$protocolo) {
-            return redirect('/v2/protocolos?error=1');
+            return $this->renderApp($request, ['name' => 'list', 'error' => 'No se encontró el protocolo solicitado.']);
         }
 
         $protocolo['codigos'] = $this->readService->obtenerCodigosDeProcedimiento($id);
@@ -122,12 +112,10 @@ class ProtocolosLegacyBridgeController
         $protocolo['insumos'] = $this->readService->obtenerInsumosDeProtocolo($id);
         $protocolo['medicamentos'] = $this->readService->obtenerMedicamentosDeProtocolo($id);
 
-        return $this->viewEditLegacy($request, $protocolo, [
-            'pageTitle' => 'Editar protocolo',
-        ]);
+        return $this->renderApp($request, ['name' => 'edit', 'protocolo' => $this->toWizardShape($protocolo)]);
     }
 
-    public function store(Request $request): JsonResponse|Response
+    public function store(Request $request): JsonResponse
     {
         if (!$this->canAny($request, self::WRITE_PERMISSIONS)) {
             return response()->json(['success' => false, 'message' => 'Acceso denegado'], 403);
@@ -147,7 +135,7 @@ class ProtocolosLegacyBridgeController
             $result = $this->writeService->updateProtocol($payload);
             return response()->json([
                 'success' => $result,
-                'message' => $result ? 'Protocolo actualizado exitosamente.' : 'Error al actualizar el protocolo.',
+                'message' => $result ? 'Protocolo guardado exitosamente.' : 'Error al guardar el protocolo.',
                 'generated_id' => $payload['id'] ?? null,
             ], $result ? 200 : 500);
         } catch (Throwable) {
@@ -158,22 +146,90 @@ class ProtocolosLegacyBridgeController
         }
     }
 
-    public function delete(Request $request): RedirectResponse
+    public function delete(Request $request): JsonResponse
     {
         if (!$this->canAny($request, self::WRITE_PERMISSIONS)) {
-            return redirect('/v2/protocolos?error=1');
+            return response()->json(['success' => false, 'message' => 'Acceso denegado'], 403);
         }
 
         $this->bootstrapLegacyRuntime($request);
 
         $id = trim((string) $request->input('id', ''));
         if ($id === '') {
-            return redirect('/v2/protocolos?error=1');
+            return response()->json(['success' => false, 'message' => 'Falta el identificador del protocolo.'], 422);
         }
 
-        return $this->writeService->deleteProtocol($id)
-            ? redirect('/v2/protocolos?deleted=1')
-            : redirect('/v2/protocolos?error=1');
+        $result = $this->writeService->deleteProtocol($id);
+
+        return response()->json([
+            'success' => $result,
+            'message' => $result ? 'Protocolo eliminado correctamente.' : 'No se pudo eliminar el protocolo.',
+        ], $result ? 200 : 500);
+    }
+
+    /**
+     * Renderiza el shell React único (lista + wizard) con la config inicial embebida.
+     */
+    private function renderApp(Request $request, array $route): View
+    {
+        $canManage = $this->canAny($request, self::WRITE_PERMISSIONS);
+
+        $config = [
+            'route' => $route,
+            'canManage' => $canManage,
+            'currentUser' => LegacyCurrentUser::resolve($request),
+            'catalogo' => $this->readService->obtenerProtocolosCatalogo(),
+            'catalogos' => [
+                'categorias' => config('protocolos.categorias'),
+                'funcionesStaff' => config('protocolos.funciones_staff'),
+                'funcionEspecialidad' => config('protocolos.funcion_especialidad'),
+                'vias' => config('protocolos.vias'),
+                'responsables' => config('protocolos.responsables'),
+                'plantillasBase' => config('protocolos.plantillas_base'),
+                'sugerenciasStaff' => config('protocolos.sugerencias_staff'),
+                'sugerenciasInsumos' => config('protocolos.sugerencias_insumos'),
+                'sugerenciasMedicamentos' => config('protocolos.sugerencias_medicamentos'),
+                'operatorioSugerido' => config('protocolos.operatorio_sugerido'),
+                'insumosDisponibles' => $this->readService->obtenerInsumosDisponibles(),
+                'opcionesMedicamentos' => $this->readService->obtenerOpcionesMedicamentos(),
+            ],
+            'endpoints' => [
+                'catalogo' => '/v2/protocolos',
+                'guardar' => '/v2/protocolos/guardar',
+                'eliminar' => '/v2/protocolos/eliminar',
+                'nuevo' => '/v2/protocolos/crear',
+                'editar' => '/v2/protocolos/editar',
+                'searchCodigos' => '/v2/cirugias/search-procedimientos',
+                'staffOptions' => '/v2/cirugias/staff-options',
+            ],
+        ];
+
+        return view('protocolos.index', [
+            'pageTitle' => 'Protocolos quirúrgicos',
+            'appConfig' => $config,
+        ]);
+    }
+
+    /**
+     * Adapta el shape plano de la lectura legacy (codigos/staff con columnas SQL crudas)
+     * al shape que consume el wizard React ({codigo,nombre} / {funcion,nombre,trabajador_id}).
+     */
+    private function toWizardShape(array $protocolo): array
+    {
+        $protocolo['codigos'] = array_map(
+            static fn (array $c): array => ['codigo' => $c['codigo'] ?? '', 'nombre' => $c['nombre'] ?? ''],
+            $protocolo['codigos'] ?? []
+        );
+        $protocolo['staff'] = array_map(
+            static fn (array $s): array => [
+                'funcion' => $s['funcion'] ?? '',
+                'nombre' => $s['nombre'] ?? '',
+                'trabajador_id' => isset($s['trabajador_id']) && $s['trabajador_id'] !== null ? (int) $s['trabajador_id'] : null,
+            ],
+            $protocolo['staff'] ?? []
+        );
+
+        return $protocolo;
     }
 
     private function bootstrapLegacyRuntime(Request $request): void
@@ -202,22 +258,22 @@ class ProtocolosLegacyBridgeController
 
     private function normalizePayload(array $input): array
     {
-        $payload = $input;
+        $payload = [];
         $stringFields = [
-            'id', 'cirugia', 'categoriaQX', 'membrete', 'dieresis', 'exposicion', 'hallazgo', 'horas',
+            'id', 'cirugia', 'membrete', 'dieresis', 'exposicion', 'hallazgo', 'horas',
             'imagen_link', 'operatorio', 'pre_evolucion', 'pre_indicacion', 'post_evolucion', 'post_indicacion',
-            'alta_evolucion', 'alta_indicacion', 'insumos', 'medicamentos',
+            'alta_evolucion', 'alta_indicacion',
         ];
         foreach ($stringFields as $field) {
-            $payload[$field] = isset($payload[$field]) ? trim((string) $payload[$field]) : '';
+            $payload[$field] = isset($input[$field]) ? trim((string) $input[$field]) : '';
         }
 
-        $arrayFields = ['codigos', 'lateralidades', 'selectores_codigos', 'funciones', 'trabajadores', 'nombres_staff'];
-        foreach ($arrayFields as $field) {
-            if (!isset($payload[$field]) || !is_array($payload[$field])) {
-                $payload[$field] = [];
-            }
-        }
+        $payload['categoriaQX'] = trim((string) ($input['categoria'] ?? $input['categoriaQX'] ?? ''));
+
+        $payload['codigos'] = is_array($input['codigos'] ?? null) ? $input['codigos'] : [];
+        $payload['staff'] = is_array($input['staff'] ?? null) ? $input['staff'] : [];
+        $payload['insumos'] = is_array($input['insumos'] ?? null) ? $input['insumos'] : [];
+        $payload['medicamentos'] = is_array($input['medicamentos'] ?? null) ? $input['medicamentos'] : [];
 
         return $payload;
     }
@@ -236,7 +292,7 @@ class ProtocolosLegacyBridgeController
             $error = 'Debes seleccionar una categoría.';
             return false;
         }
-        if ($payload['horas'] !== '' && !is_numeric($payload['horas'])) {
+        if ($payload['horas'] === '' || !is_numeric($payload['horas'])) {
             $error = 'La duración estimada debe ser numérica.';
             return false;
         }
@@ -244,27 +300,15 @@ class ProtocolosLegacyBridgeController
             $error = 'El enlace de imagen no tiene un formato válido.';
             return false;
         }
+        if (count(array_filter($payload['codigos'], static fn ($c) => trim((string) ($c['nombre'] ?? '')) !== '')) === 0) {
+            $error = 'Agrega al menos un código quirúrgico.';
+            return false;
+        }
+        if ($payload['operatorio'] === '') {
+            $error = 'Describe la técnica operatoria.';
+            return false;
+        }
         $error = null;
         return true;
-    }
-
-    private function viewEditLegacy(Request $request, array $protocolo, array $context = []): View
-    {
-        return view('protocolos.edit', array_merge([
-            'pageTitle' => $context['pageTitle'] ?? 'Editor de protocolos',
-            'currentUser' => LegacyCurrentUser::resolve($request),
-            'protocolo' => $protocolo,
-            'medicamentos' => $protocolo['medicamentos'] ?? [],
-            'opcionesMedicamentos' => $this->readService->obtenerOpcionesMedicamentos(),
-            'insumosDisponibles' => $this->readService->obtenerInsumosDisponibles(),
-            'insumosPaciente' => $protocolo['insumos'] ?? ['equipos' => [], 'quirurgicos' => [], 'anestesia' => []],
-            'codigos' => $protocolo['codigos'] ?? [],
-            'staff' => $protocolo['staff'] ?? [],
-            'vias' => ['INTRAVENOSA', 'VIA INFILTRATIVA', 'SUBCONJUNTIVAL', 'TOPICA', 'INTRAVITREA'],
-            'responsables' => ['Asistente', 'Anestesiólogo', 'Cirujano Principal'],
-            'duplicando' => $context['duplicando'] ?? false,
-            'esNuevo' => $context['esNuevo'] ?? false,
-            'duplicarId' => $context['duplicarId'] ?? null,
-        ], $context));
     }
 }

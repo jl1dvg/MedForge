@@ -14,10 +14,11 @@ use Illuminate\Database\Eloquent\Model;
  * @property int $id
  * @property string|null $procedimiento_id
  * @property string|null $funcion
+ * @property int|null $trabajador_id
  * @property string|null $trabajador
  * @property string|null $nombre
  * @property string|null $selector
- * 
+ *
  * @property Procedimiento|null $procedimiento
  *
  * @package App\Models
@@ -30,6 +31,7 @@ class ProcedimientosTecnico extends Model
 	protected $fillable = [
 		'procedimiento_id',
 		'funcion',
+		'trabajador_id',
 		'trabajador',
 		'nombre',
 		'selector'
