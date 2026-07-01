@@ -58,10 +58,12 @@ export function ProcChip({ row }) {
 
 export function AuditPill({ audit }) {
   if (!audit) return null;
+  const w = audit.summary?.warning ?? 0;
+  const e = audit.summary?.error ?? 0;
   const map = {
-    ok: { cls: 'audit-ok', ic: 'mdi-shield-check', txt: 'Conforme' },
-    warning: { cls: 'audit-warning', ic: 'mdi-shield-alert-outline', txt: `${audit.summary?.warning ?? 0} advert.` },
-    error: { cls: 'audit-error', ic: 'mdi-shield-alert', txt: `${audit.summary?.error ?? 0} alerta${(audit.summary?.error ?? 0) !== 1 ? 's' : ''}` },
+    ok:      { cls: 'audit-ok',      ic: 'mdi-shield-check',        txt: 'Conforme' },
+    warning: { cls: 'audit-warning', ic: 'mdi-shield-alert-outline', txt: w > 0 ? `${w} advert.` : 'Por revisar' },
+    error:   { cls: 'audit-error',   ic: 'mdi-shield-alert',         txt: `${e} alerta${e !== 1 ? 's' : ''}` },
   }[audit.status] || { cls: 'audit-warning', ic: 'mdi-shield-alert-outline', txt: 'Revisar' };
   return <span className={`audit-pill ${map.cls}`}><i className={`mdi ${map.ic}`} />{map.txt}</span>;
 }
