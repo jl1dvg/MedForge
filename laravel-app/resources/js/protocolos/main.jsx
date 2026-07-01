@@ -2,6 +2,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import '../../css/protocolos-v2.css';
 import { ProtocolosApp } from './app';
+import { ErrorBoundary } from './kit';
 
 const container = document.getElementById('protocolos-index-root');
 if (container) {
@@ -13,7 +14,9 @@ if (container) {
   }
   createRoot(container).render(
     <React.StrictMode>
-      <ProtocolosApp config={config} />
+      <ErrorBoundary>
+        <ProtocolosApp config={config} />
+      </ErrorBoundary>
     </React.StrictMode>
   );
 }

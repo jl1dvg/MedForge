@@ -100,6 +100,15 @@ function StepDatos({ data, patch }) {
           })}
         </div>
       </Field>
+      <Field label="Imagen de portada" optional help="URL de una imagen para identificar el protocolo en el catálogo. Si la dejas vacía, se muestra un ícono de la categoría.">
+        <TextInput value={data.imagen_link} onChange={(e) => patch({ imagen_link: e.target.value })} placeholder="https://ejemplo.com/imagen.jpg" />
+        {data.imagen_link && (
+          <div style={{ marginTop: 10, width: 120, height: 78, borderRadius: 9, overflow: 'hidden', border: '1px solid var(--border)', background: 'var(--bg-softer)' }}>
+            <img src={data.imagen_link} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                 onError={(e) => { e.target.style.display = 'none'; }} />
+          </div>
+        )}
+      </Field>
     </div>
   );
 }
