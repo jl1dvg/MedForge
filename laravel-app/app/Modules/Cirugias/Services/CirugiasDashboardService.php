@@ -12,6 +12,12 @@ class CirugiasDashboardService
     private AfiliacionDimensionService $afiliacionDimensions;
     private string $seguroFilter = '';
 
+    /** @var array<string,bool> */
+    private array $tableExistsCache = [];
+
+    /** @var array<string,bool> */
+    private array $columnExistsCache = [];
+
     public function __construct(private PDO $db)
     {
         $this->afiliacionDimensions = new AfiliacionDimensionService($db);
@@ -150,13 +156,17 @@ class CirugiasDashboardService
      * - pendiente_facturar: protocolos operados aún sin evidencia de billing
      * - pendiente_pago: facturados con estado de cartera/pendiente/crédito
      * - cancelados: solicitudes quirúrgicas canceladas/suspendidas en programación
+     *
+     * @param array<string,mixed>|null $programacionKpis Pre-computed result of getProgramacionKpis()
+     *                                                    to avoid running it twice in buildReportPayload().
      */
     public function getCirugiasFacturacionTrazabilidad(
         string $start,
         string $end,
         string $afiliacionFilter = '',
         string $afiliacionCategoriaFilter = '',
-        string $sedeFilter = ''
+        string $sedeFilter = '',
+        ?array $programacionKpis = null
     ): array {
         $rows = $this->fetchCirugiasFacturacionRows(
             $start,
@@ -224,7 +234,7 @@ class CirugiasDashboardService
             }
         }
 
-        $programacion = $this->getProgramacionKpis($start, $end, $afiliacionFilter, $afiliacionCategoriaFilter, $sedeFilter);
+        $programacion = $programacionKpis ?? $this->getProgramacionKpis($start, $end, $afiliacionFilter, $afiliacionCategoriaFilter, $sedeFilter);
         $cancelados = (int) ($programacion['suspendidas'] ?? 0);
 
         return [
@@ -1023,6 +1033,7 @@ class CirugiasDashboardService
         $afiliacionCategoriaFilterValue = $this->normalizeAfiliacionCategoriaFilter($afiliacionCategoriaFilter);
         $sedeFilterValue = $this->normalizeSedeFilter($sedeFilter);
         $sedeFilterCondition = $this->solicitudSedeFilterCondition('sp');
+        $sedeJoin = $this->solicitudSedeJoin('sp');
         $categoriaContext = $this->resolveAfiliacionCategoriaContext("COALESCE(p.afiliacion, '')", 'acm');
         $hasProcedimientoDoctor = $this->tableExists('procedimiento_proyectado')
             && $this->columnExists('procedimiento_proyectado', 'form_id')
@@ -1051,6 +1062,7 @@ class CirugiasDashboardService
                     %DOCTOR_EXPR% AS doctor
                 FROM solicitud_procedimiento sp
                 %PP_JOIN%
+                %SEDE_JOIN%
                 LEFT JOIN consulta_data cd
                     ON CONVERT(cd.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
                      = CONVERT(sp.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
@@ -1087,6 +1099,7 @@ class CirugiasDashboardService
         $sql = str_replace('%AFILIACION_CATEGORIA_EXPR%', $categoriaContext['expr'], $sql);
         $sql = str_replace('%DOCTOR_EXPR%', $doctorExpr, $sql);
         $sql = str_replace('%PP_JOIN%', $ppJoin, $sql);
+        $sql = str_replace('%SEDE_JOIN%', $sedeJoin, $sql);
         $sql = str_replace('%SEGURO_FILTER_SQL%', $this->seguroFilterSql($seguroKeyExpr), $sql);
         $sql = str_replace('%SEDE_FILTER_CONDITION%', $sedeFilterCondition, $sql);
 
@@ -1214,6 +1227,7 @@ class CirugiasDashboardService
         $afiliacionCategoriaFilterValue = $this->normalizeAfiliacionCategoriaFilter($afiliacionCategoriaFilter);
         $sedeFilterValue = $this->normalizeSedeFilter($sedeFilter);
         $sedeFilterCondition = $this->solicitudSedeFilterCondition('sp');
+        $sedeJoin = $this->solicitudSedeJoin('sp');
         $categoriaContext = $this->resolveAfiliacionCategoriaContext("COALESCE(p.afiliacion, '')", 'acm');
         $sql = <<<'SQL'
             SELECT
@@ -1237,6 +1251,7 @@ class CirugiasDashboardService
                     sp.estado,
                     COALESCE(cd.fecha, sp.fecha) AS fecha_solicitud
                 FROM solicitud_procedimiento sp
+                %SEDE_JOIN%
                 LEFT JOIN consulta_data cd
                     ON CONVERT(cd.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
                     = CONVERT(sp.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
@@ -1283,6 +1298,7 @@ class CirugiasDashboardService
         $sql = str_replace('%AFILIACION_KEY_EXPR%', $afiliacionKeyExpr, $sql);
         $sql = str_replace('%AFILIACION_CATEGORIA_JOIN%', $categoriaContext['join'], $sql);
         $sql = str_replace('%AFILIACION_CATEGORIA_EXPR%', $categoriaContext['expr'], $sql);
+        $sql = str_replace('%SEDE_JOIN%', $sedeJoin, $sql);
         $sql = str_replace('%SEGURO_FILTER_SQL%', $this->seguroFilterSql($seguroKeyExpr), $sql);
         $sql = str_replace('%SEDE_FILTER_CONDITION%', $sedeFilterCondition, $sql);
 
@@ -1802,20 +1818,39 @@ class CirugiasDashboardService
             return "(:sede_filter = '')";
         }
 
-        $sedeExpr = $this->sedeExpr('pp_sede');
-        $hcCondition = $this->columnExists('procedimiento_proyectado', 'hc_number')
-            ? " AND CONVERT(pp_sede.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
-                 = CONVERT({$solicitudAlias}.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci"
+        return "(:sede_filter = '' OR pp_sede_agg.sede_norm = :sede_filter_match)";
+    }
+
+    /**
+     * Returns the LEFT JOIN clause that must accompany solicitudSedeFilterCondition().
+     * Pre-aggregates sede per form_id to avoid a correlated EXISTS per row.
+     */
+    private function solicitudSedeJoin(string $solicitudAlias): string
+    {
+        if (
+            !$this->tableExists('procedimiento_proyectado')
+            || !$this->columnExists('procedimiento_proyectado', 'form_id')
+        ) {
+            return '';
+        }
+
+        $sedeExpr = $this->sedeExpr('pp_sede_raw');
+
+        $hcJoin = $this->columnExists('procedimiento_proyectado', 'hc_number')
+            ? " AND CONVERT(pp_sede_raw.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                     = CONVERT({$solicitudAlias}.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci"
             : '';
 
-        return "(:sede_filter = '' OR EXISTS (
-            SELECT 1
-            FROM procedimiento_proyectado pp_sede
-            WHERE CONVERT(pp_sede.form_id USING utf8mb4) COLLATE utf8mb4_unicode_ci
-                  = CONVERT({$solicitudAlias}.form_id USING utf8mb4) COLLATE utf8mb4_unicode_ci{$hcCondition}
-              AND COALESCE(pp_sede.sigcenter_present, 1) = 1
-              AND {$sedeExpr} = :sede_filter_match
-        ))";
+        return "LEFT JOIN (
+            SELECT
+                CONVERT(pp_sede_raw.form_id USING utf8mb4) COLLATE utf8mb4_unicode_ci AS form_id,
+                MAX({$sedeExpr}) AS sede_norm
+            FROM procedimiento_proyectado pp_sede_raw
+            WHERE COALESCE(pp_sede_raw.sigcenter_present, 1) = 1
+            GROUP BY pp_sede_raw.form_id
+        ) pp_sede_agg
+            ON CONVERT(pp_sede_agg.form_id USING utf8mb4) COLLATE utf8mb4_unicode_ci
+             = CONVERT({$solicitudAlias}.form_id USING utf8mb4) COLLATE utf8mb4_unicode_ci";
     }
 
     private function normalizeSqlText(string $expr): string
@@ -1832,29 +1867,34 @@ class CirugiasDashboardService
 
     private function tableExists(string $table): bool
     {
-        $stmt = $this->db->prepare(
-            "SELECT COUNT(*) FROM information_schema.TABLES
-             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :table"
-        );
-        $stmt->execute([':table' => $table]);
-        return (int) $stmt->fetchColumn() > 0;
+        if (!isset($this->tableExistsCache[$table])) {
+            $stmt = $this->db->prepare(
+                "SELECT COUNT(*) FROM information_schema.TABLES
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :table"
+            );
+            $stmt->execute([':table' => $table]);
+            $this->tableExistsCache[$table] = (int) $stmt->fetchColumn() > 0;
+        }
+
+        return $this->tableExistsCache[$table];
     }
 
     private function columnExists(string $table, string $column): bool
     {
-        $stmt = $this->db->prepare(
-            "SELECT COUNT(*)
-             FROM information_schema.COLUMNS
-             WHERE TABLE_SCHEMA = DATABASE()
-               AND TABLE_NAME = :table
-               AND COLUMN_NAME = :column"
-        );
-        $stmt->execute([
-            ':table' => $table,
-            ':column' => $column,
-        ]);
+        $key = $table . '.' . $column;
+        if (!isset($this->columnExistsCache[$key])) {
+            $stmt = $this->db->prepare(
+                "SELECT COUNT(*)
+                 FROM information_schema.COLUMNS
+                 WHERE TABLE_SCHEMA = DATABASE()
+                   AND TABLE_NAME = :table
+                   AND COLUMN_NAME = :column"
+            );
+            $stmt->execute([':table' => $table, ':column' => $column]);
+            $this->columnExistsCache[$key] = (int) $stmt->fetchColumn() > 0;
+        }
 
-        return (int)$stmt->fetchColumn() > 0;
+        return $this->columnExistsCache[$key];
     }
 
     /**
@@ -1917,15 +1957,15 @@ class CirugiasDashboardService
         string $end,
         string $sedeFilter = ''
     ): array {
-        $realizadas = $this->getTotalCirugias($start, $end, '', '', $sedeFilter);
-        $trazabilidad = $this->getCirugiasFacturacionTrazabilidad($start, $end, '', '', $sedeFilter);
+        $programacion = $this->getProgramacionKpis($start, $end, '', '', $sedeFilter);
+        $programadas = (int) ($programacion['programadas'] ?? 0);
+
+        $trazabilidad = $this->getCirugiasFacturacionTrazabilidad($start, $end, '', '', $sedeFilter, $programacion);
+        $realizadas = (int) ($trazabilidad['atendidos'] ?? 0);
         $facturadas = (int) ($trazabilidad['facturados'] ?? 0);
         $pendienteFacturar = (int) ($trazabilidad['pendiente_facturar'] ?? 0);
         $pendientePago = (int) ($trazabilidad['pendiente_pago'] ?? 0);
         $produccionFacturada = (float) ($trazabilidad['produccion_facturada'] ?? 0);
-
-        $programacion = $this->getProgramacionKpis($start, $end, '', '', $sedeFilter);
-        $programadas = (int) ($programacion['programadas'] ?? 0);
 
         $porMes = $this->getCirugiasPorMes($start, $end, '', '', $sedeFilter);
         $labels = $porMes['labels'] ?? [];
