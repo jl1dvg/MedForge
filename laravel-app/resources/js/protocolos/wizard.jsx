@@ -365,8 +365,8 @@ function StepKardex({ data, patch, onAI }) {
                 <td><select className="cell-inp" value={m.medicamento} onChange={(e) => set(i, 'medicamento', e.target.value)}>{medOptions.map((x) => <option key={x} value={x}>{x}</option>)}</select></td>
                 <td><input className="cell-inp" value={m.dosis} onChange={(e) => set(i, 'dosis', e.target.value)} placeholder="1 gota" /></td>
                 <td><input className="cell-inp" value={m.frecuencia} onChange={(e) => set(i, 'frecuencia', e.target.value)} placeholder="c/8 h" /></td>
-                <td><select className="cell-inp" value={m.via} onChange={(e) => set(i, 'via', e.target.value)}>{viaOptions.map((x) => <option key={x}>{x}</option>)}</select></td>
-                <td><select className="cell-inp" value={m.responsable} onChange={(e) => set(i, 'responsable', e.target.value)}>{respOptions.map((x) => <option key={x}>{x}</option>)}</select></td>
+                <td><select className="cell-inp" value={m.via} onChange={(e) => set(i, 'via', e.target.value)}>{viaOptions.map((x) => <option key={x} value={x}>{x}</option>)}</select></td>
+                <td><select className="cell-inp" value={m.responsable} onChange={(e) => set(i, 'responsable', e.target.value)}>{respOptions.map((x) => <option key={x} value={x}>{x}</option>)}</select></td>
                 <td><button className="row-x" onClick={() => del(i)}><i className="mdi mdi-close"></i></button></td>
               </tr>
             );
@@ -411,8 +411,8 @@ function StepInsumos({ data, patch, onAI }) {
             const nombreOptions = ensureOption((insumosDisponibles[it.categoria] || []).map((n) => n.nombre), it.nombre);
             return (
               <tr key={it._id || i} style={bg ? { background: bg } : null}>
-                <td><select className="cell-inp" value={it.categoria} onChange={(e) => set(i, 'categoria', e.target.value)}>{catOptions.map((c) => <option key={c}>{c}</option>)}</select></td>
-                <td><select className="cell-inp" value={it.nombre} onChange={(e) => set(i, 'nombre', e.target.value)}><option value="">Seleccionar…</option>{nombreOptions.map((n) => <option key={n}>{n}</option>)}</select></td>
+                <td><select className="cell-inp" value={it.categoria} onChange={(e) => set(i, 'categoria', e.target.value)}>{catOptions.map((c) => <option key={c} value={c}>{c}</option>)}</select></td>
+                <td><select className="cell-inp" value={it.nombre} onChange={(e) => set(i, 'nombre', e.target.value)}><option value="">Seleccionar…</option>{nombreOptions.map((n) => <option key={n} value={n}>{n}</option>)}</select></td>
                 <td><input className="cell-inp" type="number" min="1" value={it.cantidad} onChange={(e) => set(i, 'cantidad', e.target.value)} /></td>
                 <td><button className="row-x" onClick={() => del(i)}><i className="mdi mdi-close"></i></button></td>
               </tr>
