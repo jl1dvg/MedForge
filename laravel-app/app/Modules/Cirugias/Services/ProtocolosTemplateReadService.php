@@ -96,12 +96,34 @@ class ProtocolosTemplateReadService
 
         $decoded = !empty($row['medicamentos']) ? (json_decode((string) $row['medicamentos'], true) ?: []) : [];
 
-        // El editor legacy guardaba la vía como "via_administracion"; el wizard nuevo usa "via".
-        return array_values(array_map(static function (array $m): array {
+        $porId = [];
+        $porNombreNormalizado = [];
+        foreach ($this->obtenerOpcionesMedicamentos() as $opcion) {
+            $porId[(string) $opcion['id']] = (string) $opcion['medicamento'];
+            $key = $this->normalizarEspacios((string) $opcion['medicamento']);
+            if (!isset($porNombreNormalizado[$key])) {
+                $porNombreNormalizado[$key] = (string) $opcion['medicamento'];
+            }
+        }
+
+        $out = [];
+        foreach (array_filter($decoded, 'is_array') as $m) {
+            // El editor legacy guardaba la vía como "via_administracion"; el wizard nuevo usa "via".
             $m['via'] = (string) ($m['via'] ?? $m['via_administracion'] ?? '');
             unset($m['via_administracion']);
-            return $m;
-        }, array_filter($decoded, 'is_array')));
+
+            $nombreCrudo = (string) ($m['medicamento'] ?? '');
+            $idCrudo = isset($m['id']) ? (string) $m['id'] : null;
+            if ($idCrudo !== null && isset($porId[$idCrudo])) {
+                $m['medicamento'] = $porId[$idCrudo];
+            } elseif ($nombreCrudo !== '' && isset($porNombreNormalizado[$this->normalizarEspacios($nombreCrudo)])) {
+                $m['medicamento'] = $porNombreNormalizado[$this->normalizarEspacios($nombreCrudo)];
+            }
+
+            $out[] = $m;
+        }
+
+        return $out;
     }
 
     public function obtenerOpcionesMedicamentos(): array
@@ -124,7 +146,12 @@ class ProtocolosTemplateReadService
     /**
      * Devuelve un arreglo plano [{categoria,nombre,cantidad}, ...]. El editor legacy guardaba
      * un objeto agrupado por categoría (p.ej. {"equipos": [...], "lentes intraoculares": [...]});
-     * aquí se aplana y se intenta calzar cada clave contra una categoría real de `insumos`.
+     * aquí se aplana. Muchos nombres legacy tienen saltos de línea/espacios pegados desde una
+     * carga de datos antigua (p.ej. "BUPIVACAINA\n  (SIN EPINEFRINA)..."), que ya no calzan
+     * ni siquiera consigo mismos en un <select> (el valor implícito de una <option> sin
+     * atributo `value` normaliza espacios). Por eso cada ítem se resuelve contra el catálogo
+     * real por `id` (más confiable) y, si no hay id, por nombre normalizado — así el wizard
+     * muestra y guarda la ortografía canónica en vez de una copia "huérfana" del texto crudo.
      */
     public function obtenerInsumosDeProtocolo(string $id): array
     {
@@ -141,23 +168,35 @@ class ProtocolosTemplateReadService
             return [];
         }
 
+        $catalogo = $this->obtenerInsumosDisponibles();
+        $porId = [];
+        $porNombreNormalizado = [];
+        foreach ($catalogo as $categoria => $items) {
+            foreach ($items as $item) {
+                $entry = ['nombre' => (string) $item['nombre'], 'categoria' => (string) $categoria];
+                $porId[(string) $item['id']] = $entry;
+                $key = $this->normalizarEspacios((string) $item['nombre']);
+                if (!isset($porNombreNormalizado[$key])) {
+                    $porNombreNormalizado[$key] = $entry;
+                }
+            }
+        }
+        $categoriasReales = array_keys($catalogo);
+
+        $out = [];
         if (array_is_list($decoded)) {
-            $out = [];
             foreach ($decoded as $it) {
                 if (!is_array($it)) {
                     continue;
                 }
-                $nombre = (string) ($it['nombre'] ?? '');
-                if ($nombre === '') {
-                    continue;
+                $resolved = $this->resolverInsumo($it, (string) ($it['categoria'] ?? ''), $porId, $porNombreNormalizado);
+                if ($resolved !== null) {
+                    $out[] = $resolved;
                 }
-                $out[] = ['categoria' => (string) ($it['categoria'] ?? ''), 'nombre' => $nombre, 'cantidad' => $it['cantidad'] ?? 1];
             }
             return $out;
         }
 
-        $categoriasReales = array_keys($this->obtenerInsumosDisponibles());
-        $out = [];
         foreach ($decoded as $categoriaLegacy => $items) {
             if (!is_array($items)) {
                 continue;
@@ -167,15 +206,45 @@ class ProtocolosTemplateReadService
                 if (!is_array($it)) {
                     continue;
                 }
-                $nombre = (string) ($it['nombre'] ?? '');
-                if ($nombre === '') {
-                    continue;
+                $resolved = $this->resolverInsumo($it, $categoriaResuelta, $porId, $porNombreNormalizado);
+                if ($resolved !== null) {
+                    $out[] = $resolved;
                 }
-                $out[] = ['categoria' => $categoriaResuelta, 'nombre' => $nombre, 'cantidad' => $it['cantidad'] ?? 1];
             }
         }
 
         return $out;
+    }
+
+    /**
+     * @param array<string, array{nombre: string, categoria: string}> $porId
+     * @param array<string, array{nombre: string, categoria: string}> $porNombreNormalizado
+     * @return array{categoria: string, nombre: string, cantidad: mixed}|null
+     */
+    private function resolverInsumo(array $it, string $categoriaFallback, array $porId, array $porNombreNormalizado): ?array
+    {
+        $nombreCrudo = (string) ($it['nombre'] ?? '');
+        if ($nombreCrudo === '') {
+            return null;
+        }
+        $cantidad = $it['cantidad'] ?? 1;
+
+        $idCrudo = isset($it['id']) ? (string) $it['id'] : null;
+        if ($idCrudo !== null && isset($porId[$idCrudo])) {
+            return ['categoria' => $porId[$idCrudo]['categoria'], 'nombre' => $porId[$idCrudo]['nombre'], 'cantidad' => $cantidad];
+        }
+
+        $key = $this->normalizarEspacios($nombreCrudo);
+        if (isset($porNombreNormalizado[$key])) {
+            return ['categoria' => $porNombreNormalizado[$key]['categoria'], 'nombre' => $porNombreNormalizado[$key]['nombre'], 'cantidad' => $cantidad];
+        }
+
+        return ['categoria' => $categoriaFallback, 'nombre' => $nombreCrudo, 'cantidad' => $cantidad];
+    }
+
+    private function normalizarEspacios(string $s): string
+    {
+        return trim((string) preg_replace('/\s+/u', ' ', $s));
     }
 
     /**
