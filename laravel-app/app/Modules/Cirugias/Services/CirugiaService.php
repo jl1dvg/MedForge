@@ -1298,6 +1298,8 @@ class CirugiaService
 
             if ($ok && $userId) {
                 $evento = $status === 1 ? 'revisado' : 'pendiente';
+                // Solo protocolo_auditoria: acción interna de auditor en MedForge.
+                // protocolo_huellas es exclusivo de eventos desde CIVE Extension/SigCenter.
                 $this->registrarAuditoriaGuardado(
                     $protocoloId,
                     $formId,
@@ -1306,7 +1308,6 @@ class CirugiaService
                     $userId,
                     $evento
                 );
-                $this->registrarHuella($protocoloId, $userId, $evento);
             }
 
             $this->db->commit();

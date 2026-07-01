@@ -49,6 +49,17 @@ class ProtocoloHuellaTest extends TestCase
             $table->dateTime('creado_en');
         });
 
+        Schema::create('protocolo_data', function ($table) {
+            $table->increments('id');
+            $table->string('form_id')->unique();
+            $table->string('hc_number');
+            $table->integer('status')->default(0);
+            $table->integer('version')->default(0);
+            $table->unsignedInteger('protocolo_firmado_por')->nullable();
+            $table->dateTime('fecha_firma')->nullable();
+            $table->timestamps();
+        });
+
         $this->service = new CirugiaService(DB::connection()->getPdo());
     }
 
@@ -56,6 +67,7 @@ class ProtocoloHuellaTest extends TestCase
     {
         Schema::dropIfExists('protocolo_huellas');
         Schema::dropIfExists('protocolo_auditoria');
+        Schema::dropIfExists('protocolo_data');
         Schema::dropIfExists('users');
 
         parent::tearDown();
@@ -179,6 +191,100 @@ class ProtocoloHuellaTest extends TestCase
         );
 
         $this->assertEquals('tecnico1', $ultimoEditor->username, 'El último editor debe ser tecnico1.');
+    }
+
+    // -------------------------------------------------------------------------
+    // Helpers para actualizarStatus
+    // -------------------------------------------------------------------------
+
+    private function crearProtocolo(string $formId = 'FORM-STATUS-01', string $hcNumber = 'HC-001', int $status = 0): void
+    {
+        DB::table('protocolo_data')->insert([
+            'form_id'   => $formId,
+            'hc_number' => $hcNumber,
+            'status'    => $status,
+            'version'   => 0,
+        ]);
+    }
+
+    private function auditoriasPara(string $formId): \Illuminate\Support\Collection
+    {
+        return collect(DB::select(
+            'SELECT * FROM protocolo_auditoria WHERE form_id = ?',
+            [$formId]
+        ));
+    }
+
+    // -------------------------------------------------------------------------
+    // Caso de separación: actualizarStatus escribe en protocolo_auditoria
+    // -------------------------------------------------------------------------
+
+    public function test_actualizar_status_registra_protocolo_auditoria(): void
+    {
+        $formId   = 'FORM-AUD-01';
+        $hcNumber = 'HC-AUD-01';
+        $user     = $this->crearUsuario('auditor1');
+
+        $this->crearProtocolo($formId, $hcNumber, 0);
+
+        $ok = $this->service->actualizarStatus($formId, $hcNumber, 1, (int) $user->id);
+
+        $this->assertTrue($ok, 'actualizarStatus debe retornar true.');
+
+        $auditorias = $this->auditoriasPara($formId);
+        $this->assertCount(1, $auditorias, 'Debe existir 1 registro en protocolo_auditoria.');
+
+        $auditoria = $auditorias->first();
+        $this->assertEquals($formId,        $auditoria->form_id);
+        $this->assertEquals($hcNumber,      $auditoria->hc_number);
+        $this->assertEquals('revisado',     $auditoria->evento);
+        $this->assertEquals(1,              (int) $auditoria->status);
+        $this->assertEquals((int) $user->id, (int) $auditoria->usuario_id);
+    }
+
+    // -------------------------------------------------------------------------
+    // Caso de separación: actualizarStatus NO escribe en protocolo_huellas
+    // -------------------------------------------------------------------------
+
+    public function test_actualizar_status_no_registra_protocolo_huellas(): void
+    {
+        $formId   = 'FORM-AUD-02';
+        $hcNumber = 'HC-AUD-02';
+        $user     = $this->crearUsuario('auditor2');
+
+        $this->crearProtocolo($formId, $hcNumber, 0);
+
+        $this->service->actualizarStatus($formId, $hcNumber, 1, (int) $user->id);
+
+        $huellas = $this->huellasPara(
+            (int) DB::table('protocolo_data')->where('form_id', $formId)->value('id')
+        );
+
+        $this->assertCount(0, $huellas, 'actualizarStatus NO debe escribir en protocolo_huellas.');
+    }
+
+    // -------------------------------------------------------------------------
+    // Caso de separación: registrarHuella sigue escribiendo en protocolo_huellas
+    //   (simula el flujo de guardado desde la extensión CIVE)
+    // -------------------------------------------------------------------------
+
+    public function test_extension_guardado_registra_protocolo_huellas(): void
+    {
+        $user = $this->crearUsuario('cive_extension_user');
+
+        $this->callRegistrarHuella(200, (int) $user->id, 'guardado');
+
+        $huellas = $this->huellasPara(200);
+        $this->assertCount(1, $huellas, 'El flujo de extensión debe registrar 1 huella.');
+        $this->assertEquals('guardado', $huellas->first()->evento);
+        $this->assertEquals((int) $user->id, (int) $huellas->first()->usuario_id);
+
+        // Además, ese flujo de extensión NO debe tocar protocolo_auditoria
+        $this->assertCount(
+            0,
+            collect(DB::select('SELECT * FROM protocolo_auditoria WHERE usuario_id = ?', [(int) $user->id])),
+            'registrarHuella (extensión) no debe escribir en protocolo_auditoria.'
+        );
     }
 
     // -------------------------------------------------------------------------
