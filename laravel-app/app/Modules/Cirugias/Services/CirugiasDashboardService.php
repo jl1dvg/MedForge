@@ -1952,6 +1952,137 @@ class CirugiasDashboardService
         return array_intersect($solicitudLados, $protocoloLados) !== [];
     }
 
+    /**
+     * Consolida en UN solo escaneo de protocolo_data lo que antes requería 6 queries
+     * separadas (getCirugiasPorMes, getTopProcedimientos, getTopCirujanos,
+     * getCirugiasPorConvenio, getTatRevisionProtocolos, getDuracionPromedioMinutos)
+     * cuando afiliacionFilter y afiliacionCategoriaFilter están vacíos, como siempre
+     * ocurre en buildReportPayload().
+     *
+     * @return array{
+     *     porMes: array{labels: array<int,string>, totals: array<int,int>},
+     *     topProcedimientos: array{labels: array<int,string>, totals: array<int,int>},
+     *     topCirujanos: array{labels: array<int,string>, totals: array<int,int>},
+     *     porConvenio: array{labels: array<int,string>, totals: array<int,int>},
+     *     duracionProm: float,
+     *     tat: array{muestra:int, tat_promedio_horas:?float, tat_mediana_horas:?float, tat_p90_horas:?float}
+     * }
+     */
+    private function fetchReportProtocoloAggregates(
+        string $start,
+        string $end,
+        string $sedeFilter = ''
+    ): array {
+        $sedeFilterValue = $this->normalizeSedeFilter($sedeFilter);
+        $sedeExpr = $this->sedeExpr('pp');
+        $categoriaContext = $this->resolveAfiliacionCategoriaContext("COALESCE(p.afiliacion, '')", 'acm');
+        $afiliacionLabelExpr = $this->afiliacionLabelExpr('p', 'acm');
+        $hasFechaFirma = $this->columnExists('protocolo_data', 'fecha_firma');
+
+        $sql = "SELECT
+                    pr.fecha_inicio,
+                    pr.fecha_fin,
+                    pr.hora_inicio,
+                    pr.hora_fin,
+                    pr.status,
+                    " . ($hasFechaFirma ? 'pr.fecha_firma' : 'NULL AS fecha_firma') . ",
+                    NULLIF(TRIM(COALESCE(pr.membrete, '')), '') AS procedimiento,
+                    NULLIF(TRIM(COALESCE(pr.cirujano_1, '')), '') AS cirujano,
+                    {$afiliacionLabelExpr} AS convenio
+                FROM protocolo_data pr
+                LEFT JOIN patient_data p
+                    ON CONVERT(p.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                     = CONVERT(pr.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                LEFT JOIN procedimiento_proyectado pp
+                    ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number AND COALESCE(pp.sigcenter_present, 1) = 1
+                {$categoriaContext['join']}
+                WHERE pr.fecha_inicio BETWEEN :inicio AND :fin
+                  AND (:sede_filter = '' OR {$sedeExpr} = :sede_filter_match)";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([
+            ':inicio' => $start,
+            ':fin' => $end,
+            ':sede_filter' => $sedeFilterValue,
+            ':sede_filter_match' => $sedeFilterValue,
+        ]);
+
+        $porMesCounts = [];
+        $procedimientoCounts = [];
+        $cirujanoCounts = [];
+        $convenioCounts = [];
+        $duracionAcumulada = 0.0;
+        $duracionMuestra = 0;
+        $tatHoras = [];
+
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $mes = substr((string) ($row['fecha_inicio'] ?? ''), 0, 7);
+            if ($mes !== '') {
+                $porMesCounts[$mes] = ($porMesCounts[$mes] ?? 0) + 1;
+            }
+
+            $procedimiento = $row['procedimiento'] ?: 'Sin membrete';
+            $procedimientoCounts[$procedimiento] = ($procedimientoCounts[$procedimiento] ?? 0) + 1;
+
+            $cirujano = $row['cirujano'] ?: 'Sin asignar';
+            $cirujanoCounts[$cirujano] = ($cirujanoCounts[$cirujano] ?? 0) + 1;
+
+            $convenio = $row['convenio'] ?: 'Sin convenio';
+            $convenioCounts[$convenio] = ($convenioCounts[$convenio] ?? 0) + 1;
+
+            $horaInicio = $this->normalizeTime((string) ($row['hora_inicio'] ?? ''));
+            $horaFin = $this->normalizeTime((string) ($row['hora_fin'] ?? ''));
+            if ($horaInicio !== null && $horaFin !== null) {
+                $inicioTs = strtotime('1970-01-01 ' . $horaInicio);
+                $finTs = strtotime('1970-01-01 ' . $horaFin);
+                if ($inicioTs !== false && $finTs !== false) {
+                    $duracionAcumulada += ($finTs - $inicioTs) / 60;
+                    $duracionMuestra++;
+                }
+            }
+
+            if ($hasFechaFirma && (int) ($row['status'] ?? 0) === 1) {
+                $fechaFirma = trim((string) ($row['fecha_firma'] ?? ''));
+                if ($fechaFirma !== '') {
+                    $inicioTs = $this->resolveInicioCirugiaTimestamp($row);
+                    $firmaTs = $this->parseTimestamp($fechaFirma);
+                    if ($inicioTs !== null && $firmaTs !== null && $firmaTs >= $inicioTs) {
+                        $tatHoras[] = ($firmaTs - $inicioTs) / 3600;
+                    }
+                }
+            }
+        }
+
+        ksort($porMesCounts);
+        arsort($procedimientoCounts);
+        arsort($cirujanoCounts);
+        arsort($convenioCounts);
+
+        $tat = $tatHoras === []
+            ? ['muestra' => 0, 'tat_promedio_horas' => null, 'tat_mediana_horas' => null, 'tat_p90_horas' => null]
+            : [
+                'muestra' => count($tatHoras),
+                'tat_promedio_horas' => round(array_sum($tatHoras) / count($tatHoras), 2),
+                'tat_mediana_horas' => round((float) $this->calculatePercentile($tatHoras, 0.50), 2),
+                'tat_p90_horas' => round((float) $this->calculatePercentile($tatHoras, 0.90), 2),
+            ];
+
+        return [
+            'porMes' => ['labels' => array_keys($porMesCounts), 'totals' => array_values($porMesCounts)],
+            'topProcedimientos' => [
+                'labels' => array_keys(array_slice($procedimientoCounts, 0, 10, true)),
+                'totals' => array_values(array_slice($procedimientoCounts, 0, 10, true)),
+            ],
+            'topCirujanos' => [
+                'labels' => array_keys(array_slice($cirujanoCounts, 0, 10, true)),
+                'totals' => array_values(array_slice($cirujanoCounts, 0, 10, true)),
+            ],
+            'porConvenio' => ['labels' => array_keys($convenioCounts), 'totals' => array_values($convenioCounts)],
+            'duracionProm' => $duracionMuestra > 0 ? round($duracionAcumulada / $duracionMuestra, 2) : 0.0,
+            'tat' => $tat,
+        ];
+    }
+
     public function buildReportPayload(
         string $start,
         string $end,
@@ -1967,9 +2098,10 @@ class CirugiasDashboardService
         $pendientePago = (int) ($trazabilidad['pendiente_pago'] ?? 0);
         $produccionFacturada = (float) ($trazabilidad['produccion_facturada'] ?? 0);
 
-        $porMes = $this->getCirugiasPorMes($start, $end, '', '', $sedeFilter);
-        $labels = $porMes['labels'] ?? [];
-        $totalsArr = $porMes['totals'] ?? [];
+        $agg = $this->fetchReportProtocoloAggregates($start, $end, $sedeFilter);
+
+        $labels = $agg['porMes']['labels'];
+        $totalsArr = $agg['porMes']['totals'];
         $produccionMensual = [];
         foreach ($labels as $i => $lbl) {
             $produccionMensual[] = [
@@ -1979,20 +2111,14 @@ class CirugiasDashboardService
             ];
         }
 
-        $topProc = $this->getTopProcedimientos($start, $end, 10, '', '', $sedeFilter);
-        $topProcLabels = $topProc['labels'] ?? [];
-        $topProcTotals = $topProc['totals'] ?? [];
         $topProcItems = [];
-        foreach ($topProcLabels as $i => $lbl) {
-            $topProcItems[] = ['label' => $lbl, 'total' => $topProcTotals[$i] ?? 0];
+        foreach ($agg['topProcedimientos']['labels'] as $i => $lbl) {
+            $topProcItems[] = ['label' => $lbl, 'total' => $agg['topProcedimientos']['totals'][$i] ?? 0];
         }
 
-        $topCir = $this->getTopCirujanos($start, $end, 10, '', '', $sedeFilter);
-        $topCirLabels = $topCir['labels'] ?? [];
-        $topCirTotals = $topCir['totals'] ?? [];
         $topCirItems = [];
-        foreach ($topCirLabels as $i => $lbl) {
-            $topCirItems[] = ['name' => $lbl, 'realizadas' => $topCirTotals[$i] ?? 0];
+        foreach ($agg['topCirujanos']['labels'] as $i => $lbl) {
+            $topCirItems[] = ['name' => $lbl, 'realizadas' => $agg['topCirujanos']['totals'][$i] ?? 0];
         }
 
         $topSol = $this->getTopDoctoresSolicitudesRealizadas($start, $end, 10, '', '', $sedeFilter);
@@ -2003,16 +2129,13 @@ class CirugiasDashboardService
             $topSolItems[] = ['name' => $lbl, 'total' => $topSolTotals[$i] ?? 0];
         }
 
-        $convenio = $this->getCirugiasPorConvenio($start, $end, '', '', $sedeFilter);
-        $convLabels = $convenio['labels'] ?? [];
-        $convTotals = $convenio['totals'] ?? [];
         $convenioItems = [];
-        foreach ($convLabels as $i => $lbl) {
-            $convenioItems[] = ['label' => $lbl, 'total' => $convTotals[$i] ?? 0];
+        foreach ($agg['porConvenio']['labels'] as $i => $lbl) {
+            $convenioItems[] = ['label' => $lbl, 'total' => $agg['porConvenio']['totals'][$i] ?? 0];
         }
 
-        $tatData   = $this->getTatRevisionProtocolos($start, $end, '', '', $sedeFilter);
-        $duracion  = $this->getDuracionPromedioMinutos($start, $end, '', '', $sedeFilter);
+        $tatData   = $agg['tat'];
+        $duracion  = $agg['duracionProm'];
         $reingreso = $this->getReingresoMismoDiagnostico($start, $end);
 
         $trazabilidadDonut = [
