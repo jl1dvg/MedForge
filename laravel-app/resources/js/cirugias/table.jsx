@@ -75,9 +75,11 @@ function Row({ row, tab, num, selected, onToggle, onVerProtocolo, onRevisar, onP
       ) : (
         <td>
           <AuditPill audit={row.audit} />
-          {row.audit && row.audit.status !== 'ok' && (
-            <div style={{ fontSize: 11.5, color: 'var(--fg-mute)', marginTop: 4 }}>
-              {(row.audit.summary?.error || 0) > 0 ? `${row.audit.summary.error} alerta(s) · ` : ''}{row.audit.summary?.warning || 0} advertencia(s)
+          {row.audit && ((row.audit.summary?.error || 0) + (row.audit.summary?.warning || 0)) > 0 && (
+            <div style={{ fontSize: 11.5, color: 'var(--fg-mute)', marginTop: 4, whiteSpace: 'nowrap' }}>
+              {(row.audit.summary?.error || 0) > 0 && `${row.audit.summary.error} alerta(s)`}
+              {(row.audit.summary?.error || 0) > 0 && (row.audit.summary?.warning || 0) > 0 && ' · '}
+              {(row.audit.summary?.warning || 0) > 0 && `${row.audit.summary.warning} advert.`}
             </div>
           )}
         </td>
