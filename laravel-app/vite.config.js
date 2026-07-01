@@ -50,6 +50,7 @@ export default defineConfig({
                 'resources/js/v2/reportes-v2/whatsapp/app.tsx',
                 'resources/js/pharmacy/main.tsx',
                 'resources/js/whatsapp/flowmaker-v3/main.jsx',
+                'resources/js/control-center/main.jsx',
             ],
             refresh: true,
         }),

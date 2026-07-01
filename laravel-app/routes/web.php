@@ -76,6 +76,8 @@ Route::middleware(['app.auth'])->group(function (): void {
     Route::post('/feedback/api/report', [FeedbackWriteController::class, 'store']);
 });
 
+require __DIR__ . '/v2/control_center.php';
+
 Route::middleware(['app.auth', 'app.permission:administrativo,settings.manage,settings.view'])->group(function (): void {
     Route::get('/v2/feedback', [FeedbackUiController::class, 'index']);
     Route::post('/v2/feedback/{id}/status', [FeedbackUiController::class, 'updateStatus'])->whereNumber('id');

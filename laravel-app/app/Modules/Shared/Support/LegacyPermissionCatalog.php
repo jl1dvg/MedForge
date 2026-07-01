@@ -36,6 +36,12 @@ class LegacyPermissionCatalog
         'examenes.manage' => ['examenes.view', 'examenes.checklist.override'],
         'billing.manage' => ['billing.view', 'billing.no_facturados.view', 'billing.no_facturados.create', 'billing.dashboard.view', 'billing.honorarios.view', 'billing.iess.view', 'billing.isspol.view', 'billing.issfa.view', 'billing.msp.view', 'billing.particulares.view', 'billing.export', 'billing.delete', 'billing.scrape'],
         'billing.no_facturados.create' => ['billing.no_facturados.view'],
+        'control_center.clients.manage' => ['control_center.view'],
+        'control_center.state.manage' => ['control_center.view'],
+        'control_center.features.manage' => ['control_center.view'],
+        'control_center.licenses.manage' => ['control_center.view'],
+        'control_center.deployments.manage' => ['control_center.view'],
+        'control_center.audit.view' => ['control_center.view'],
     ];
 
     /**
@@ -151,6 +157,15 @@ class LegacyPermissionCatalog
                 'settings.manage' => 'Configuración - Modificar',
                 'codes.view' => 'Codificación - Ver',
                 'codes.manage' => 'Codificación - Modificar',
+            ],
+            'Control Center' => [
+                'control_center.view' => 'Control Center - Ver consola',
+                'control_center.clients.manage' => 'Control Center - Gestionar clientes',
+                'control_center.state.manage' => 'Control Center - Cambiar estado operativo',
+                'control_center.features.manage' => 'Control Center - Gestionar feature flags',
+                'control_center.licenses.manage' => 'Control Center - Gestionar licencias y planes',
+                'control_center.deployments.manage' => 'Control Center - Gestionar deploys y versiones',
+                'control_center.audit.view' => 'Control Center - Ver auditoría',
             ],
             'Compatibilidad' => [
                 'administrativo' => 'Rol administrativo (compatibilidad)',
