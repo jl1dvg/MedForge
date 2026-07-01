@@ -18,7 +18,7 @@ return [
 
     'message' => env(
         'MEDFORGE_BANNER_MESSAGE',
-        'MedForge estará operativo hasta el 14 de julio. Desde el 15 de julio hasta el 31 de julio el sistema permanecerá disponible únicamente en modo solo lectura.'
+        'MedForge estará operativo hasta el 17 de julio. Desde el 18 de julio hasta el 31 de julio el sistema permanecerá disponible únicamente en modo solo lectura.'
     ),
 
 ];
