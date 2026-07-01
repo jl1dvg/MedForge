@@ -733,20 +733,51 @@ function StepProcedimiento({ form, set, setForm, showToast, scraped, setScraped,
 }
 
 // ---- Step 3: Staff ----------------------------------------------
+// Normalize a string for fuzzy matching (remove accents, lowercase, collapse spaces)
+function normStr(s) {
+  return (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+}
+
 function StepStaff({ form, setStaff, staffOptions }) {
   const optionsByRole = useMemo(() => {
     const cache = {};
     return (k) => {
       const groupKey = STAFF_ROLE_KEY[k];
       if (cache[groupKey]) return cache[groupKey];
-      const list = (staffOptions[groupKey] || []).map((u) => ({ value: u.nombre, label: u.nombre }));
+      const list = (staffOptions[groupKey] || []).map((u) => ({
+        value: u.nombre,
+        label: u.nombre,
+        nombre_norm: u.nombre_norm || normStr(u.nombre),
+        nombre_norm_rev: u.nombre_norm_rev || '',
+      }));
       cache[groupKey] = list;
       return list;
     };
   }, [staffOptions]);
 
+  // Resolve saved name to the matching option (handles accent/case mismatches)
+  const resolveValue = (savedName, opts) => {
+    if (!savedName) return null;
+    const exact = opts.find((o) => o.value === savedName);
+    if (exact) return exact;
+    const norm = normStr(savedName);
+    const match = opts.find((o) => o.nombre_norm === norm || o.nombre_norm_rev === norm
+      || normStr(o.value) === norm);
+    return match || { value: savedName, label: savedName, nombre_norm: norm, nombre_norm_rev: '' };
+  };
+
+  // Filter by normalized name (forward and reverse)
+  const filterOption = (option, input) => {
+    if (!input) return true;
+    const q = normStr(input);
+    return option.data.nombre_norm.includes(q) || option.data.nombre_norm_rev.includes(q)
+      || normStr(option.data.label).includes(q);
+  };
+
   const Sel = ({ label, k, req }) => {
-    const value = form.staff[k] || '';
+    const savedName = form.staff[k] || '';
+    const opts = optionsByRole(k);
+    const value = resolveValue(savedName, opts);
     return (
       <div className="form-row">
         <label>{label} {req && <span style={{ color: 'var(--danger)' }}>*</span>}</label>
@@ -755,8 +786,9 @@ function StepStaff({ form, setStaff, staffOptions }) {
           isClearable
           placeholder="Buscar profesional..."
           noOptionsMessage={() => 'Sin resultados'}
-          options={optionsByRole(k)}
-          value={value ? { value, label: value } : null}
+          options={opts}
+          value={value}
+          filterOption={filterOption}
           onChange={(opt) => setStaff(k, opt ? opt.value : '')}
         />
       </div>

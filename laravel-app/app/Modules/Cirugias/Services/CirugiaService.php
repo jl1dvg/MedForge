@@ -421,7 +421,8 @@ class CirugiaService
         $result = ['cirujanos' => [], 'anestesiologos' => [], 'asistentes' => []];
 
         $stmt = $this->db->prepare(
-            "SELECT id, nombre, especialidad
+            "SELECT id, nombre, TRIM(COALESCE(nombre_norm, '')) AS nombre_norm,
+                    TRIM(COALESCE(nombre_norm_rev, '')) AS nombre_norm_rev, especialidad
                FROM users
               WHERE especialidad IN ('Cirujano Oftalmólogo', 'Anestesiologo', 'Asistente')
               ORDER BY especialidad, nombre"
@@ -438,8 +439,10 @@ class CirugiaService
             $key = $map[(string) ($row['especialidad'] ?? '')] ?? null;
             if ($key === null) continue;
             $result[$key][] = [
-                'id'     => (int) ($row['id'] ?? 0),
-                'nombre' => (string) ($row['nombre'] ?? ''),
+                'id'          => (int) ($row['id'] ?? 0),
+                'nombre'      => (string) ($row['nombre'] ?? ''),
+                'nombre_norm' => (string) ($row['nombre_norm'] ?? ''),
+                'nombre_norm_rev' => (string) ($row['nombre_norm_rev'] ?? ''),
             ];
         }
 
