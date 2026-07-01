@@ -146,18 +146,22 @@ class CirugiasReadController
 
         $procedimientosRaw = json_decode((string) ($cirugia->procedimientos ?? '[]'), true) ?: [];
         $procedimientos = array_map(static function (array $p): array {
-            $codigo = '';
-            $nombre = '';
-            $codigoStr = (string) ($p['codigo'] ?? $p['procInterno'] ?? '');
+            // Prefer direct 'codigo'/'nombre' keys (React wizard format).
+            // Fall back to parsing 'procInterno' for legacy records ("LABEL - CODE - Nombre").
+            $codigo = trim((string) ($p['codigo'] ?? ''));
+            $nombre = trim((string) ($p['nombre'] ?? ''));
 
-            if ($codigoStr !== '') {
-                if (preg_match('/-\s*(\d+)\s*-\s*(.*)/', $codigoStr, $match)) {
-                    $codigo = trim((string) ($match[1] ?? ''));
-                    $nombre = trim((string) ($match[2] ?? ''));
-                } else {
-                    $partes = explode(' - ', $codigoStr, 3);
-                    $codigo = trim((string) ($partes[1] ?? ''));
-                    $nombre = trim((string) ($partes[2] ?? ''));
+            if ($codigo === '' && $nombre === '') {
+                $codigoStr = (string) ($p['procInterno'] ?? '');
+                if ($codigoStr !== '') {
+                    if (preg_match('/-\s*(\d+)\s*-\s*(.*)/', $codigoStr, $match)) {
+                        $codigo = trim((string) ($match[1] ?? ''));
+                        $nombre = trim((string) ($match[2] ?? ''));
+                    } else {
+                        $partes = explode(' - ', $codigoStr, 3);
+                        $codigo = trim((string) ($partes[1] ?? ''));
+                        $nombre = trim((string) ($partes[2] ?? ''));
+                    }
                 }
             }
 
