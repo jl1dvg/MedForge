@@ -407,6 +407,12 @@ class ControlCenterMvpTest extends TestCase
             ->assertJsonPath('data.instance.current_version', '2026.07.1')
             ->assertJsonPath('data.telemetry_status', 'degraded');
 
+        $instance = DB::table('control_center_instances')->where('id', 1)->first();
+        $this->assertNotNull($instance->last_seen_at);
+        $this->assertNotNull($instance->last_activity_at);
+        $this->assertSame('degraded', $instance->telemetry_status);
+        $this->assertSame('2026.07.1', $instance->current_version);
+
         $this->assertDatabaseHas('control_center_service_snapshots', [
             'instance_id' => 1,
             'state' => 'degraded',
