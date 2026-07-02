@@ -480,6 +480,44 @@ class ControlCenterMvpTest extends TestCase
         ])->assertUnauthorized();
     }
 
+    public function test_telemetry_debug_headers_route_only_responds_when_app_debug_is_true(): void
+    {
+        config(['app.debug' => false]);
+
+        $this->postJson('/v2/control-center/telemetry/debug-headers', [
+            'instance_slug' => 'cive-staging',
+        ], [
+            'Authorization' => 'Bearer mfcc_test_cive_staging_20260701',
+        ])->assertNotFound();
+    }
+
+    public function test_telemetry_debug_headers_detects_bearer_without_exposing_full_token(): void
+    {
+        config(['app.debug' => true]);
+
+        $response = $this->postJson('/v2/control-center/telemetry/debug-headers', [
+            'instance_slug' => 'cive-staging',
+            'checked_at' => '2026-07-01T10:05:00Z',
+        ], [
+            'Authorization' => 'Bearer mfcc_test_cive_staging_20260701',
+            'Accept' => 'application/json',
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.has_authorization_header', true)
+            ->assertJsonPath('data.authorization_prefix', 'Bearer mfcc_tes...')
+            ->assertJsonPath('data.bearer_token_present', true)
+            ->assertJsonPath('data.bearer_token_prefix', 'mfcc_tes...')
+            ->assertJsonPath('data.accept', 'application/json')
+            ->assertJsonPath('data.payload_keys.0', 'instance_slug')
+            ->assertJsonPath('data.payload_keys.1', 'checked_at');
+
+        $this->assertStringNotContainsString('mfcc_test_cive_staging_20260701', $response->getContent());
+        $this->assertDatabaseMissing('control_center_audit_logs', [
+            'action' => 'telemetry.heartbeat',
+        ]);
+    }
+
     public function test_signed_telemetry_logs_debug_diagnostics_before_invalid_token_abort(): void
     {
         config(['app.debug' => true]);

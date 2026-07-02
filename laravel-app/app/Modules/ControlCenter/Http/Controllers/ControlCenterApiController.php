@@ -119,6 +119,27 @@ class ControlCenterApiController
         return response()->json(['ok' => true, 'data' => $this->service->recordTelemetryHeartbeat($request)]);
     }
 
+    public function telemetryDebugHeaders(Request $request): JsonResponse
+    {
+        abort_unless((bool) config('app.debug'), 404);
+
+        $authorization = (string) $request->header('Authorization', '');
+        $bearerToken = (string) ($request->bearerToken() ?? '');
+
+        return response()->json([
+            'ok' => true,
+            'data' => [
+                'has_authorization_header' => $authorization !== '',
+                'authorization_prefix' => $this->maskAuthorizationPrefix($authorization),
+                'bearer_token_present' => $bearerToken !== '',
+                'bearer_token_prefix' => $this->maskTokenPrefix($bearerToken),
+                'content_type' => $request->header('Content-Type'),
+                'accept' => $request->header('Accept'),
+                'payload_keys' => array_values(array_keys($request->all())),
+            ],
+        ]);
+    }
+
     public function changeState(int $id, Request $request): JsonResponse
     {
         return response()->json(['ok' => true, 'data' => $this->service->changeState($id, $request)]);
@@ -161,5 +182,29 @@ class ControlCenterApiController
         $limit = min(max($request->integer('limit', 50), 1), 100);
 
         return response()->json(['ok' => true, 'data' => ['audit' => $this->service->audit($organizationId, $instanceId, $limit)]]);
+    }
+
+    private function maskAuthorizationPrefix(string $authorization): ?string
+    {
+        if ($authorization === '') {
+            return null;
+        }
+
+        $prefix = 'Bearer ';
+        if (str_starts_with($authorization, $prefix)) {
+            return $prefix . $this->maskTokenPrefix(substr($authorization, strlen($prefix)));
+        }
+
+        return substr($authorization, 0, 16) . '...';
+    }
+
+    private function maskTokenPrefix(string $token): ?string
+    {
+        $token = trim($token);
+        if ($token === '') {
+            return null;
+        }
+
+        return substr($token, 0, 8) . '...';
     }
 }
