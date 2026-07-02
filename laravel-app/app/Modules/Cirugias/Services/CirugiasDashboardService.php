@@ -73,6 +73,32 @@ class CirugiasDashboardService
         return $timings;
     }
 
+    /**
+     * TEMP-DIAG: captura el SQL final (post str_replace de placeholders) y
+     * los bindings realmente usados por getTopDoctoresSolicitudesRealizadas()
+     * — exactamente lo que se manda a PDO, sin reconstruir nada a mano.
+     * Apagado por defecto; no cambia el $stmt ni la ejecución real. Eliminar
+     * junto con el resto de la instrumentación TEMP-DIAG.
+     */
+    private static bool $diagCaptureEnabled = false;
+
+    /** @var array{sql:string,bindings:array<string,mixed>}|null */
+    private static ?array $diagCapturedQuery = null;
+
+    /** TEMP-DIAG */
+    public static function enableDiagCapture(): void
+    {
+        self::$diagCaptureEnabled = true;
+    }
+
+    /** TEMP-DIAG */
+    public static function getResetDiagCapturedQuery(): ?array
+    {
+        $captured = self::$diagCapturedQuery;
+        self::$diagCapturedQuery = null;
+        return $captured;
+    }
+
     public function __construct(ConnectionInterface $connection)
     {
         $this->db = $connection->getPdo();
@@ -1332,6 +1358,26 @@ class CirugiasDashboardService
         $stmt->bindValue(':sede_filter', $sedeFilterValue);
         $stmt->bindValue(':sede_filter_match', $sedeFilterValue);
         $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+
+        if (self::$diagCaptureEnabled) { // TEMP-DIAG: copia exacta del SQL final + bindings reales, tal cual se ejecutan abajo
+            self::$diagCapturedQuery = [
+                'sql' => $stmt->queryString,
+                'bindings' => [
+                    ':inicio' => $start,
+                    ':fin' => $end,
+                    ':afiliacion_filter' => $afiliacionFilterValue,
+                    ':afiliacion_filter_match' => $afiliacionFilterValue,
+                    ':afiliacion_categoria_filter' => $afiliacionCategoriaFilterValue,
+                    ':afiliacion_categoria_filter_match' => $afiliacionCategoriaFilterValue,
+                    ':seguro_filter' => $this->seguroFilter,
+                    ':seguro_filter_match' => $this->seguroFilter,
+                    ':sede_filter' => $sedeFilterValue,
+                    ':sede_filter_match' => $sedeFilterValue,
+                    ':limit' => $limit,
+                ],
+            ];
+        }
+
         $stmt->execute();
 
         $labels = [];
