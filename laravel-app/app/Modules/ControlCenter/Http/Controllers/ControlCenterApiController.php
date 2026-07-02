@@ -79,6 +79,11 @@ class ControlCenterApiController
         return response()->json(['ok' => true, 'data' => $this->service->updateInstance($id, $request)]);
     }
 
+    public function rotateTelemetryToken(int $id, Request $request): JsonResponse
+    {
+        return response()->json(['ok' => true, 'data' => $this->service->rotateTelemetryToken($id, $request)]);
+    }
+
     public function createPlan(Request $request): JsonResponse
     {
         return response()->json(['ok' => true, 'data' => $this->service->createPlan($request)], 201);

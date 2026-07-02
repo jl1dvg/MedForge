@@ -302,7 +302,7 @@ class LegacyPermissionCatalog
             return true;
         }
 
-        if (!isset(self::ALIAS_MAP[$permission])) {
+        if (str_starts_with($permission, 'control_center.') || !isset(self::ALIAS_MAP[$permission])) {
             return false;
         }
 
@@ -331,7 +331,7 @@ class LegacyPermissionCatalog
                 return true;
             }
 
-            if (!isset(self::ALIAS_MAP[$permission])) {
+            if (str_starts_with($permission, 'control_center.') || !isset(self::ALIAS_MAP[$permission])) {
                 continue;
             }
 

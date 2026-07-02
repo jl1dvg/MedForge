@@ -7,12 +7,15 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class ControlCenterService
 {
     public const STATES = ['production', 'maintenance', 'readonly', 'suspended'];
     public const DATA_SOURCES = ['real', 'manual', 'seed', 'telemetry', 'pipeline', 'placeholder', 'pending'];
+    public const INSTANCE_ENVIRONMENTS = ['production', 'staging', 'demo', 'training'];
+    public const RELEASE_CHANNELS = ['stable', 'beta', 'experimental'];
 
     public function __construct(private readonly OperationalStateResolver $stateResolver)
     {
@@ -140,6 +143,13 @@ class ControlCenterService
             'ruc' => ['nullable', 'string', 'max:32'],
             'commercial_name' => ['nullable', 'string', 'max:180'],
             'city' => ['nullable', 'string', 'max:120'],
+            'country' => ['nullable', 'string', 'max:120'],
+            'admin_contact_name' => ['nullable', 'string', 'max:180'],
+            'admin_contact_email' => ['nullable', 'email', 'max:180'],
+            'admin_contact_phone' => ['nullable', 'string', 'max:80'],
+            'technical_contact_name' => ['nullable', 'string', 'max:180'],
+            'technical_contact_email' => ['nullable', 'email', 'max:180'],
+            'internal_notes' => ['nullable', 'string', 'max:4000'],
             'timezone' => ['nullable', 'string', 'max:80'],
             'color' => ['nullable', 'string', 'max:24'],
             'initials' => ['nullable', 'string', 'max:12'],
@@ -159,7 +169,16 @@ class ControlCenterService
             'initials' => $validated['initials'] ?? null,
             'source' => $validated['source'] ?? 'manual',
             'last_verified_at' => $now,
-            'metadata_json' => json_encode(['source' => $validated['source'] ?? 'manual']),
+            'metadata_json' => json_encode($this->metadataFrom($validated, [
+                'source',
+                'country',
+                'admin_contact_name',
+                'admin_contact_email',
+                'admin_contact_phone',
+                'technical_contact_name',
+                'technical_contact_email',
+                'internal_notes',
+            ], ['source' => $validated['source'] ?? 'manual'])),
             'created_at' => $now,
             'updated_at' => $now,
         ]);
@@ -186,6 +205,13 @@ class ControlCenterService
             'ruc' => ['nullable', 'string', 'max:32'],
             'commercial_name' => ['nullable', 'string', 'max:180'],
             'city' => ['nullable', 'string', 'max:120'],
+            'country' => ['nullable', 'string', 'max:120'],
+            'admin_contact_name' => ['nullable', 'string', 'max:180'],
+            'admin_contact_email' => ['nullable', 'email', 'max:180'],
+            'admin_contact_phone' => ['nullable', 'string', 'max:80'],
+            'technical_contact_name' => ['nullable', 'string', 'max:180'],
+            'technical_contact_email' => ['nullable', 'email', 'max:180'],
+            'internal_notes' => ['nullable', 'string', 'max:4000'],
             'timezone' => ['nullable', 'string', 'max:80'],
             'color' => ['nullable', 'string', 'max:24'],
             'initials' => ['nullable', 'string', 'max:12'],
@@ -194,6 +220,16 @@ class ControlCenterService
         $this->assertUniqueSlug('control_center_organizations', $validated['slug'] ?? null, $id);
 
         $updates = $this->onlyProvided($validated, ['slug', 'name', 'legal_name', 'ruc', 'commercial_name', 'city', 'timezone', 'color', 'initials', 'source']);
+        $updates['metadata_json'] = json_encode($this->mergeMetadata($organization, $validated, [
+            'source',
+            'country',
+            'admin_contact_name',
+            'admin_contact_email',
+            'admin_contact_phone',
+            'technical_contact_name',
+            'technical_contact_email',
+            'internal_notes',
+        ]));
         $updates['last_verified_at'] = Carbon::now();
         $updates['updated_at'] = Carbon::now();
 
@@ -216,18 +252,26 @@ class ControlCenterService
             'name' => ['required', 'string', 'max:180'],
             'domain' => ['nullable', 'string', 'max:180', 'unique:control_center_instances,domain'],
             'admin_url' => ['nullable', 'string', 'max:240'],
-            'environment' => ['nullable', 'string', 'max:60'],
+            'environment' => ['nullable', 'string', 'in:' . implode(',', self::INSTANCE_ENVIRONMENTS)],
             'server_label' => ['nullable', 'string', 'max:120'],
             'database_name' => ['nullable', 'string', 'max:120'],
             'database_host' => ['nullable', 'string', 'max:180'],
+            'timezone' => ['nullable', 'string', 'max:80'],
             'status' => ['nullable', 'string', 'in:' . implode(',', self::STATES)],
             'current_version' => ['nullable', 'string', 'max:80'],
-            'release_channel' => ['nullable', 'string', 'max:80'],
+            'release_channel' => ['nullable', 'string', 'in:' . implode(',', self::RELEASE_CHANNELS)],
             'telemetry_token' => ['nullable', 'string', 'max:200'],
+            'generate_telemetry_token' => ['nullable', 'boolean'],
+            'notes' => ['nullable', 'string', 'max:4000'],
             'source' => ['nullable', 'string', 'in:' . implode(',', self::DATA_SOURCES)],
         ]);
 
         $now = Carbon::now();
+        $plainTelemetryToken = $validated['telemetry_token'] ?? null;
+        if (($validated['generate_telemetry_token'] ?? false) && $plainTelemetryToken === null) {
+            $plainTelemetryToken = $this->generateTelemetryToken();
+        }
+        $initialState = $validated['status'] ?? 'production';
         $id = DB::table('control_center_instances')->insertGetId([
             'organization_id' => $validated['organization_id'],
             'slug' => $validated['slug'],
@@ -241,19 +285,25 @@ class ControlCenterService
             'status' => $validated['status'] ?? 'production',
             'current_version' => $validated['current_version'] ?? null,
             'release_channel' => $validated['release_channel'] ?? 'stable',
-            'telemetry_token_hash' => isset($validated['telemetry_token']) ? hash('sha256', $validated['telemetry_token']) : null,
+            'telemetry_token_hash' => $plainTelemetryToken === null ? null : hash('sha256', $plainTelemetryToken),
             'telemetry_status' => 'pending',
             'source' => $validated['source'] ?? 'manual',
             'last_verified_at' => $now,
-            'metadata_json' => json_encode(['source' => $validated['source'] ?? 'manual']),
+            'metadata_json' => json_encode($this->metadataFrom($validated, ['source', 'timezone', 'notes'], ['source' => $validated['source'] ?? 'manual'])),
             'created_at' => $now,
             'updated_at' => $now,
         ]);
 
+        $this->insertOperationalState($id, $initialState, 'Estado inicial de instancia', $request, 'state.initialized');
+
         $instance = $this->instancesQuery()->where('i.id', $id)->first();
         $this->auditLog((int) $validated['organization_id'], $id, 'instance', 'instance.created', 'instance', $id, null, $this->instanceCard($instance), $request);
 
-        return ['instance' => $this->instanceCard($instance)];
+        return array_filter([
+            'instance' => $this->instanceCard($instance),
+            'telemetry_token' => $plainTelemetryToken,
+            'telemetry_token_visible_once' => $plainTelemetryToken !== null,
+        ], fn ($value): bool => $value !== null);
     }
 
     /**
@@ -271,14 +321,16 @@ class ControlCenterService
             'name' => ['sometimes', 'string', 'max:180'],
             'domain' => ['nullable', 'string', 'max:180'],
             'admin_url' => ['nullable', 'string', 'max:240'],
-            'environment' => ['nullable', 'string', 'max:60'],
+            'environment' => ['nullable', 'string', 'in:' . implode(',', self::INSTANCE_ENVIRONMENTS)],
             'server_label' => ['nullable', 'string', 'max:120'],
             'database_name' => ['nullable', 'string', 'max:120'],
             'database_host' => ['nullable', 'string', 'max:180'],
+            'timezone' => ['nullable', 'string', 'max:80'],
             'status' => ['nullable', 'string', 'in:' . implode(',', self::STATES)],
             'current_version' => ['nullable', 'string', 'max:80'],
-            'release_channel' => ['nullable', 'string', 'max:80'],
+            'release_channel' => ['nullable', 'string', 'in:' . implode(',', self::RELEASE_CHANNELS)],
             'telemetry_token' => ['nullable', 'string', 'max:200'],
+            'notes' => ['nullable', 'string', 'max:4000'],
             'source' => ['nullable', 'string', 'in:' . implode(',', self::DATA_SOURCES)],
         ]);
         $this->assertUniqueSlug('control_center_instances', $validated['slug'] ?? null, $id);
@@ -288,16 +340,49 @@ class ControlCenterService
         if (isset($validated['telemetry_token'])) {
             $updates['telemetry_token_hash'] = hash('sha256', $validated['telemetry_token']);
         }
+        $updates['metadata_json'] = json_encode($this->mergeMetadata($instance, $validated, ['source', 'timezone', 'notes']));
         $updates['last_verified_at'] = Carbon::now();
         $updates['updated_at'] = Carbon::now();
 
         DB::table('control_center_instances')->where('id', $id)->update($updates);
+        if (array_key_exists('status', $validated) && $validated['status'] !== $before['status']) {
+            $this->insertOperationalState($id, $validated['status'], 'Estado actualizado desde edicion de instancia', $request, 'state.changed');
+        }
         $afterRow = $this->instancesQuery()->where('i.id', $id)->first();
         $after = $this->instanceCard($afterRow);
         $this->auditLog((int) $after['organization_id'], $id, 'instance', 'instance.updated', 'instance', $id, $before, $after, $request);
         $this->stateResolver->forget($after['slug'] ?? null);
 
         return ['instance' => $after];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function rotateTelemetryToken(int $id, Request $request): array
+    {
+        $instance = $this->findInstance($id);
+        $before = $this->instancesQuery()->where('i.id', $id)->first();
+        $token = $this->generateTelemetryToken();
+        $now = Carbon::now();
+
+        DB::table('control_center_instances')->where('id', $id)->update([
+            'telemetry_token_hash' => hash('sha256', $token),
+            'last_verified_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        $afterRow = $this->instancesQuery()->where('i.id', $id)->first();
+        $this->auditLog((int) $instance->organization_id, $id, 'security', 'telemetry_token.rotated', 'instance', $id, $before === null ? null : $this->instanceCard($before), $this->instanceCard($afterRow), $request, [
+            'reason' => $request->string('reason')->toString() ?: 'Rotacion de token de telemetria',
+            'token_visible_once' => true,
+        ]);
+
+        return [
+            'instance' => $this->instanceCard($afterRow),
+            'telemetry_token' => $token,
+            'telemetry_token_visible_once' => true,
+        ];
     }
 
     /**
@@ -1006,6 +1091,8 @@ class ControlCenterService
         if ($organization === null) {
             return [];
         }
+        $metadata = $this->decodeJson($this->value($organization, 'metadata_json'));
+        $metadata = is_array($metadata) ? $metadata : [];
 
         return [
             'id' => (int) $organization->id,
@@ -1015,12 +1102,24 @@ class ControlCenterService
             'commercial_name' => $organization->commercial_name ?? null,
             'ruc' => $organization->ruc ?? null,
             'city' => $organization->city ?? null,
+            'country' => $metadata['country'] ?? null,
+            'admin_contact' => [
+                'name' => $metadata['admin_contact_name'] ?? null,
+                'email' => $metadata['admin_contact_email'] ?? null,
+                'phone' => $metadata['admin_contact_phone'] ?? null,
+            ],
+            'technical_contact' => [
+                'name' => $metadata['technical_contact_name'] ?? null,
+                'email' => $metadata['technical_contact_email'] ?? null,
+            ],
+            'internal_notes' => $metadata['internal_notes'] ?? null,
             'timezone' => $organization->timezone ?? 'America/Guayaquil',
             'color' => $organization->color ?? '#006b75',
             'initials' => $organization->initials ?? mb_substr((string) $organization->name, 0, 2),
             'plan_name' => $organization->plan_name ?? null,
             'payment_status' => $organization->payment_status ?? null,
             'contract_status' => $organization->contract_status ?? null,
+            'metadata' => $metadata,
             'data_quality' => $this->dataQuality($organization),
         ];
     }
@@ -1030,6 +1129,9 @@ class ControlCenterService
      */
     private function instanceCard(object $instance): array
     {
+        $metadata = $this->decodeJson($this->value($instance, 'metadata_json'));
+        $metadata = is_array($metadata) ? $metadata : [];
+
         return [
             'id' => (int) $instance->id,
             'organization_id' => (int) $instance->organization_id,
@@ -1046,9 +1148,11 @@ class ControlCenterService
             'server_label' => $instance->server_label ?? null,
             'database_name' => $instance->database_name ?? null,
             'database_host' => $instance->database_host ?? null,
+            'timezone' => $metadata['timezone'] ?? null,
             'status' => $instance->status ?? 'production',
             'current_version' => $instance->current_version ?? null,
             'release_channel' => $instance->release_channel ?? 'stable',
+            'notes' => $metadata['notes'] ?? null,
             'last_activity_at' => $instance->last_activity_at ?? null,
             'last_seen_at' => $this->value($instance, 'last_seen_at'),
             'last_backup_at' => $this->value($instance, 'last_backup_at'),
@@ -1057,6 +1161,7 @@ class ControlCenterService
             'plan_name' => $instance->plan_name ?? null,
             'payment_status' => $instance->payment_status ?? null,
             'contract_status' => $instance->contract_status ?? null,
+            'metadata' => $metadata,
             'data_quality' => $this->dataQuality($instance),
         ];
     }
@@ -1216,6 +1321,86 @@ class ControlCenterService
         if ($exists) {
             throw ValidationException::withMessages([$column => 'El valor ya existe.']);
         }
+    }
+
+    /**
+     * @param array<string, mixed> $values
+     * @param array<int, string> $keys
+     * @param array<string, mixed> $defaults
+     * @return array<string, mixed>
+     */
+    private function metadataFrom(array $values, array $keys, array $defaults = []): array
+    {
+        $metadata = $defaults;
+        foreach ($keys as $key) {
+            if (array_key_exists($key, $values)) {
+                $metadata[$key] = $values[$key];
+            }
+        }
+
+        return $metadata;
+    }
+
+    /**
+     * @param array<string, mixed> $values
+     * @param array<int, string> $keys
+     * @return array<string, mixed>
+     */
+    private function mergeMetadata(object $row, array $values, array $keys): array
+    {
+        $existing = $this->decodeJson($this->value($row, 'metadata_json'));
+        $metadata = is_array($existing) ? $existing : [];
+        foreach ($keys as $key) {
+            if (array_key_exists($key, $values)) {
+                $metadata[$key] = $values[$key];
+            }
+        }
+
+        return $metadata;
+    }
+
+    private function generateTelemetryToken(): string
+    {
+        return 'mfcc_' . Str::random(48);
+    }
+
+    private function insertOperationalState(int $instanceId, string $state, string $reason, Request $request, string $action): void
+    {
+        $instance = $this->findInstance($instanceId);
+        $now = Carbon::now();
+
+        DB::table('control_center_operational_states')
+            ->where('instance_id', $instanceId)
+            ->whereNull('ends_at')
+            ->update([
+                'ends_at' => $now,
+                'updated_at' => $now,
+            ]);
+
+        $stateId = DB::table('control_center_operational_states')->insertGetId([
+            'instance_id' => $instanceId,
+            'state' => $state,
+            'reason' => $reason,
+            'customer_message' => null,
+            'changed_by_user_id' => Auth::id(),
+            'changed_by_name' => $this->actorName(),
+            'source' => 'manual',
+            'starts_at' => $now,
+            'ends_at' => null,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        DB::table('control_center_instances')->where('id', $instanceId)->update([
+            'status' => $state,
+            'updated_at' => $now,
+        ]);
+
+        $this->auditLog((int) $instance->organization_id, $instanceId, 'state', $action, 'operational_state', $stateId, null, [
+            'state' => $state,
+            'reason' => $reason,
+        ], $request);
+        $this->stateResolver->forget($instance->slug ?? null);
     }
 
     /**
