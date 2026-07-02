@@ -21,11 +21,9 @@ use Throwable;
 
 class FarmaciaUiController
 {
-    private FarmaciaDashboardService $service;
-
-    public function __construct()
-    {
-        $this->service = new FarmaciaDashboardService();
+    public function __construct(
+        private readonly FarmaciaDashboardService $service,
+    ) {
     }
 
     public function dashboard(Request $request): View|RedirectResponse
@@ -64,7 +62,7 @@ class FarmaciaUiController
         $filtersSummary = $this->buildFiltersSummary($payload);
 
         try {
-            $pdf = (new ReportService())->renderPdf('farmacia_dashboard', [
+            $pdf = app(ReportService::class)->renderPdf('farmacia_dashboard', [
                 'titulo' => 'Dashboard de KPIs de recetas',
                 'generatedAt' => (new DateTimeImmutable('now'))->format('d-m-Y H:i'),
                 'filters' => $filtersSummary,

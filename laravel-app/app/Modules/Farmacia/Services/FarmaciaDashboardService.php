@@ -6,7 +6,7 @@ namespace App\Modules\Farmacia\Services;
 
 use App\Modules\Shared\Support\AfiliacionDimensionService;
 use DateTimeImmutable;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Database\ConnectionInterface;
 use PDO;
 use Throwable;
 
@@ -33,9 +33,15 @@ class FarmaciaDashboardService
 
     private AfiliacionDimensionService $afiliacionDimensions;
 
-    public function __construct()
+    /**
+     * Resuelta por el Service Container de Laravel. No busca la conexión por
+     * sí misma: recibe ConnectionInterface y obtiene el handle PDO interno
+     * para seguir usando prepare()/execute()/fetch(PDO::FETCH_ASSOC) sin
+     * reescribir el SQL. Fase 0+1 — ver docs/architecture/.
+     */
+    public function __construct(ConnectionInterface $connection)
     {
-        $this->db = DB::connection()->getPdo();
+        $this->db = $connection->getPdo();
         $this->afiliacionDimensions = app(AfiliacionDimensionService::class);
     }
 
