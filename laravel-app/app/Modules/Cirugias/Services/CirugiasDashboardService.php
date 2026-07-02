@@ -27,6 +27,23 @@ class CirugiasDashboardService
 
     private PDO $db;
 
+    /**
+     * TEMP-DIAG: instrumentación temporal de tiempos por método dentro de
+     * buildReportPayload(). Eliminar esta propiedad, getResetDiagTimings()
+     * y todas las líneas marcadas TEMP-DIAG cuando cierre el diagnóstico
+     * de rendimiento. No cambia SQL ni lógica de negocio.
+     * @var array<string,float>
+     */
+    private static array $diagTimings = [];
+
+    /** TEMP-DIAG */
+    public static function getResetDiagTimings(): array
+    {
+        $timings = self::$diagTimings;
+        self::$diagTimings = [];
+        return $timings;
+    }
+
     public function __construct(ConnectionInterface $connection)
     {
         $this->db = $connection->getPdo();
@@ -2105,17 +2122,24 @@ class CirugiasDashboardService
         string $end,
         string $sedeFilter = ''
     ): array {
+        // TEMP-DIAG: instrumentación temporal de tiempos por método, eliminar al cerrar el diagnóstico
+        $__t0 = microtime(true);
         $programacion = $this->getProgramacionKpis($start, $end, '', '', $sedeFilter);
+        self::$diagTimings['getProgramacionKpis'] = microtime(true) - $__t0;
         $programadas = (int) ($programacion['programadas'] ?? 0);
 
+        $__t0 = microtime(true);
         $trazabilidad = $this->getCirugiasFacturacionTrazabilidad($start, $end, '', '', $sedeFilter, $programacion);
+        self::$diagTimings['getCirugiasFacturacionTrazabilidad'] = microtime(true) - $__t0;
         $realizadas = (int) ($trazabilidad['atendidos'] ?? 0);
         $facturadas = (int) ($trazabilidad['facturados'] ?? 0);
         $pendienteFacturar = (int) ($trazabilidad['pendiente_facturar'] ?? 0);
         $pendientePago = (int) ($trazabilidad['pendiente_pago'] ?? 0);
         $produccionFacturada = (float) ($trazabilidad['produccion_facturada'] ?? 0);
 
+        $__t0 = microtime(true);
         $agg = $this->fetchReportProtocoloAggregates($start, $end, $sedeFilter);
+        self::$diagTimings['fetchReportProtocoloAggregates'] = microtime(true) - $__t0;
 
         $labels = $agg['porMes']['labels'];
         $totalsArr = $agg['porMes']['totals'];
@@ -2138,7 +2162,9 @@ class CirugiasDashboardService
             $topCirItems[] = ['name' => $lbl, 'realizadas' => $agg['topCirujanos']['totals'][$i] ?? 0];
         }
 
+        $__t0 = microtime(true);
         $topSol = $this->getTopDoctoresSolicitudesRealizadas($start, $end, 10, '', '', $sedeFilter);
+        self::$diagTimings['getTopDoctoresSolicitudesRealizadas'] = microtime(true) - $__t0;
         $topSolLabels = $topSol['labels'] ?? [];
         $topSolTotals = $topSol['totals'] ?? [];
         $topSolItems = [];
@@ -2153,7 +2179,9 @@ class CirugiasDashboardService
 
         $tatData   = $agg['tat'];
         $duracion  = $agg['duracionProm'];
+        $__t0 = microtime(true);
         $reingreso = $this->getReingresoMismoDiagnostico($start, $end);
+        self::$diagTimings['getReingresoMismoDiagnostico'] = microtime(true) - $__t0;
 
         $trazabilidadDonut = [
             ['label' => 'Facturadas',         'total' => $facturadas,       'color' => '#05825f'],
