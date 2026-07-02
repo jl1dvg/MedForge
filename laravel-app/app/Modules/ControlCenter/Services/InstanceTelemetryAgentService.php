@@ -19,17 +19,20 @@ class InstanceTelemetryAgentService
         $token = $this->required($token ?? config('control_center.telemetry_token'), 'CONTROL_CENTER_TELEMETRY_TOKEN');
         $instanceSlug = $this->required($instanceSlug ?? config('control_center.instance_slug'), 'CONTROL_CENTER_INSTANCE_SLUG');
         $payload = $this->payload($instanceSlug, $appVersion ?? config('control_center.app_version'));
+        $headers = [
+            'Authorization' => 'Bearer ' . $token,
+            'Accept' => 'application/json',
+            'Content-Type' => 'application/json',
+        ];
 
-        $response = Http::timeout(max(3, (int) config('control_center.telemetry_timeout', 10)))
+        $response = Http::withHeaders($headers)
             ->asJson()
-            ->withHeaders([
-                'Authorization' => 'Bearer ' . $token,
-                'Accept' => 'application/json',
-            ])
+            ->timeout(max(3, (int) config('control_center.telemetry_timeout', 10)))
             ->post($endpoint, $payload);
 
         return [
             'endpoint' => $endpoint,
+            'headers_contain_authorization' => array_key_exists('Authorization', $headers),
             'http_status' => $response->status(),
             'ok' => $response->successful(),
             'payload' => $payload,

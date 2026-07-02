@@ -84,7 +84,10 @@ class ControlCenterTelemetryAgentTest extends TestCase
 
             return $request->url() === 'https://control.test/v2/control-center/telemetry/heartbeat'
                 && $request->hasHeader('Authorization', 'Bearer agent-token')
+                && str_starts_with($request->header('Authorization')[0] ?? '', 'Bearer ')
+                && str_contains($request->header('Authorization')[0] ?? '', 'agent-token')
                 && $request->hasHeader('Accept', 'application/json')
+                && $request->hasHeader('Content-Type', 'application/json')
                 && $payload['instance_slug'] === 'cive-production'
                 && $payload['app_version'] === '2026.07.agent'
                 && $payload['environment'] === app()->environment()
@@ -129,6 +132,7 @@ class ControlCenterTelemetryAgentTest extends TestCase
             ->expectsOutputToContain('token_present: yes')
             ->expectsOutputToContain('token_prefix: agent-to')
             ->expectsOutputToContain('token_length: 11')
+            ->expectsOutputToContain('headers_contain_authorization: yes')
             ->expectsOutputToContain('HTTP status: 200')
             ->expectsOutputToContain('"telemetry_status": "healthy"')
             ->expectsOutputToContain('Telemetria enviada correctamente.')
@@ -154,6 +158,7 @@ class ControlCenterTelemetryAgentTest extends TestCase
             ->expectsOutputToContain('token_present: yes')
             ->expectsOutputToContain('token_prefix: agent-to')
             ->expectsOutputToContain('token_length: 11')
+            ->expectsOutputToContain('headers_contain_authorization: yes')
             ->expectsOutputToContain('HTTP status: 403')
             ->expectsOutputToContain('<html>Login</html>')
             ->expectsOutputToContain('Error enviando telemetria.')
@@ -209,6 +214,7 @@ class ControlCenterTelemetryAgentTest extends TestCase
             ->expectsOutputToContain('token_present: no')
             ->expectsOutputToContain('token_prefix: —')
             ->expectsOutputToContain('token_length: 0')
+            ->expectsOutputToContain('headers_contain_authorization: no')
             ->expectsOutputToContain('Configura CONTROL_CENTER_TELEMETRY_TOKEN')
             ->assertFailed();
 
