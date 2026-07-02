@@ -1,21 +1,25 @@
 # Migración de PDO manual al Service Container de Laravel
 
-**Estado:** Fase 1 completada (auditoría + propuesta + piloto). Migración de módulos: pendiente.
-**Alcance de esta fase:** Arquitectura únicamente. Cero cambios de SQL, cero cambios de comportamiento, cero funcionalidad nueva.
+**Meta final:** MedForge deja de depender *conceptualmente* de PDO — no solo de recibirlo manualmente. La aplicación debe sentirse una app Laravel nativa (Service Container, DI, testeable), conservando el SQL optimizado donde sea la mejor herramienta.
+
+**Estado actual:** Fase 0 y Fase 1 completadas para el servicio piloto (`CronTaskRepository`). Fases 0-1 para el resto de los 32 servicios auditados: pendientes. Fase 2 y Fase 3: no iniciadas — dependen de que 0 y 1 estén completas en cada módulo.
 
 ---
 
 ## 0. Resumen ejecutivo
 
-MedForge corre sobre Laravel, pero una parte grande del código heredado (30+ servicios) recibe la conexión a base de datos como un objeto `PDO` crudo, pasado a mano en cada `new Servicio($pdo)`. Esto bloquea el uso del Service Container: nada de esto es inyectable, mockeable, ni resoluble automáticamente por el framework.
+MedForge corre sobre Laravel, pero una parte grande del código heredado (32 servicios) recibe la conexión a base de datos como un objeto `PDO` crudo, pasado a mano en cada `new Servicio($pdo)`. Esto bloquea el uso del Service Container: nada de esto es inyectable, mockeable, ni resoluble automáticamente por el framework.
 
-Esta fase:
-1. Audita el alcance real del problema (qué servicios, cuántos sitios de instanciación).
-2. Propone un patrón único para todo MedForge.
-3. Migra **un solo servicio piloto** (`CronTaskRepository`) para validar el patrón sin tocar SQL ni comportamiento.
-4. Deja un plan de migración incremental por módulo, ordenado por riesgo/dependencias.
+La migración completa tiene **4 fases**, cada una con un objetivo distinto y una condición de salida clara. No se saltan fases dentro de un mismo módulo — un servicio no entra a Fase 2 sin haber completado 0 y 1.
 
-No se tocó `CirugiasDashboardService` ni ningún otro servicio de negocio en esta fase — eso es la Fase 2+.
+| Fase | Objetivo | Toca SQL | Toca lógica de negocio | Condición de salida |
+|---|---|---|---|---|
+| **0** | Eliminar instanciación manual (`new Servicio($pdo)`) — resolver por el Service Container | No | No | Ningún `new Servicio(...)` fuera de un `ServiceProvider` o factory explícita; todo pasa por constructor injection o `app(Servicio::class)` |
+| **1** | Eliminar `PDO` de las firmas de constructor — usar `ConnectionInterface` de Laravel | No | No | Ningún `__construct(PDO $x)` en el módulo; `$connection->getPdo()` es un detalle interno, no una firma pública |
+| **2** | Extraer la capa de acceso a datos hacia Repositories — el Service deja de conocer SQL | No (el SQL se mueve, no se reescribe) | No | Dashboards/reportes grandes tienen un `XRepository` con los métodos de datos; el Service orquesta y aplica reglas de negocio, no arma queries |
+| **3** | Evaluar caso por caso Query Builder / Eloquent | Sí, donde aporte mantenibilidad sin sacrificar rendimiento | No (mismo comportamiento) | Decisión explícita por Repository: "se queda en SQL crudo porque X" o "se migra a Query Builder porque Y" — documentada, no implícita |
+
+Este documento (versión anterior) cubría el trabajo de Fase 0+1 para un solo servicio piloto. Esta revisión reorganiza el plan completo según las 4 fases y deja los criterios de Fase 2/3 explícitos para cuando el módulo correspondiente esté listo.
 
 ---
 
@@ -74,54 +78,103 @@ $this->afiliacionDimensions = new AfiliacionDimensionService($this->db);
 
 ---
 
-## 2. Propuesta de patrón
+## 2. Propuesta de patrón por fase
 
-### 2.1 Opciones evaluadas
+### 2.1 Fase 0 + Fase 1 (esta ronda): el Service sigue teniendo SQL embebido, pero vive del Container
 
-**Opción A — Repository explícito por tabla/agregado**
-```
-Controller → Service → Repository → DB::select()
-```
-Introduce una capa de Repository dedicada por entidad (`ProtocoloRepository`, `SolicitudRepository`, etc.), con métodos de acceso a datos puros, y los Services contienen solo lógica de negocio.
-
-**Opción B — Servicio recibe la Conexión de Laravel directamente**
 ```
 Controller → Service → ConnectionInterface (resuelto por el container) → PDO interno cuando se necesita
 ```
-Los servicios existentes mantienen su forma actual (una clase con SQL embebido), pero cambian el tipo del parámetro del constructor de `PDO` a `Illuminate\Database\ConnectionInterface`. Internamente, si el código necesita la API específica de PDO (`prepare()`, `bindValue()` con tipos explícitos, `lastInsertId()`, `PDO::FETCH_ASSOC`), se obtiene con `$connection->getPdo()` — una sola vez, dentro de la clase, nunca desde afuera.
 
-### 2.2 Decisión: Opción B para esta fase, Opción A como visión a largo plazo
+Los servicios existentes mantienen su forma actual (una clase con SQL embebido), pero:
+- **Fase 0**: nadie hace `new Servicio($pdo)` — se resuelven por constructor injection o `app(Servicio::class)`.
+- **Fase 1**: el tipo del parámetro del constructor deja de ser `PDO` y pasa a ser `Illuminate\Database\ConnectionInterface`. Internamente, si el código necesita la API específica de PDO (`prepare()`, `bindValue()` con tipos explícitos, `lastInsertId()`, `PDO::FETCH_ASSOC`), se obtiene con `$connection->getPdo()` — una sola vez, dentro de la clase, nunca desde afuera.
 
-**Para reportes SQL complejos (el caso dominante en MedForge: `CirugiasDashboardService`, `BillingInformeDataService`, `ExamenesReportingService`, etc.) la Opción B es la correcta ahora:**
-
-1. **Cero riesgo de reescritura de SQL.** El código ya usa `$pdo->prepare()/execute()/fetchAll(PDO::FETCH_ASSOC)` con SQL muy afinado (joins condicionales, CTEs, agregaciones). Forzar todo a través de `DB::select()` de Laravel cambia el tipo de retorno (stdClass en vez de array asociativo) y complica el binding de tipos explícitos (`PDO::PARAM_INT`, `PDO::PARAM_NULL`) que varios de estos reportes usan activamente (ver `CirugiasDashboardService::finishLog()`, por ejemplo). Migrar a Opción A de una sola vez implicaría tocar SQL — prohibido en esta fase.
-2. **Resuelve el problema real: el Service Container.** El dolor actual no es "el SQL está en el Service" — es que nadie puede inyectar estos servicios, mockearlos en tests, ni dejar que Laravel resuelva sus dependencias. Cambiar `PDO $db` por `ConnectionInterface $connection` resuelve exactamente eso sin tocar una sola línea de SQL.
-3. **Es reversible y gradual.** Cada servicio se migra de forma aislada (un archivo, sin efectos en cascada), y el comportamiento es idéntico porque `$connection->getPdo()` devuelve el mismo objeto PDO subyacente que hoy se obtiene manualmente vía `DB::connection()->getPdo()`. Mismo driver, misma conexión, mismo charset, mismas transacciones.
-4. **Deja la puerta abierta a Opción A después.** Una vez que todos los servicios sean resueltos por el container, extraer un Repository de un Service concreto (para los casos que lo ameriten — reportes muy grandes como `CirugiasDashboardService`, con 2000+ líneas) es un refactor *interno* al servicio, no arquitectónico. Se puede hacer módulo por módulo, sin bloquear el resto.
-
-**Regla del patrón, válida para todo MedForge a partir de ahora:**
+**Por qué se separan en dos fases y no una sola "quitar PDO":** son dos problemas distintos con dos riesgos distintos. Fase 0 (dónde se instancia) es puramente de wiring — cero riesgo, se revierte con un `git revert` trivial. Fase 1 (qué tipo recibe el constructor) toca la firma pública de la clase — cualquier código que la instancie directamente (tests, comandos, otros servicios) debe actualizarse también. Completar 0 primero en todos los módulos, y recién después 1, evita mezclar ambos tipos de cambio en el mismo commit y hace cada PR trivial de revisar.
 
 ```php
-// ANTES (legacy, prohibido en código nuevo)
+// Fase 0: aún PDO, pero ya no hay "new Servicio($pdo)" sueltos
 public function __construct(private PDO $db) {}
+// resuelto vía app(Servicio::class) o constructor injection en el controller,
+// con un binding en un ServiceProvider: $this->app->bind(Servicio::class,
+// fn ($app) => new Servicio($app->make('db')->connection()->getPdo()));
 
-// AHORA (patrón MedForge)
+// Fase 1: el binding explícito ya no hace falta — Laravel resuelve
+// ConnectionInterface nativamente, sin ServiceProvider
 public function __construct(private readonly \Illuminate\Database\ConnectionInterface $connection)
 {
-    // Solo si el código necesita la API cruda de PDO (fetchAll con modo específico,
-    // bindValue con tipo explícito, lastInsertId, transacciones manuales):
     $this->pdo = $connection->getPdo();
 }
 ```
 
+En la práctica, para la mayoría de los 32 servicios auditados, Fase 0 y Fase 1 se hacen en el mismo PR (como en el piloto de `CronTaskRepository`, §3) porque el servicio no tiene otros consumidores que dependan de recibir `PDO` explícitamente. Se separan explícitamente en dos PRs solo cuando el servicio es instanciado también desde comandos Artisan o scripts fuera del framework HTTP (ej. `CronRunner`), donde conviene primero mover el wiring (Fase 0) y validar en staging antes de tocar la firma (Fase 1).
+
 - **No se instancia el servicio manualmente.** Se resuelve vía constructor injection en controladores (`public function __construct(private AlgunServicio $service) {}`) o vía `app(AlgunServicio::class)` en código que aún no puede recibir inyección (comandos legacy, `routes/console.php`).
 - **`Illuminate\Database\ConnectionInterface` no requiere binding manual** — Laravel ya lo resuelve out-of-the-box contra la conexión default (`registerCoreContainerAliases()` en el framework la alias-ea a `db.connection`). Confirmado en el piloto de esta fase (ver §3).
-- **El SQL no se toca.** Sigue siendo `$this->pdo->prepare(...)`, exactamente igual que hoy.
+- **El SQL no se toca en 0 ni en 1.** Sigue siendo `$this->pdo->prepare(...)`, exactamente igual que hoy.
 - Para servicios usados solo como dependencia interna de otros servicios (caso `AfiliacionDimensionService`), también se migran a recibir `ConnectionInterface` y se resuelven vía `app(AfiliacionDimensionService::class)` en vez de `new AfiliacionDimensionService($this->db)` — mismo patrón, sin excepciones.
+
+### 2.2 Fase 2: extraer Repository — el Service deja de conocer SQL
+
+```
+Controller → Service (lógica de negocio) → Repository (acceso a datos) → PDO / ConnectionInterface
+```
+
+Una vez que un módulo completó 0 y 1, se evalúa si amerita extraer un `XRepository` dedicado. **No es automático para los 32 servicios** — aplica donde el Service es grande y mezcla reglas de negocio con SQL (los dashboards/reportes: `CirugiasDashboardService`, `BillingInformeDataService`, `ExamenesReportingService`, `HonorariosDashboardDataService`). Criterio para decidir si un servicio entra a Fase 2:
+
+- Tiene métodos de más de ~80 líneas donde SQL y lógica de negocio están entrelazados.
+- Se reutiliza el mismo query (o una variante) en más de un método del propio servicio.
+- Es un candidato a tener tests unitarios de la lógica de negocio sin pegarle a la base de datos (mockeando el Repository).
+
+El SQL **se mueve tal cual al Repository**, no se reescribe. El Service pasa a orquestar: llama al Repository, aplica reglas de negocio sobre los datos crudos, arma el payload de salida. Ejemplo del shape esperado, sin tocar ni una consulta:
+
+```php
+// Antes (Fase 1): CirugiasDashboardService tiene el JOIN completo inline
+class CirugiasDashboardService {
+    public function __construct(private readonly ConnectionInterface $connection) {}
+    public function getTopCirujanos(...): array {
+        $sql = "SELECT ... FROM protocolo_data pr LEFT JOIN ...";
+        // prepare/execute/fetch, todo acá adentro
+    }
+}
+
+// Después (Fase 2): el SQL se muda, línea por línea, al Repository
+class CirugiasReportRepository {
+    public function __construct(private readonly ConnectionInterface $connection) {}
+    public function fetchTopCirujanosRows(string $start, string $end, string $sedeFilter): array {
+        $sql = "SELECT ... FROM protocolo_data pr LEFT JOIN ..."; // idéntico al de antes
+        // prepare/execute/fetch, sin cambios
+    }
+}
+
+class CirugiasDashboardService {
+    public function __construct(private readonly CirugiasReportRepository $repository) {}
+    public function getTopCirujanos(...): array {
+        $rows = $this->repository->fetchTopCirujanosRows(...);
+        // agregaciones/reglas de negocio sobre $rows, igual que antes
+    }
+}
+```
+
+### 2.3 Fase 3: Query Builder / Eloquent, caso por caso
+
+Una vez que un Repository existe y está aislado, se evalúa **por método, no por módulo entero**, si conviene migrarlo al Query Builder de Laravel (`DB::table(...)->where(...)`) o directamente a un modelo Eloquent. No es una meta en sí misma — es una herramienta que se usa donde reduce complejidad sin costar rendimiento.
+
+Criterios para decidir SÍ migrar un método a Query Builder/Eloquent:
+- El query es un CRUD simple (un `SELECT` con `WHERE`s directos, sin joins condicionales dinámicos ni agregaciones complejas).
+- No depende de tipado explícito de PDO (`PDO::PARAM_INT`/`PARAM_NULL`) de forma crítica.
+- Ganar test-ability / legibilidad supera el costo de la reescritura y su QA.
+
+Criterios para decidir NO migrar (se queda en SQL crudo dentro del Repository, indefinidamente):
+- Reportes con joins condicionales armados dinámicamente según filtros (el patrón dominante en `CirugiasDashboardService`, `BillingInformeDataService`: SQL que cambia de forma según qué filtros llegan).
+- Queries con CTEs, subqueries correlacionadas convertidas a JOINs derivados (como el fix de sede de PR #463), o agregaciones que ya fueron afinadas por performance.
+- Cualquier query que haya sido optimizada explícitamente por un incidente de producción (documentar el PR del fix como razón de "no tocar").
+
+Cada decisión de Fase 3 se documenta en el propio Repository (comentario o sección en este documento) — no se asume "Eloquent es mejor" por defecto.
 
 ---
 
-## 3. Prueba piloto: `CronTaskRepository`
+## 3. Prueba piloto (Fase 0 + Fase 1): `CronTaskRepository`
 
 ### Por qué este servicio
 
@@ -196,28 +249,41 @@ $this->repository = app(CronTaskRepository::class);
 
 ---
 
-## 4. Plan de migración por módulo
+## 4. Plan de migración por módulo (Fase 0 + Fase 1)
 
-Orden recomendado, de menor a mayor riesgo/superficie:
+Orden recomendado, de menor a mayor riesgo/superficie. La columna **¿Candidato a Fase 2?** marca qué módulos, una vez completadas 0 y 1, tienen servicios lo bastante grandes/mixtos (SQL + lógica de negocio) como para justificar extraer un Repository — no implica que se haga en la misma ronda.
 
-| Orden | Módulo | Servicios a migrar | Dificultad | Riesgo | Dependencias | Justificación del orden |
-|---|---|---|---|---|---|---|
-| 1 | **Shared** | `AfiliacionDimensionService` | Baja | Medio | Ninguna, pero es dependencia transitiva de ~8 servicios | Migrar primero porque desbloquea la migración limpia de todos los que lo instancian con `new AfiliacionDimensionService($db)`. Si se migra después, cada consumidor debe resolverlo dos veces (una vez como servicio propio, otra como dependencia interna). |
-| 2 | **CRM** | `CrmCaseService` | Baja | Bajo | Ninguna | Módulo chico (2 archivos), buen segundo caso de prueba real (no piloto) para confirmar el patrón en un controlador+servicio de negocio, no solo un repository. |
-| 3 | **Farmacia** | `FarmaciaDashboardService`, `RecetasConciliacionSyncService` | Baja-Media | Bajo | `AfiliacionDimensionService` (paso 1) | Módulo autocontenido, bajo tráfico, buen lugar para validar el patrón en un dashboard antes de tocar los dashboards de alto tráfico (Cirugías/Billing). |
-| 4 | **Consultas** | `ConsultasParityService` | Media | Medio | `ConsultaExamenSyncService` (Examenes) | Instancia servicios de Examenes internamente — coordinar con el paso 5. |
-| 5 | **Cirugías** | `CirugiaService`, `ProtocolosTemplateReadService`, `ProtocolosTemplateWriteService`, `CirugiasDashboardService` (último) | Media-Alta | Medio-Alto | `AfiliacionDimensionService` | Migrar primero los 3 servicios chicos y dejar `CirugiasDashboardService` (2000+ líneas, el más tocado en las últimas semanas por el fix de performance) para el final del módulo, cuando el patrón ya esté probado 4 veces. |
-| 6 | **Examenes / Imágenes** | `ConsultaExamenSyncService`, `ImagenesUiService`, `ExamenesParityService`, `ExamenesReportingService`, `ExamenesPrefacturaService` | Alta | Medio-Alto | `AfiliacionDimensionService`, `Mail` (envían correos) | Mayor cantidad de sub-servicios instanciados en cadena (`LeadConfigurationService`, `PusherConfigService`, `ExamenCrmService`, `ExamenMailLogService` — todos con `new X($this->db)` internamente). Requiere migrar la cadena completa en el mismo PR para no dejar wiring mixto. |
-| 7 | **Mail** | `MailboxService`, `MailProfileService`, `NotificationMailer` | Media | Alto | Ninguna propia, pero es consumida por Examenes, CRM, Solicitudes | Se migra antes de Billing/Facturación porque varios flujos de facturación envían notificaciones por mail — mejor que Mail ya esté resuelto por el container cuando se migre Billing. |
-| 8 | **Reporting** | `ConsultaReportDataService`, `CoberturaReportDataService`, `PostSurgeryRestReportDataService`, `AbstractSolicitudReport` | Media | Medio | Ninguna directa | Generadores de reportes PDF/export, bajo tráfico interactivo (se ejecutan on-demand, no en cada carga de dashboard) — riesgo controlado si algo sale mal. |
-| 9 | **Solicitudes** | `SolicitudesPrefacturaService` | Media | Medio | `Mail`, `Codes` (`CodesPackageService`) | Coordinar con Mail (paso 7) ya migrado. |
-| 10 | **Billing / Facturación** | `BillingParticularesReportService`, `BillingSoamRuleAdapter`, `HonorariosDashboardDataService`, `BillingDashboardDataService`, `BillingLeakageService`, `BillingPreviewService`, `BillingProcedimientosKpiService`, `BillingInformePacienteService`, `BillingSoamAdapter`, `NoFacturadosQueryService` | Alta | **Alto** | `AfiliacionDimensionService`, `Mail` | El módulo con más servicios (10) y más dinero en juego (facturación real). Se deja al final porque para entonces el patrón ya se validó en 9 módulos distintos. Requiere el mayor cuidado en QA manual antes de mergear (afecta facturación real, cartera, pagos IESS). |
-| 11 | **IdentityVerification** | `VerificationModel` | Baja | Bajo | Ninguna | Aislado, se puede intercalar en cualquier punto — bajo impacto si algo falla. |
+| Orden | Módulo | Servicios a migrar (Fase 0+1) | Dificultad | Riesgo | Dependencias | ¿Candidato a Fase 2? | Justificación del orden |
+|---|---|---|---|---|---|---|---|
+| 1 | **Shared** | `AfiliacionDimensionService` | Baja | Medio | Ninguna, pero es dependencia transitiva de ~8 servicios | No — es ya una capa de acceso a datos pura, no mezcla lógica de negocio | Migrar primero porque desbloquea la migración limpia de todos los que lo instancian con `new AfiliacionDimensionService($db)`. Si se migra después, cada consumidor debe resolverlo dos veces (una vez como servicio propio, otra como dependencia interna). |
+| 2 | **CRM** | `CrmCaseService` | Baja | Bajo | Ninguna | No, por ahora (módulo chico) | Módulo chico (2 archivos), buen segundo caso de prueba real (no piloto) para confirmar el patrón en un controlador+servicio de negocio, no solo un repository. |
+| 3 | **Farmacia** | `FarmaciaDashboardService`, `RecetasConciliacionSyncService` | Baja-Media | Bajo | `AfiliacionDimensionService` (paso 1) | Sí — `FarmaciaDashboardService` es un dashboard | Módulo autocontenido, bajo tráfico, buen lugar para validar el patrón en un dashboard antes de tocar los dashboards de alto tráfico (Cirugías/Billing). |
+| 4 | **Consultas** | `ConsultasParityService` | Media | Medio | `ConsultaExamenSyncService` (Examenes) | No | Instancia servicios de Examenes internamente — coordinar con el paso 5. |
+| 5 | **Cirugías** | `CirugiaService`, `ProtocolosTemplateReadService`, `ProtocolosTemplateWriteService`, `CirugiasDashboardService` (último) | Media-Alta | Medio-Alto | `AfiliacionDimensionService` | **Sí, prioritario** — `CirugiasDashboardService` (2000+ líneas, dashboard/reporte ejecutivo) es el ejemplo canónico de §2.2 | Migrar primero los 3 servicios chicos y dejar `CirugiasDashboardService` para el final del módulo, cuando el patrón ya esté probado 4 veces. Una vez en Fase 1, es el primer candidato real a Fase 2 (`CirugiasReportRepository`) dado su tamaño y el historial reciente de incidentes de performance. |
+| 6 | **Examenes / Imágenes** | `ConsultaExamenSyncService`, `ImagenesUiService`, `ExamenesParityService`, `ExamenesReportingService`, `ExamenesPrefacturaService` | Alta | Medio-Alto | `AfiliacionDimensionService`, `Mail` (envían correos) | Sí — `ExamenesReportingService`, `ImagenesUiService` (dashboard de reportes de imágenes) | Mayor cantidad de sub-servicios instanciados en cadena (`LeadConfigurationService`, `PusherConfigService`, `ExamenCrmService`, `ExamenMailLogService` — todos con `new X($this->db)` internamente). Requiere migrar la cadena completa en el mismo PR para no dejar wiring mixto. |
+| 7 | **Mail** | `MailboxService`, `MailProfileService`, `NotificationMailer` | Media | Alto | Ninguna propia, pero es consumida por Examenes, CRM, Solicitudes | No | Se migra antes de Billing/Facturación porque varios flujos de facturación envían notificaciones por mail — mejor que Mail ya esté resuelto por el container cuando se migre Billing. |
+| 8 | **Reporting** | `ConsultaReportDataService`, `CoberturaReportDataService`, `PostSurgeryRestReportDataService`, `AbstractSolicitudReport` | Media | Medio | Ninguna directa | Sí — son generadores de reportes, encajan naturalmente en el patrón Repository | Generadores de reportes PDF/export, bajo tráfico interactivo (se ejecutan on-demand, no en cada carga de dashboard) — riesgo controlado si algo sale mal. |
+| 9 | **Solicitudes** | `SolicitudesPrefacturaService` | Media | Medio | `Mail`, `Codes` (`CodesPackageService`) | No | Coordinar con Mail (paso 7) ya migrado. |
+| 10 | **Billing / Facturación** | `BillingParticularesReportService`, `BillingSoamRuleAdapter`, `HonorariosDashboardDataService`, `BillingDashboardDataService`, `BillingLeakageService`, `BillingPreviewService`, `BillingProcedimientosKpiService`, `BillingInformePacienteService`, `BillingSoamAdapter`, `NoFacturadosQueryService` | Alta | **Alto** | `AfiliacionDimensionService`, `Mail` | **Sí, el más grande** — `BillingInformeDataService`, `HonorariosDashboardDataService`, `BillingDashboardDataService` son dashboards/reportes grandes, mismo perfil que `CirugiasDashboardService` | El módulo con más servicios (10) y más dinero en juego (facturación real). Se deja al final porque para entonces el patrón ya se validó en 9 módulos distintos. Requiere el mayor cuidado en QA manual antes de mergear (afecta facturación real, cartera, pagos IESS). |
+| 11 | **IdentityVerification** | `VerificationModel` | Baja | Bajo | Ninguna | No | Aislado, se puede intercalar en cualquier punto — bajo impacto si algo falla. |
 
 **WhatsApp no aparece en la tabla**: ya no usa PDO crudo en ningún servicio (confirmado en la auditoría, §1.3) — queda fuera del alcance de esta migración.
 
-### Reglas de ejecución para cada módulo
+### Reglas de ejecución — Fase 0 + Fase 1 (por módulo)
 
 1. Un PR por módulo (o por servicio, si el módulo es grande como Billing/Examenes) — nunca mezclar la migración de arquitectura con cambios funcionales.
 2. Cada PR: cambiar `PDO $db` → `ConnectionInterface $connection` + `$this->pdo = $connection->getPdo()`, actualizar los sitios de instanciación manual a constructor injection o `app(Servicio::class)`, `php -l` en todos los archivos tocados, y verificación manual en staging del flujo afectado (sin tests automatizados existentes para la mayoría de estos servicios, el QA manual en staging es obligatorio antes de mergear a `main`).
-3. No convertir SQL a Eloquent ni a `DB::select()` fluido en esta ronda — eso es una fase posterior y separada, evaluada módulo por módulo según amerite (candidatos naturales: reportes que ya calculan todo en PHP tras un solo `SELECT`, como `CirugiasDashboardService::fetchReportProtocoloAggregates()`).
+3. No convertir SQL a Eloquent ni a `DB::select()` fluido en esta ronda — Fase 2 y Fase 3 son posteriores y se evalúan por separado, servicio por servicio, según los criterios de §2.2 y §2.3.
+
+### Reglas de ejecución — Fase 2 (por servicio, cuando aplique)
+
+1. Solo se inicia Fase 2 en un servicio después de que su módulo completó Fase 0 y Fase 1 (regla dura — no se extrae Repository de un servicio que todavía recibe `PDO`).
+2. El SQL se mueve línea por línea al Repository — se prohíbe "aprovechar" el movimiento para optimizar o simplificar queries en el mismo PR (eso ensucia el diff y mezcla riesgo de regresión funcional con refactor arquitectónico).
+3. Un PR de Fase 2 = un Repository. No se extraen dos Repositories en el mismo PR salvo que sean del mismo servicio y compartan casi todo el contexto.
+4. Primer candidato real: `CirugiasDashboardService` → `CirugiasReportRepository`, una vez que Cirugías (orden 5) complete Fase 0+1. Es el caso de uso que más beneficio inmediato tiene (2000+ líneas, historial de incidentes de performance ya documentado en PRs #463/#472/#473) y sirve de plantilla para el resto de los dashboards.
+
+### Reglas de ejecución — Fase 3 (por método, cuando aplique)
+
+1. Se evalúa método por método dentro de un Repository ya extraído, nunca "migrar todo el Repository a Eloquent" de una.
+2. Se aplican los criterios de §2.3 antes de tocar cualquier query — si no cumple los criterios de "SÍ migrar", se documenta la decisión de quedarse en SQL crudo directamente como comentario en el método.
+3. Fase 3 no tiene fecha objetivo. Es oportunista: se hace cuando un Repository específico necesita mantenimiento de todos modos (bug fix, feature nueva) y el método en cuestión cumple los criterios — no se agenda como trabajo dedicado salvo que el negocio lo pida explícitamente.
