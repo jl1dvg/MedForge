@@ -13,6 +13,11 @@
 
 # Short-circuit OPTIONS preflight — Apache responds directly, no PHP
 RewriteEngine On
+
+# Preserve Authorization for Laravel routes handled by v2_kernel.php
+RewriteCond %{HTTP:Authorization} .
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
 RewriteCond %{REQUEST_METHOD} OPTIONS
 RewriteRule .* - [R=204,L]
 
