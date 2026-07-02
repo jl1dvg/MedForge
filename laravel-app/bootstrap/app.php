@@ -10,6 +10,7 @@ use App\Http\Middleware\CiveExtensionAuth;
 use App\Http\Middleware\ConsultasCors;
 use App\Http\Middleware\RequireLegacyPermission;
 use App\Http\Middleware\RequireLegacySession;
+use App\Console\Commands\ControlCenterSendTelemetryCommand;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -23,6 +24,9 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
         apiPrefix: '',
     )
+    ->withCommands([
+        ControlCenterSendTelemetryCommand::class,
+    ])
     ->withEvents(false)
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->encryptCookies(except: ['PHPSESSID', 'app_timezone']);
