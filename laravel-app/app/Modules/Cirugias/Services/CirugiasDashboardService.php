@@ -5,8 +5,15 @@ namespace App\Modules\Cirugias\Services;
 use DateTimeImmutable;
 use App\Modules\Cirugias\Models\Cirugia;
 use App\Modules\Shared\Support\AfiliacionDimensionService;
+use Illuminate\Database\ConnectionInterface;
 use PDO;
 
+/**
+ * Resuelta por el Service Container de Laravel. No recibe PDO directamente:
+ * obtiene el handle PDO de la conexión activa de Laravel para poder seguir
+ * usando prepare()/execute()/fetch(PDO::FETCH_ASSOC) sin reescribir el SQL.
+ * Fase 0+1 de la migración arquitectónica — ver docs/architecture/.
+ */
 class CirugiasDashboardService
 {
     private AfiliacionDimensionService $afiliacionDimensions;
@@ -18,8 +25,11 @@ class CirugiasDashboardService
     /** @var array<string,bool> */
     private array $columnExistsCache = [];
 
-    public function __construct(private PDO $db)
+    private PDO $db;
+
+    public function __construct(ConnectionInterface $connection)
     {
+        $this->db = $connection->getPdo();
         $this->afiliacionDimensions = app(AfiliacionDimensionService::class);
     }
 

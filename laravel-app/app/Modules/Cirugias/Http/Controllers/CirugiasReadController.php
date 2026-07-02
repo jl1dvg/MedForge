@@ -11,18 +11,12 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use PDO;
 use Throwable;
 
 class CirugiasReadController
 {
-    private CirugiaService $service;
-
-    public function __construct()
+    public function __construct(private readonly CirugiaService $service)
     {
-        /** @var PDO $pdo */
-        $pdo = DB::connection()->getPdo();
-        $this->service = new CirugiaService($pdo);
     }
 
     public function staffOptions(Request $request): JsonResponse

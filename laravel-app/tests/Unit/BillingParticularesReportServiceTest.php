@@ -5,7 +5,7 @@ namespace Tests\Unit;
 use App\Modules\Billing\Services\BillingParticularesReportService;
 use App\Modules\Codes\Services\CodePriceService;
 use PDO;
-use PHPUnit\Framework\TestCase;
+use Tests\TestCase;
 
 class BillingParticularesReportServiceTest extends TestCase
 {

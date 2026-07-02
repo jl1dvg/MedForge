@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Models\WhatsappLead;
+use App\Modules\Cirugias\Services\CirugiasDerivacionService;
 use App\Modules\Shared\Support\LegacyCurrentUser;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Facades\View;
@@ -10,6 +11,18 @@ use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
 {
+    public function register(): void
+    {
+        // CirugiasDerivacionService necesita $projectRoot además de la conexión —
+        // no es resoluble por autowiring simple, se bindea explícitamente.
+        $this->app->bind(CirugiasDerivacionService::class, function ($app) {
+            return new CirugiasDerivacionService(
+                $app->make(\Illuminate\Database\ConnectionInterface::class),
+                dirname(base_path())
+            );
+        });
+    }
+
     public function boot(): void
     {
         Relation::morphMap([

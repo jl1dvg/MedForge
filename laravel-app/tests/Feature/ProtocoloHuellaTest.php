@@ -60,7 +60,7 @@ class ProtocoloHuellaTest extends TestCase
             $table->timestamps();
         });
 
-        $this->service = new CirugiaService(DB::connection()->getPdo());
+        $this->service = app(CirugiaService::class);
     }
 
     protected function tearDown(): void

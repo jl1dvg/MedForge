@@ -10,11 +10,11 @@ use App\Modules\Shared\Support\LegacyCurrentUser;
 use App\Modules\Shared\Support\LegacyPermissionResolver;
 use DateTimeImmutable;
 use Illuminate\Contracts\View\View;
+use Illuminate\Database\ConnectionInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
@@ -42,13 +42,14 @@ class CirugiasUiController
     private CirugiasDashboardService $dashboardService;
     private PDO $pdo;
 
-    public function __construct()
-    {
-        /** @var PDO $pdo */
-        $pdo = DB::connection()->getPdo();
-        $this->pdo = $pdo;
-        $this->service = new CirugiaService($pdo);
-        $this->dashboardService = new CirugiasDashboardService($pdo);
+    public function __construct(
+        ConnectionInterface $connection,
+        CirugiaService $service,
+        CirugiasDashboardService $dashboardService,
+    ) {
+        $this->pdo = $connection->getPdo();
+        $this->service = $service;
+        $this->dashboardService = $dashboardService;
     }
 
     public function index(Request $request): JsonResponse|RedirectResponse|View

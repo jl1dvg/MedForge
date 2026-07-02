@@ -40,6 +40,13 @@ Si una clase necesita una instancia de otra clase gestionada por el framework (u
 
 `new` sigue siendo válido para **objetos de valor** (DTOs, colecciones, excepciones, value objects) que no tienen dependencias externas ni ciclo de vida gestionado. La regla aplica a clases que representan una colaboración/servicio, no a cualquier instanciación de PHP.
 
+**`app(Clase::class)` es una solución de transición, no el destino final.** Es aceptable, y necesario, en dos casos concretos:
+
+- **Fase 0 de la migración**: reemplazar `new Servicio($pdo)` por `app(Servicio::class)` es el primer paso mecánico para sacar la instanciación manual, incluso dentro de otro Service que todavía no recibe esa dependencia por constructor (ver `AfiliacionDimensionService` en el plan de migración — se resuelve vía `app()` desde servicios que aún no fueron migrados ellos mismos).
+- **Código que genuinamente no puede recibir constructor injection**: comandos Artisan instanciados fuera del ciclo de vida HTTP, Jobs, bootstrap de la aplicación, código legacy que construye objetos antes de que el container esté disponible.
+
+Fuera de esos dos casos, `app(Clase::class)` dentro de un Controller o Service que **sí** puede recibir constructor injection es una regresión, no una migración — es cambiar un Service Locator manual (`new`) por un Service Locator del framework (`app()`), sin resolver el problema real: que la dependencia debería declararse en la firma pública de la clase. El objetivo final de cualquier módulo migrado es que sus dependencias sean visibles en el constructor, no descubribles leyendo el cuerpo de los métodos. Si un servicio quedó con `app()` "temporalmente" durante Fase 0, revisar si puede convertirse en constructor injection real es parte de completar Fase 1 para ese módulo — no queda como deuda permanente.
+
 ## 3. Los Controllers nunca conocen SQL
 
 Un Controller orquesta HTTP: recibe el request, valida entrada, llama a un Service, decide qué vista/respuesta devolver. No arma queries, no llama a `DB::` directamente, no sabe qué tabla existe.
@@ -111,6 +118,17 @@ Un servicio se marca como candidato a extracción de Repository (Fase 2 del plan
 - Es un dashboard o reporte ejecutivo consumido directamente por un Controller (alto tráfico, alta visibilidad de cualquier regresión).
 
 Esto no obliga a extraer el Repository de inmediato — obliga a **marcarlo** en el plan de migración (columna "¿Candidato a Fase 2?") para que la decisión de cuándo hacerlo sea explícita y no un descubrimiento accidental en medio de otro trabajo.
+
+## 11. Ninguna migración arquitectónica puede modificar comportamiento funcional
+
+Una migración de Fase 0, 1 o 2 cambia **dónde vive el código y cómo se conecta**, nunca **qué hace**. Esto es una regla dura, no una preferencia:
+
+- Fase 0 y Fase 1 no tocan una sola línea de SQL, ni cambian un valor de retorno, ni corrigen un bug que se descubra en el camino — aunque el bug sea trivial de arreglar.
+- Fase 2 mueve SQL de un Service a un Repository *tal cual está*, línea por línea. No se "aprovecha" el movimiento para simplificar, optimizar o corregir el query.
+- Todo bug incidental encontrado durante una migración arquitectónica **se documenta**, no se corrige, salvo que el bug sea la migración en sí (por ejemplo, un binding de container faltante). La corrección funcional es un PR separado, explícitamente pedido, revisado como cambio de negocio — no camuflado dentro de un PR "solo arquitectura".
+- Toda migración debe ser **mecánica y verificable**: alguien con el diff en una mano y el comportamiento anterior en la otra debe poder confirmar que son equivalentes sin tener que confiar en la palabra de quien hizo el cambio. Esto implica, como mínimo: `php -l` en cada archivo tocado, correr los tests existentes que cubran el módulo, y comparar el output/payload real antes y después del cambio cuando el módulo lo permita (ver ejemplo de verificación en la migración de Cirugías).
+
+Si una migración arquitectónica *requiere* cambiar comportamiento para completarse (por ejemplo, un query que solo funciona correctamente si se reescribe), eso deja de ser Fase 0/1/2 — es una migración de Fase 3 o un fix funcional, y se trata como tal: con su propio PR, su propia revisión, y aprobación explícita del cambio de comportamiento.
 
 ---
 

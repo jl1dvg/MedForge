@@ -11,19 +11,13 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use PDO;
 
 class CirugiasWriteController
 {
-    private CirugiaService $service;
-    private CirugiasDerivacionService $derivacionService;
-
-    public function __construct()
-    {
-        /** @var PDO $pdo */
-        $pdo = DB::connection()->getPdo();
-        $this->service = new CirugiaService($pdo);
-        $this->derivacionService = new CirugiasDerivacionService($pdo, dirname(base_path()));
+    public function __construct(
+        private readonly CirugiaService $service,
+        private readonly CirugiasDerivacionService $derivacionService,
+    ) {
     }
 
     public function guardar(Request $request): JsonResponse

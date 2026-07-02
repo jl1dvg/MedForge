@@ -12,8 +12,6 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\View\View;
-use Illuminate\Support\Facades\DB;
-use PDO;
 use Throwable;
 
 class ProtocolosLegacyBridgeController
@@ -31,17 +29,10 @@ class ProtocolosLegacyBridgeController
         'protocolos.templates.manage',
     ];
 
-    private PDO $pdo;
-    private ProtocolosTemplateWriteService $writeService;
-    private ProtocolosTemplateReadService $readService;
-
-    public function __construct()
-    {
-        /** @var PDO $pdo */
-        $pdo = DB::connection()->getPdo();
-        $this->pdo = $pdo;
-        $this->writeService = new ProtocolosTemplateWriteService($pdo);
-        $this->readService = new ProtocolosTemplateReadService($pdo);
+    public function __construct(
+        private readonly ProtocolosTemplateWriteService $writeService,
+        private readonly ProtocolosTemplateReadService $readService,
+    ) {
     }
 
     public function index(Request $request): View|Response
