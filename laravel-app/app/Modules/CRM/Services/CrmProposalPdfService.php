@@ -10,9 +10,9 @@ use App\Modules\Shared\Support\CompanyBrandResolver;
 class CrmProposalPdfService
 {
     public function __construct(
-        private readonly CrmProposalService $proposals = new CrmProposalService(),
-        private readonly PdfRenderer $renderer = new PdfRenderer(),
-        private readonly CompanyBrandResolver $brandResolver = new CompanyBrandResolver(),
+        private readonly CrmProposalService $proposals,
+        private readonly PdfRenderer $renderer,
+        private readonly CompanyBrandResolver $brandResolver,
     ) {
     }
 
