@@ -53,7 +53,10 @@ class CirugiasVerifyReportMigration extends Command
         $this->line("  Rango:  {$desde} → {$hasta}");
         $this->line("  Sede:   " . ($sede === '' ? '(todas)' : $sede));
         $this->line('');
+        $this->flushOutput();
 
+        // --- [1/6] Construir instancias (legacy bypass + container) ---------
+        $stageStart = $this->stageStart(0, 'Preparando instancias (legacy bypass + container)');
         try {
             $pdo = DB::connection()->getPdo();
 
@@ -64,35 +67,59 @@ class CirugiasVerifyReportMigration extends Command
             // B) Comportamiento POST-migración: resuelto por el container.
             $after = app(CirugiasDashboardService::class);
         } catch (Throwable $e) {
+            $this->stageFailed(0, $stageStart, $e->getMessage());
             $this->error('No se pudo preparar la comparación: ' . $e->getMessage());
             return self::FAILURE;
         }
+        $this->stageDone(0, $stageStart);
 
+        // --- [1/6] Construyendo payload legacy -------------------------------
+        $stageStart = $this->stageStart(1, 'Construyendo payload legacy...');
         try {
             $t0 = microtime(true);
             $payloadBefore = $before->buildReportPayload($desde, $hasta, $sede);
             $tBefore = microtime(true) - $t0;
+        } catch (Throwable $e) {
+            $this->stageFailed(1, $stageStart, $e->getMessage());
+            $this->error('buildReportPayload() [legacy] lanzó una excepción: ' . $e->getMessage());
+            $this->line($e->getTraceAsString());
+            return self::FAILURE;
+        }
+        $this->stageDone(1, $stageStart);
+        $this->line(sprintf('      buildReportPayload() [legacy]: %.3fs', $tBefore));
+        $this->flushOutput();
 
+        // --- [2/6] Construyendo payload container ----------------------------
+        $stageStart = $this->stageStart(2, 'Construyendo payload container...');
+        try {
             $t1 = microtime(true);
             $payloadAfter = $after->buildReportPayload($desde, $hasta, $sede);
             $tAfter = microtime(true) - $t1;
         } catch (Throwable $e) {
-            $this->error('buildReportPayload() lanzó una excepción: ' . $e->getMessage());
+            $this->stageFailed(2, $stageStart, $e->getMessage());
+            $this->error('buildReportPayload() [container] lanzó una excepción: ' . $e->getMessage());
             $this->line($e->getTraceAsString());
             return self::FAILURE;
         }
-
-        $this->line(sprintf('  Tiempo pre-migración (bypass):  %.3fs', $tBefore));
-        $this->line(sprintf('  Tiempo post-migración (container): %.3fs', $tAfter));
+        $this->stageDone(2, $stageStart);
+        $this->line(sprintf('      buildReportPayload() [container]: %.3fs', $tAfter));
         $this->line('');
+        $this->flushOutput();
 
+        // El diff se calcula una sola vez sobre el payload completo (misma
+        // lógica de siempre); las etapas 3-5 solo agrupan y muestran ese
+        // resultado ya calculado — no vuelven a comparar nada distinto.
         $diffs = $this->diffPayloads($payloadBefore, $payloadAfter);
 
-        $checks = [
-            'metrics'           => 'KPIs',
-            'synth'             => 'Totales (synth)',
+        $kpiChecks = [
+            'metrics' => 'KPIs',
+            'synth'   => 'Totales (synth)',
+        ];
+        $seriesChecks = [
             'produccionMensual' => 'Series (producción mensual)',
             'trazabilidad'      => 'Series (trazabilidad)',
+        ];
+        $tableChecks = [
             'topProcedimientos' => 'Tabla: top procedimientos',
             'topCirujanos'      => 'Tabla: top cirujanos',
             'topSolicitantes'   => 'Tabla: top solicitantes',
@@ -100,26 +127,32 @@ class CirugiasVerifyReportMigration extends Command
         ];
 
         $allOk = true;
-        foreach ($checks as $key => $label) {
-            $keyDiffs = array_filter($diffs, fn (string $path) => str_starts_with($path, $key));
-            if ($keyDiffs === []) {
-                $countBefore = is_array($payloadBefore[$key] ?? null) && array_is_list($payloadBefore[$key])
-                    ? count($payloadBefore[$key]) : null;
-                $suffix = $countBefore !== null ? " ({$countBefore} registros)" : '';
-                $this->info("  ✓ {$label} — idénticos{$suffix}");
-            } else {
-                $allOk = false;
-                $this->error("  ✗ {$label} — " . count($keyDiffs) . ' diferencia(s)');
-                foreach (array_slice($keyDiffs, 0, 5) as $path) {
-                    $this->line("      {$path}");
-                }
-            }
-        }
 
+        // --- [3/6] Comparando KPIs -------------------------------------------
+        $stageStart = $this->stageStart(3, 'Comparando KPIs...');
+        $allOk = $this->printChecks($kpiChecks, $diffs, $payloadBefore) && $allOk;
+        $this->stageDone(3, $stageStart);
+        $this->flushOutput();
+
+        // --- [4/6] Comparando series -------------------------------------------
+        $stageStart = $this->stageStart(4, 'Comparando series...');
+        $allOk = $this->printChecks($seriesChecks, $diffs, $payloadBefore) && $allOk;
+        $this->stageDone(4, $stageStart);
+        $this->flushOutput();
+
+        // --- [5/6] Comparando tablas -------------------------------------------
+        $stageStart = $this->stageStart(5, 'Comparando tablas...');
+        $allOk = $this->printChecks($tableChecks, $diffs, $payloadBefore) && $allOk;
+        $this->stageDone(5, $stageStart);
+        $this->flushOutput();
+
+        // --- [6/6] Finalizado ---------------------------------------------------
+        $stageStart = $this->stageStart(6, 'Finalizado.');
         $this->line('');
 
         if ($allOk && $diffs === []) {
             $this->info('RESULTADO: payload idéntico. Migración verificada sin diferencias funcionales.');
+            $this->stageDone(6, $stageStart);
             return self::SUCCESS;
         }
 
@@ -129,8 +162,88 @@ class CirugiasVerifyReportMigration extends Command
         foreach (array_slice($diffs, 0, 30) as $path) {
             $this->line("  {$path}");
         }
+        $this->stageDone(6, $stageStart);
 
         return self::FAILURE;
+    }
+
+    /**
+     * Imprime el resultado ✓/✗ de un subconjunto de $checks contra el diff ya
+     * calculado. No recalcula nada — solo agrupa y muestra. Devuelve false si
+     * encontró alguna diferencia dentro de este grupo.
+     *
+     * @param array<string,string> $checks
+     * @param array<int,string> $diffs
+     */
+    private function printChecks(array $checks, array $diffs, array $payloadBefore): bool
+    {
+        $groupOk = true;
+
+        foreach ($checks as $key => $label) {
+            $keyDiffs = array_filter($diffs, fn (string $path) => str_starts_with($path, $key));
+            if ($keyDiffs === []) {
+                $countBefore = is_array($payloadBefore[$key] ?? null) && array_is_list($payloadBefore[$key])
+                    ? count($payloadBefore[$key]) : null;
+                $suffix = $countBefore !== null ? " ({$countBefore} registros)" : '';
+                $this->info("      ✓ {$label} — idénticos{$suffix}");
+            } else {
+                $groupOk = false;
+                $this->error("      ✗ {$label} — " . count($keyDiffs) . ' diferencia(s)');
+                foreach (array_slice($keyDiffs, 0, 5) as $path) {
+                    $this->line("          {$path}");
+                }
+            }
+        }
+
+        return $groupOk;
+    }
+
+    /**
+     * Imprime "[n/6] {label}" y devuelve el timestamp de inicio para medir
+     * cuánto tarda la etapa. n=0 se usa para la preparación previa a [1/6]
+     * y no cuenta en el numerador visible al usuario.
+     */
+    private function stageStart(int $n, string $label): float
+    {
+        $prefix = $n === 0 ? '[prep]' : "[{$n}/6]";
+        $this->line("{$prefix} {$label}");
+        $this->flushOutput();
+
+        return microtime(true);
+    }
+
+    private function stageDone(int $n, float $start): void
+    {
+        $elapsed = microtime(true) - $start;
+        $prefix = $n === 0 ? '[prep]' : "[{$n}/6]";
+        $this->line(sprintf('%s OK (%.3f s)', $prefix, $elapsed));
+        $this->line('');
+        $this->flushOutput();
+    }
+
+    private function stageFailed(int $n, float $start, string $reason): void
+    {
+        $elapsed = microtime(true) - $start;
+        $prefix = $n === 0 ? '[prep]' : "[{$n}/6]";
+        $this->line(sprintf('%s FALLÓ tras %.3f s: %s', $prefix, $elapsed, $reason));
+        $this->line('');
+        $this->flushOutput();
+    }
+
+    /**
+     * Fuerza el vaciado del buffer de salida. Necesario para ver el progreso
+     * en tiempo real cuando el proceso queda colgado esperando una operación
+     * externa (ej. una query MySQL) — sin esto, el output puede quedar
+     * retenido en el buffer del stream y no llegar a la terminal hasta que
+     * el proceso termine (o nunca, si hay que matarlo a mano).
+     */
+    private function flushOutput(): void
+    {
+        @flush();
+
+        if (defined('STDOUT') && is_resource(STDOUT)) {
+            @fflush(STDOUT);
+        }
     }
 
     private function buildLegacyStyleInstance(PDO $pdo): CirugiasDashboardService
