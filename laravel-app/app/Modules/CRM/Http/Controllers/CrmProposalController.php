@@ -8,7 +8,6 @@ use App\Modules\CRM\Services\CrmProposalPdfService;
 use App\Modules\CRM\Services\CrmProposalService;
 use App\Modules\Shared\Support\CompanyBrandResolver;
 use App\Modules\Solicitudes\Services\SolicitudesCommunicationService;
-use App\Modules\Solicitudes\Services\SolicitudesReadParityService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -23,9 +22,9 @@ use function preg_match;
 class CrmProposalController
 {
     public function __construct(
-        private readonly CrmProposalService $proposals = new CrmProposalService(),
-        private readonly CrmProposalPdfService $pdf = new CrmProposalPdfService(),
-        private readonly CompanyBrandResolver $brandResolver = new CompanyBrandResolver(),
+        private readonly CrmProposalService $proposals,
+        private readonly CrmProposalPdfService $pdf,
+        private readonly CompanyBrandResolver $brandResolver,
     ) {
     }
 
@@ -118,6 +117,9 @@ class CrmProposalController
                 ];
             }
 
+            // Migración PDO→Container: MailProfileService y NotificationMailer
+            // aún exigen PDO crudo en su firma — se migran con el módulo Mail
+            // (orden 7 del plan). Este getPdo() se elimina en esa ronda.
             $pdo = app('db')->connection()->getPdo();
             $profileService = new MailProfileService($pdo);
             $profileSlug = $profileService->getProfileSlugForContext('crm');
@@ -151,7 +153,7 @@ class CrmProposalController
             }
 
             $message = trim((string) ($request->input('message') ?: $this->defaultMessage($proposal)));
-            $communication = new SolicitudesCommunicationService(new SolicitudesReadParityService());
+            $communication = app(SolicitudesCommunicationService::class);
             $communication->sendWhatsapp($solicitudId, [
                 'message' => $message,
                 'phone' => $proposal['lead_phone'] ?? '',
