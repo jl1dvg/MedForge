@@ -1150,8 +1150,7 @@ class CirugiasDashboardService
                      = CONVERT(sp.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
                    AND cd.form_id = sp.form_id
                 LEFT JOIN patient_data p
-                    ON CONVERT(p.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
-                     = CONVERT(sp.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                    ON p.hc_number = sp.hc_number
                 %AFILIACION_CATEGORIA_JOIN%
                 WHERE COALESCE(cd.fecha, sp.fecha) BETWEEN :inicio AND :fin
                   AND sp.procedimiento IS NOT NULL
@@ -2112,21 +2111,28 @@ class CirugiasDashboardService
 
         $sedeExpr = $this->sedeExpr('pp_sede_raw');
 
+        // NOTA: hasta 2026-07, form_id/hc_number de procedimiento_proyectado y
+        // solicitud_procedimiento envolvían esta comparación en CONVERT(...
+        // USING utf8mb4) COLLATE utf8mb4_unicode_ci. Confirmado por
+        // information_schema.COLUMNS que ambas columnas ya son
+        // utf8mb4/utf8mb4_unicode_ci (form_id de procedimiento_proyectado ni
+        // siquiera es un tipo string) — el CONVERT era innecesario y le
+        // impedía a MySQL auto-indexar esta derived table para el join
+        // (confirmado con EXPLAIN FORMAT=JSON: pasaba de access_type=ALL con
+        // Block Nested Loop a access_type=ref al quitarlo).
         $hcJoin = $this->columnExists('procedimiento_proyectado', 'hc_number')
-            ? " AND CONVERT(pp_sede_raw.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
-                     = CONVERT({$solicitudAlias}.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci"
+            ? " AND pp_sede_raw.hc_number = {$solicitudAlias}.hc_number"
             : '';
 
         return "LEFT JOIN (
             SELECT
-                CONVERT(pp_sede_raw.form_id USING utf8mb4) COLLATE utf8mb4_unicode_ci AS form_id,
+                pp_sede_raw.form_id AS form_id,
                 MAX({$sedeExpr}) AS sede_norm
             FROM procedimiento_proyectado pp_sede_raw
             WHERE COALESCE(pp_sede_raw.sigcenter_present, 1) = 1
             GROUP BY pp_sede_raw.form_id
         ) pp_sede_agg
-            ON CONVERT(pp_sede_agg.form_id USING utf8mb4) COLLATE utf8mb4_unicode_ci
-             = CONVERT({$solicitudAlias}.form_id USING utf8mb4) COLLATE utf8mb4_unicode_ci";
+            ON pp_sede_agg.form_id = {$solicitudAlias}.form_id";
     }
 
     private function normalizeSqlText(string $expr): string
