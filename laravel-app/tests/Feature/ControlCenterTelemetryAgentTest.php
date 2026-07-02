@@ -84,9 +84,11 @@ class ControlCenterTelemetryAgentTest extends TestCase
 
             return $request->url() === 'https://control.test/v2/control-center/telemetry/heartbeat'
                 && $request->hasHeader('Authorization', 'Bearer agent-token')
+                && $request->hasHeader('Accept', 'application/json')
                 && $payload['instance_slug'] === 'cive-production'
                 && $payload['app_version'] === '2026.07.agent'
                 && $payload['environment'] === app()->environment()
+                && array_key_exists('telemetry_status', $payload)
                 && $payload['db_ok'] === true
                 && $payload['cache_ok'] === true
                 && $payload['storage_ok'] === true
@@ -123,6 +125,10 @@ class ControlCenterTelemetryAgentTest extends TestCase
         $this->artisan('control-center:send-telemetry')
             ->expectsOutputToContain('Endpoint: https://control.test/v2/control-center/telemetry/heartbeat')
             ->expectsOutputToContain('Instancia: cive-production')
+            ->expectsOutputToContain('App version: 2026.07.agent')
+            ->expectsOutputToContain('token_present: yes')
+            ->expectsOutputToContain('token_prefix: agent-to')
+            ->expectsOutputToContain('token_length: 11')
             ->expectsOutputToContain('HTTP status: 200')
             ->expectsOutputToContain('"telemetry_status": "healthy"')
             ->expectsOutputToContain('Telemetria enviada correctamente.')
@@ -145,10 +151,68 @@ class ControlCenterTelemetryAgentTest extends TestCase
         $this->artisan('control-center:send-telemetry')
             ->expectsOutputToContain('Endpoint: https://control.test/v2/control-center/telemetry/heartbeat')
             ->expectsOutputToContain('Instancia: cive-production')
+            ->expectsOutputToContain('token_present: yes')
+            ->expectsOutputToContain('token_prefix: agent-to')
+            ->expectsOutputToContain('token_length: 11')
             ->expectsOutputToContain('HTTP status: 403')
             ->expectsOutputToContain('<html>Login</html>')
             ->expectsOutputToContain('Error enviando telemetria.')
             ->assertFailed();
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('telemetryErrorStatuses')]
+    public function test_send_telemetry_command_returns_failure_for_common_error_statuses(int $status): void
+    {
+        config([
+            'control_center.instance_slug' => 'cive-production',
+            'control_center.telemetry_endpoint' => 'https://control.test/v2/control-center/telemetry/heartbeat',
+            'control_center.telemetry_token' => 'agent-token',
+            'control_center.app_version' => '2026.07.agent',
+        ]);
+
+        Http::fake([
+            'https://control.test/v2/control-center/telemetry/heartbeat' => Http::response(['ok' => false, 'error' => "status {$status}"], $status),
+        ]);
+
+        $this->artisan('control-center:send-telemetry')
+            ->expectsOutputToContain("HTTP status: {$status}")
+            ->expectsOutputToContain('Error enviando telemetria.')
+            ->assertFailed();
+    }
+
+    /**
+     * @return array<string, array{0:int}>
+     */
+    public static function telemetryErrorStatuses(): array
+    {
+        return [
+            'unauthorized' => [401],
+            'validation_error' => [422],
+            'server_error' => [500],
+        ];
+    }
+
+    public function test_send_telemetry_command_fails_before_http_when_token_is_empty(): void
+    {
+        config([
+            'control_center.instance_slug' => 'cive-production',
+            'control_center.telemetry_endpoint' => 'https://control.test/v2/control-center/telemetry/heartbeat',
+            'control_center.telemetry_token' => '',
+            'control_center.app_version' => '2026.07.agent',
+        ]);
+
+        Http::fake();
+
+        $this->artisan('control-center:send-telemetry')
+            ->expectsOutputToContain('Endpoint: https://control.test/v2/control-center/telemetry/heartbeat')
+            ->expectsOutputToContain('Instancia: cive-production')
+            ->expectsOutputToContain('token_present: no')
+            ->expectsOutputToContain('token_prefix: —')
+            ->expectsOutputToContain('token_length: 0')
+            ->expectsOutputToContain('Configura CONTROL_CENTER_TELEMETRY_TOKEN')
+            ->assertFailed();
+
+        Http::assertNothingSent();
     }
 
     public function test_agent_requires_endpoint_token_and_instance_slug(): void

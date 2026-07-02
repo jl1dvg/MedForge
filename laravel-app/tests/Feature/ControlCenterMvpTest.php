@@ -3,8 +3,9 @@
 namespace Tests\Feature;
 
 use App\Models\User;
-use App\Modules\Shared\Support\LegacySessionAuth;
 use App\Modules\ControlCenter\Services\ControlCenterService;
+use App\Modules\ControlCenter\Services\InstanceTelemetryAgentService;
+use App\Modules\Shared\Support\LegacySessionAuth;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -426,6 +427,38 @@ class ControlCenterMvpTest extends TestCase
             'source' => 'telemetry',
             'idempotency_key' => 'cive-production:ai_tokens:2026-07-01:2026-07-31:telemetry',
         ]);
+        $this->assertDatabaseHas('control_center_audit_logs', [
+            'instance_id' => 1,
+            'event_type' => 'telemetry',
+            'action' => 'telemetry.heartbeat',
+        ]);
+    }
+
+    public function test_heartbeat_accepts_payload_generated_by_instance_telemetry_agent(): void
+    {
+        DB::table('control_center_instances')->where('slug', 'cive-production')->update([
+            'telemetry_token_hash' => hash('sha256', 'agent-token'),
+            'telemetry_status' => 'pending',
+            'last_seen_at' => null,
+            'last_activity_at' => null,
+        ]);
+
+        $payload = app(InstanceTelemetryAgentService::class)->payload('cive-production', '2026.06.4');
+
+        $response = $this->postJson('/v2/control-center/telemetry/heartbeat', $payload, [
+            'Authorization' => 'Bearer agent-token',
+            'Accept' => 'application/json',
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.instance.current_version', '2026.06.4');
+
+        $instance = DB::table('control_center_instances')->where('slug', 'cive-production')->first();
+        $this->assertSame('2026.06.4', $instance->current_version);
+        $this->assertNotNull($instance->last_seen_at);
+        $this->assertNotNull($instance->last_activity_at);
+        $this->assertContains($instance->telemetry_status, ['healthy', 'degraded', 'error']);
+
         $this->assertDatabaseHas('control_center_audit_logs', [
             'instance_id' => 1,
             'event_type' => 'telemetry',

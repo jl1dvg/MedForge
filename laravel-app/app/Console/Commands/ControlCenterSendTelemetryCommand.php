@@ -17,13 +17,26 @@ class ControlCenterSendTelemetryCommand extends Command
 
     public function handle(InstanceTelemetryAgentService $agent): int
     {
+        $endpoint = $this->optionValue('endpoint', config('control_center.telemetry_endpoint'));
+        $token = $this->optionValue('token', config('control_center.telemetry_token'));
+        $instance = $this->optionValue('instance', config('control_center.instance_slug'));
+        $appVersion = $this->optionValue('app-version', config('control_center.app_version'));
+
+        $this->line('Endpoint: ' . $endpoint);
+        $this->line('Instancia: ' . $instance);
+        $this->line('App version: ' . $appVersion);
+        $this->line('token_present: ' . ($token !== '' ? 'yes' : 'no'));
+        $this->line('token_prefix: ' . ($token !== '' ? substr($token, 0, 8) : '—'));
+        $this->line('token_length: ' . strlen($token));
+
+        if ($token === '') {
+            $this->error('Configura CONTROL_CENTER_TELEMETRY_TOKEN para enviar telemetria Control Center.');
+
+            return self::FAILURE;
+        }
+
         try {
-            $result = $agent->send(
-                $this->option('endpoint') !== null ? (string) $this->option('endpoint') : null,
-                $this->option('token') !== null ? (string) $this->option('token') : null,
-                $this->option('instance') !== null ? (string) $this->option('instance') : null,
-                $this->option('app-version') !== null ? (string) $this->option('app-version') : null,
-            );
+            $result = $agent->send($endpoint, $token, $instance, $appVersion);
         } catch (\InvalidArgumentException $e) {
             $this->error($e->getMessage());
 
@@ -31,11 +44,8 @@ class ControlCenterSendTelemetryCommand extends Command
         }
 
         $status = (int) ($result['http_status'] ?? 0);
-        $payload = $result['payload'] ?? [];
         $responseText = $this->formatResponse($result['response'] ?? null, (string) ($result['body'] ?? ''));
 
-        $this->line('Endpoint: ' . ($result['endpoint'] ?? ''));
-        $this->line('Instancia: ' . ($payload['instance_slug'] ?? ''));
         $this->line('HTTP status: ' . $status);
         $this->line('Respuesta del servidor:');
         $this->line($responseText);
@@ -49,6 +59,13 @@ class ControlCenterSendTelemetryCommand extends Command
         $this->info('Telemetria enviada correctamente.');
 
         return self::SUCCESS;
+    }
+
+    private function optionValue(string $option, mixed $fallback): string
+    {
+        $value = $this->option($option) !== null ? $this->option($option) : $fallback;
+
+        return trim((string) $value);
     }
 
     private function formatResponse(mixed $response, string $body): string
