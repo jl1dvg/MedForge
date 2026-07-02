@@ -13,6 +13,26 @@ use ReflectionClass;
 use Throwable;
 
 /**
+ * ============================================================================
+ *  ⚠️  INSTRUMENTACIÓN TEMPORAL DE DIAGNÓSTICO — ELIMINAR AL CERRAR EL CASO ⚠️
+ * ============================================================================
+ * Todo lo marcado con "TEMP-DIAG" en este archivo (marcadores de etapa,
+ * timers, watchdog de 10s, medición de memoria) existe únicamente para
+ * localizar por qué el Reporte Ejecutivo de Cirugías queda colgado en
+ * staging. No es parte del comando de verificación en sí — es andamiaje de
+ * un solo uso. Cuando el diagnóstico esté cerrado, este comando completo
+ * (CirugiasVerifyReportMigration) se elimina del repositorio.
+ *
+ * Caveat conocido del watchdog (armWatchdog/disarmWatchdog): usa
+ * pcntl_alarm + SIGALRM para interrumpir llamadas bloqueantes e imprimir un
+ * aviso cada 10s. Con una espera "pura" (ej. sleep()) la señal corta la
+ * espera de inmediato. Con una query PDO real bloqueada en un socket, el
+ * comportamiento normal de PHP/mysqlnd es reintentar automáticamente la
+ * lectura interrumpida (EINTR) sin abortar la consulta — pero si al correr
+ * esto en staging la query pareciera cortarse justo al imprimir el aviso,
+ * es la primera sospechosa a descartar.
+ * ============================================================================
+ *
  * [DIAGNÓSTICO — Fase 0+1] Compara, en el mismo proceso y contra los mismos
  * datos, el payload del Reporte Ejecutivo de Cirugías generado por:
  *
@@ -30,12 +50,20 @@ use Throwable;
  * ambas invocaciones, que es por qué corren en el mismo proceso, sin pausa).
  *
  * Uso en staging, ANTES de mergear a main:
- *   php artisan cirugias:verify-report-migration --desde=2026-06-01 --hasta=2026-06-30 --sede=""
+ *   /usr/bin/php8.3-cli artisan cirugias:verify-report-migration --desde=2026-06-01 --hasta=2026-06-30 --sede=""
  *
  * Este comando es temporal — eliminar después de confirmar la migración.
  */
 class CirugiasVerifyReportMigration extends Command
 {
+    // TEMP-DIAG: timestamp de arranque del comando, para el tiempo acumulado
+    // que se imprime en cada etapa. Se elimina junto con el resto del comando.
+    private float $commandStart;
+
+    // TEMP-DIAG: número de etapa actualmente vigilada por el watchdog de 10s
+    // (null = no hay ninguna etapa bajo vigilancia en este momento).
+    private ?int $watchdogStage = null;
+
     protected $signature = 'cirugias:verify-report-migration
                             {--desde= : Fecha inicio YYYY-MM-DD (default: 30 días atrás)}
                             {--hasta= : Fecha fin YYYY-MM-DD (default: hoy)}
@@ -45,6 +73,8 @@ class CirugiasVerifyReportMigration extends Command
 
     public function handle(): int
     {
+        $this->commandStart = microtime(true); // TEMP-DIAG
+
         $desde = $this->option('desde') ?: now()->subDays(30)->format('Y-m-d');
         $hasta = $this->option('hasta') ?: now()->format('Y-m-d');
         $sede = (string) ($this->option('sede') ?? '');
@@ -55,7 +85,7 @@ class CirugiasVerifyReportMigration extends Command
         $this->line('');
         $this->flushOutput();
 
-        // --- [1/6] Construir instancias (legacy bypass + container) ---------
+        // --- [prep] Construir instancias (legacy bypass + container) --------
         $stageStart = $this->stageStart(0, 'Preparando instancias (legacy bypass + container)');
         try {
             $pdo = DB::connection()->getPdo();
@@ -75,32 +105,38 @@ class CirugiasVerifyReportMigration extends Command
 
         // --- [1/6] Construyendo payload legacy -------------------------------
         $stageStart = $this->stageStart(1, 'Construyendo payload legacy...');
+        $this->armWatchdog(1); // TEMP-DIAG: avisa cada 10s si sigue corriendo
         try {
             $t0 = microtime(true);
             $payloadBefore = $before->buildReportPayload($desde, $hasta, $sede);
             $tBefore = microtime(true) - $t0;
         } catch (Throwable $e) {
+            $this->disarmWatchdog();
             $this->stageFailed(1, $stageStart, $e->getMessage());
             $this->error('buildReportPayload() [legacy] lanzó una excepción: ' . $e->getMessage());
             $this->line($e->getTraceAsString());
             return self::FAILURE;
         }
+        $this->disarmWatchdog();
         $this->stageDone(1, $stageStart);
         $this->line(sprintf('      buildReportPayload() [legacy]: %.3fs', $tBefore));
         $this->flushOutput();
 
         // --- [2/6] Construyendo payload container ----------------------------
         $stageStart = $this->stageStart(2, 'Construyendo payload container...');
+        $this->armWatchdog(2); // TEMP-DIAG
         try {
             $t1 = microtime(true);
             $payloadAfter = $after->buildReportPayload($desde, $hasta, $sede);
             $tAfter = microtime(true) - $t1;
         } catch (Throwable $e) {
+            $this->disarmWatchdog();
             $this->stageFailed(2, $stageStart, $e->getMessage());
             $this->error('buildReportPayload() [container] lanzó una excepción: ' . $e->getMessage());
             $this->line($e->getTraceAsString());
             return self::FAILURE;
         }
+        $this->disarmWatchdog();
         $this->stageDone(2, $stageStart);
         $this->line(sprintf('      buildReportPayload() [container]: %.3fs', $tAfter));
         $this->line('');
@@ -198,10 +234,17 @@ class CirugiasVerifyReportMigration extends Command
         return $groupOk;
     }
 
+    // ========================================================================
+    // TEMP-DIAG: todo lo que sigue en este bloque (stageStart/stageDone/
+    // stageFailed/armWatchdog/disarmWatchdog/memoryUsageMb/flushOutput) es
+    // instrumentación de un solo uso. Se elimina junto con el resto del
+    // comando al cerrar el diagnóstico.
+    // ========================================================================
+
     /**
-     * Imprime "[n/6] {label}" y devuelve el timestamp de inicio para medir
-     * cuánto tarda la etapa. n=0 se usa para la preparación previa a [1/6]
-     * y no cuenta en el numerador visible al usuario.
+     * Imprime "[n/6] {label}" (sin stats — las stats van en stageDone/stageFailed,
+     * que es cuando ya sabemos cuánto tardó la etapa). n=0 se usa para la
+     * preparación previa a [1/6] y no cuenta en el numerador visible al usuario.
      */
     private function stageStart(int $n, string $label): float
     {
@@ -212,22 +255,84 @@ class CirugiasVerifyReportMigration extends Command
         return microtime(true);
     }
 
+    /**
+     * Imprime el cierre de etapa con tiempo ACUMULADO desde el arranque del
+     * comando (no solo la duración de esta etapa) y el consumo de memoria
+     * actual, formato: "[n/6] OK (24.81s | 96 MB)".
+     */
     private function stageDone(int $n, float $start): void
     {
-        $elapsed = microtime(true) - $start;
+        $cumulative = microtime(true) - $this->commandStart;
+        $mem = $this->memoryUsageMb();
         $prefix = $n === 0 ? '[prep]' : "[{$n}/6]";
-        $this->line(sprintf('%s OK (%.3f s)', $prefix, $elapsed));
+
+        if ($n === 0) {
+            // [prep] usa el formato compacto pedido: "[prep] 0.02s | 18 MB"
+            $this->line(sprintf('%s %.2fs | %d MB', $prefix, $cumulative, $mem));
+        } else {
+            $this->line(sprintf('%s OK (%.2fs | %d MB)', $prefix, $cumulative, $mem));
+        }
+
         $this->line('');
         $this->flushOutput();
     }
 
     private function stageFailed(int $n, float $start, string $reason): void
     {
-        $elapsed = microtime(true) - $start;
+        $cumulative = microtime(true) - $this->commandStart;
+        $mem = $this->memoryUsageMb();
         $prefix = $n === 0 ? '[prep]' : "[{$n}/6]";
-        $this->line(sprintf('%s FALLÓ tras %.3f s: %s', $prefix, $elapsed, $reason));
+        $this->line(sprintf('%s FALLÓ tras %.2fs | %d MB: %s', $prefix, $cumulative, $mem, $reason));
         $this->line('');
         $this->flushOutput();
+    }
+
+    /**
+     * Arma un watchdog que imprime un aviso cada 10s si la etapa $n sigue
+     * corriendo, para distinguir "colgado esperando I/O" de "está trabajando
+     * pero tarda". Usa pcntl_alarm + señal SIGALRM, que interrumpe llamadas
+     * bloqueantes (como una query PDO síncrona) para poder imprimir sin
+     * esperar a que la llamada termine. Si la extensión pcntl no está
+     * disponible (no siempre viene instalada), se degrada sin error: no hay
+     * aviso periódico, pero el resto de la instrumentación sigue funcionando.
+     */
+    private function armWatchdog(int $stageNumber): void
+    {
+        if (!function_exists('pcntl_async_signals') || !function_exists('pcntl_alarm') || !defined('SIGALRM')) {
+            return;
+        }
+
+        $this->watchdogStage = $stageNumber;
+        pcntl_async_signals(true);
+        pcntl_signal(SIGALRM, function (): void {
+            if ($this->watchdogStage === null) {
+                return;
+            }
+            $cumulative = microtime(true) - $this->commandStart;
+            $mem = $this->memoryUsageMb();
+            $this->line(sprintf(
+                '[%d/6] ... sigue ejecutándose (%.1fs transcurridos | %d MB) — probablemente esperando I/O (MySQL)',
+                $this->watchdogStage,
+                $cumulative,
+                $mem
+            ));
+            $this->flushOutput();
+            pcntl_alarm(10);
+        });
+        pcntl_alarm(10);
+    }
+
+    private function disarmWatchdog(): void
+    {
+        if (function_exists('pcntl_alarm')) {
+            pcntl_alarm(0);
+        }
+        $this->watchdogStage = null;
+    }
+
+    private function memoryUsageMb(): int
+    {
+        return (int) round(memory_get_usage(true) / 1048576);
     }
 
     /**
