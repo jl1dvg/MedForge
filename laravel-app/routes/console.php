@@ -2,6 +2,7 @@
 
 use App\Jobs\EvaluateSolicitudesSlaJob;
 use App\Jobs\SendSolicitudReminderJob;
+use App\Modules\ControlCenter\Support\ControlCenterTelemetryScheduler;
 use App\Modules\Solicitudes\Services\SolicitudesSigcenterSyncService;
 use App\Modules\Agenda\Services\IndexAdmisionesSyncService;
 use App\Modules\Billing\Services\BillingInformeDataService;
@@ -37,6 +38,8 @@ use Illuminate\Support\Facades\Schema;
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
+
+app(ControlCenterTelemetryScheduler::class)->register();
 
 Artisan::command('solicitudes:phase3-backfill-checklist
     {--dry-run : Solo calcula cuántas solicitudes requieren backfill}
