@@ -13,22 +13,27 @@ class InstanceTelemetryAgentService
     /**
      * @return array<string, mixed>
      */
-    public function send(?string $endpoint = null, ?string $token = null, ?string $instanceSlug = null, ?string $appVersion = null): array
+    public function send(?string $endpoint = null, ?string $token = null, ?string $instanceSlug = null, ?string $appVersion = null, bool $debugHttp = false, ?array $payload = null): array
     {
         $endpoint = $this->required($endpoint ?? config('control_center.telemetry_endpoint'), 'CONTROL_CENTER_TELEMETRY_ENDPOINT');
         $token = $this->required($token ?? config('control_center.telemetry_token'), 'CONTROL_CENTER_TELEMETRY_TOKEN');
         $instanceSlug = $this->required($instanceSlug ?? config('control_center.instance_slug'), 'CONTROL_CENTER_INSTANCE_SLUG');
-        $payload = $this->payload($instanceSlug, $appVersion ?? config('control_center.app_version'));
-        $headers = [
-            'Authorization' => 'Bearer ' . $token,
-            'Accept' => 'application/json',
-            'Content-Type' => 'application/json',
-        ];
+        $payload ??= $this->payload($instanceSlug, $appVersion ?? config('control_center.app_version'));
+        $headers = $this->headersForToken($token);
 
-        $response = Http::withHeaders($headers)
-            ->asJson()
-            ->timeout(max(3, (int) config('control_center.telemetry_timeout', 10)))
-            ->post($endpoint, $payload);
+        if ($debugHttp) {
+            $debugStream = fopen('php://stderr', 'w');
+            $client = Http::withOptions($debugStream === false ? [] : ['debug' => $debugStream])
+                ->withHeaders($headers)
+                ->timeout(max(3, (int) config('control_center.telemetry_timeout', 10)));
+
+            $response = $client->send('POST', $endpoint, ['json' => $payload]);
+        } else {
+            $response = Http::withHeaders($headers)
+                ->asJson()
+                ->timeout(max(3, (int) config('control_center.telemetry_timeout', 10)))
+                ->post($endpoint, $payload);
+        }
 
         return [
             'endpoint' => $endpoint,
@@ -38,6 +43,18 @@ class InstanceTelemetryAgentService
             'payload' => $payload,
             'response' => $response->json(),
             'body' => $response->body(),
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function headersForToken(string $token): array
+    {
+        return [
+            'Authorization' => 'Bearer ' . $token,
+            'Accept' => 'application/json',
+            'Content-Type' => 'application/json',
         ];
     }
 

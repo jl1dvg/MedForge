@@ -36,6 +36,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->validateCsrfTokens(except: [
             'auth/login',
             'v2/control-center/telemetry/heartbeat',
+            'v2/control-center/telemetry/debug-headers',
         ]);
         // LegacySessionBridge runs after Laravel session; ApplyBrowserTimezone reads cookie.
         $middleware->web(append: [LegacySessionBridge::class, ApplyBrowserTimezone::class]);

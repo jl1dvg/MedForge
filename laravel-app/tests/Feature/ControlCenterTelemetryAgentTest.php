@@ -8,6 +8,7 @@ use Illuminate\Http\Client\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
@@ -137,6 +138,56 @@ class ControlCenterTelemetryAgentTest extends TestCase
             ->expectsOutputToContain('"telemetry_status": "healthy"')
             ->expectsOutputToContain('Telemetria enviada correctamente.')
             ->assertSuccessful();
+    }
+
+    public function test_send_telemetry_command_debug_http_prints_sanitized_headers_and_payload(): void
+    {
+        config([
+            'control_center.instance_slug' => 'cive-production',
+            'control_center.telemetry_endpoint' => 'https://control.test/v2/control-center/telemetry/debug-headers',
+            'control_center.telemetry_token' => 'mfcc_test_cive_staging_20260701',
+            'control_center.app_version' => '2026.07.agent',
+        ]);
+
+        Http::fake([
+            'https://control.test/v2/control-center/telemetry/debug-headers' => Http::response([
+                'ok' => true,
+                'data' => [
+                    'bearer_token_present' => true,
+                ],
+            ], 200),
+        ]);
+
+        $exitCode = Artisan::call('control-center:send-telemetry', [
+            '--debug-http' => true,
+        ]);
+
+        $output = Artisan::output();
+
+        $this->assertSame(0, $exitCode);
+        $this->assertStringContainsString('HTTP debug mode: on', $output);
+        $this->assertStringContainsString('Endpoint final: https://control.test/v2/control-center/telemetry/debug-headers', $output);
+        $this->assertStringContainsString('Metodo: POST', $output);
+        $this->assertStringContainsString('Authorization: Bearer mfcc_tes...20260701', $output);
+        $this->assertStringContainsString('Accept: application/json', $output);
+        $this->assertStringContainsString('Content-Type: application/json', $output);
+        $this->assertStringContainsString('"instance_slug": "cive-production"', $output);
+        $this->assertStringContainsString('"app_version": "2026.07.agent"', $output);
+        $this->assertStringContainsString('"checked_at": "2026-07-15T10:30:00-05:00"', $output);
+        $this->assertStringNotContainsString('Bearer mfcc_test_cive_staging_20260701', $output);
+
+        Http::assertSent(function (Request $request): bool {
+            $payload = $request->data();
+
+            return $request->url() === 'https://control.test/v2/control-center/telemetry/debug-headers'
+                && $request->hasHeader('Authorization', 'Bearer mfcc_test_cive_staging_20260701')
+                && str_starts_with($request->header('Authorization')[0] ?? '', 'Bearer ')
+                && $request->hasHeader('Accept', 'application/json')
+                && $request->hasHeader('Content-Type', 'application/json')
+                && $payload['instance_slug'] === 'cive-production'
+                && $payload['app_version'] === '2026.07.agent'
+                && $payload['checked_at'] === '2026-07-15T10:30:00-05:00';
+        });
     }
 
     public function test_send_telemetry_command_prints_failure_diagnostics_for_html_or_auth_errors(): void

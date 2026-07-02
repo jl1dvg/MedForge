@@ -48,3 +48,4 @@ Route::middleware(['app.auth', 'app.permission:control_center.audit.view'])->gro
 });
 
 Route::post('/v2/control-center/telemetry/heartbeat', [ControlCenterApiController::class, 'telemetryHeartbeat']);
+Route::post('/v2/control-center/telemetry/debug-headers', [ControlCenterApiController::class, 'telemetryDebugHeaders']);
