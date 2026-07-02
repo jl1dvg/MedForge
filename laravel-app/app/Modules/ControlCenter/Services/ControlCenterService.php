@@ -660,7 +660,7 @@ class ControlCenterService
             'storage' => (bool) ($validated['storage_ok'] ?? true),
             'scheduler' => (bool) ($validated['scheduler_ok'] ?? true),
         ];
-        $telemetryStatus = in_array(false, $serviceStates, true) ? 'degraded' : 'operational';
+        $telemetryStatus = $this->telemetryStatusFromServiceStates($serviceStates);
         $now = Carbon::now();
 
         DB::transaction(function () use ($instance, $validated, $checkedAt, $serviceStates, $telemetryStatus, $now): void {
@@ -1487,6 +1487,22 @@ class ControlCenterService
             'scheduler' => 'Scheduler',
             default => ucfirst($key),
         };
+    }
+
+    /**
+     * @param array<string, bool> $serviceStates
+     */
+    private function telemetryStatusFromServiceStates(array $serviceStates): string
+    {
+        if (!in_array(false, $serviceStates, true)) {
+            return 'healthy';
+        }
+
+        if (($serviceStates['database'] ?? true) === false || ($serviceStates['storage'] ?? true) === false) {
+            return 'error';
+        }
+
+        return 'degraded';
     }
 
     /**

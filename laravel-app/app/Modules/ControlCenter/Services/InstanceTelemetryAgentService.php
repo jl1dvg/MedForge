@@ -27,10 +27,12 @@ class InstanceTelemetryAgentService
             ->post($endpoint, $payload);
 
         return [
+            'endpoint' => $endpoint,
             'http_status' => $response->status(),
             'ok' => $response->successful(),
             'payload' => $payload,
             'response' => $response->json(),
+            'body' => $response->body(),
         ];
     }
 

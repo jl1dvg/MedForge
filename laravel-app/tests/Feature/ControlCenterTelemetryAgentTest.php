@@ -101,6 +101,56 @@ class ControlCenterTelemetryAgentTest extends TestCase
         });
     }
 
+    public function test_send_telemetry_command_prints_success_diagnostics(): void
+    {
+        config([
+            'control_center.instance_slug' => 'cive-production',
+            'control_center.telemetry_endpoint' => 'https://control.test/v2/control-center/telemetry/heartbeat',
+            'control_center.telemetry_token' => 'agent-token',
+            'control_center.app_version' => '2026.07.agent',
+        ]);
+
+        Http::fake([
+            'https://control.test/v2/control-center/telemetry/heartbeat' => Http::response([
+                'ok' => true,
+                'data' => [
+                    'telemetry_status' => 'healthy',
+                    'instance' => ['slug' => 'cive-production'],
+                ],
+            ], 200),
+        ]);
+
+        $this->artisan('control-center:send-telemetry')
+            ->expectsOutputToContain('Endpoint: https://control.test/v2/control-center/telemetry/heartbeat')
+            ->expectsOutputToContain('Instancia: cive-production')
+            ->expectsOutputToContain('HTTP status: 200')
+            ->expectsOutputToContain('"telemetry_status": "healthy"')
+            ->expectsOutputToContain('Telemetria enviada correctamente.')
+            ->assertSuccessful();
+    }
+
+    public function test_send_telemetry_command_prints_failure_diagnostics_for_html_or_auth_errors(): void
+    {
+        config([
+            'control_center.instance_slug' => 'cive-production',
+            'control_center.telemetry_endpoint' => 'https://control.test/v2/control-center/telemetry/heartbeat',
+            'control_center.telemetry_token' => 'agent-token',
+            'control_center.app_version' => '2026.07.agent',
+        ]);
+
+        Http::fake([
+            'https://control.test/v2/control-center/telemetry/heartbeat' => Http::response('<html>Login</html>', 403, ['Content-Type' => 'text/html']),
+        ]);
+
+        $this->artisan('control-center:send-telemetry')
+            ->expectsOutputToContain('Endpoint: https://control.test/v2/control-center/telemetry/heartbeat')
+            ->expectsOutputToContain('Instancia: cive-production')
+            ->expectsOutputToContain('HTTP status: 403')
+            ->expectsOutputToContain('<html>Login</html>')
+            ->expectsOutputToContain('Error enviando telemetria.')
+            ->assertFailed();
+    }
+
     public function test_agent_requires_endpoint_token_and_instance_slug(): void
     {
         config([
