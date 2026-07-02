@@ -20,7 +20,7 @@ class CirugiasDashboardService
 
     public function __construct(private PDO $db)
     {
-        $this->afiliacionDimensions = new AfiliacionDimensionService($db);
+        $this->afiliacionDimensions = app(AfiliacionDimensionService::class);
     }
 
     public function getAfiliacionOptions(string $start, string $end): array

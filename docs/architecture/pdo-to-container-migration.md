@@ -1,5 +1,7 @@
 # Migración de PDO manual al Service Container de Laravel
 
+> Este documento es el **plan de migración** — tiene fecha de expiración. Los principios permanentes que rigen toda la arquitectura de MedForge, código nuevo incluido, están en [`medforge-architecture-principles.md`](./medforge-architecture-principles.md).
+
 **Meta final:** MedForge deja de depender *conceptualmente* de PDO — no solo de recibirlo manualmente. La aplicación debe sentirse una app Laravel nativa (Service Container, DI, testeable), conservando el SQL optimizado donde sea la mejor herramienta.
 
 **Estado actual:** Fase 0 y Fase 1 completadas para el servicio piloto (`CronTaskRepository`). Fases 0-1 para el resto de los 32 servicios auditados: pendientes. Fase 2 y Fase 3: no iniciadas — dependen de que 0 y 1 estén completas en cada módulo.

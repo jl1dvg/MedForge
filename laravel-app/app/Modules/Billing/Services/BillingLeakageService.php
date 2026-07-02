@@ -13,7 +13,7 @@ class BillingLeakageService
 
     public function __construct(private readonly PDO $db)
     {
-        $this->afiliacionDimensions = new AfiliacionDimensionService($db);
+        $this->afiliacionDimensions = app(AfiliacionDimensionService::class);
     }
 
     /**

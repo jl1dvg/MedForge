@@ -4,8 +4,14 @@ declare(strict_types=1);
 
 namespace App\Modules\Shared\Support;
 
+use Illuminate\Database\ConnectionInterface;
 use PDO;
 
+/**
+ * Resuelta por el Service Container de Laravel. No recibe PDO directamente:
+ * obtiene el handle PDO de la conexión activa de Laravel para poder seguir
+ * usando prepare()/execute()/fetch(PDO::FETCH_ASSOC) sin reescribir el SQL.
+ */
 class AfiliacionDimensionService
 {
     /** @var array<string,bool> */
@@ -14,8 +20,11 @@ class AfiliacionDimensionService
     /** @var array<string,bool> */
     private array $columnExistsCache = [];
 
-    public function __construct(private readonly PDO $db)
+    private readonly PDO $db;
+
+    public function __construct(ConnectionInterface $connection)
     {
+        $this->db = $connection->getPdo();
     }
 
     /**

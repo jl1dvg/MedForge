@@ -37,7 +37,7 @@ class BillingProcedimientosKpiService
     public function __construct(PDO $db)
     {
         $this->db = $db;
-        $this->afiliacionDimensions = new AfiliacionDimensionService($db);
+        $this->afiliacionDimensions = app(AfiliacionDimensionService::class);
     }
 
     public function build(array $filters): array

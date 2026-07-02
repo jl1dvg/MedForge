@@ -114,7 +114,7 @@ class CodesUiController
      */
     private function insuranceDimensionOptions(string $type): array
     {
-        $service = new AfiliacionDimensionService(DB::connection()->getPdo());
+        $service = app(AfiliacionDimensionService::class);
 
         return match ($type) {
             'categoria' => $service->getCategoriaOptions('Todos los tipos'),

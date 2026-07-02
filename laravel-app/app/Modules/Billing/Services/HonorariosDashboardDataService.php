@@ -23,7 +23,7 @@ class HonorariosDashboardDataService
     public function __construct(?PDO $db = null)
     {
         $this->db = $db ?? DB::connection()->getPdo();
-        $this->afiliacionDimensions = new AfiliacionDimensionService($this->db);
+        $this->afiliacionDimensions = app(AfiliacionDimensionService::class);
         $this->settingsService = new HonorariosSettingsService();
     }
 

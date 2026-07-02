@@ -53,7 +53,7 @@ class ImagenesUiService
     public function __construct(?PDO $pdo = null)
     {
         $this->db = $pdo ?? DB::connection()->getPdo();
-        $this->afiliacionDimensions = new AfiliacionDimensionService($this->db);
+        $this->afiliacionDimensions = app(AfiliacionDimensionService::class);
     }
 
     /**

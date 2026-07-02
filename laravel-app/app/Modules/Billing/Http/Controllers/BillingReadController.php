@@ -72,8 +72,7 @@ class BillingReadController
     public function dimensiones(): JsonResponse
     {
         $data = Cache::remember('billing.dimensiones', now()->addHour(), function () {
-            $pdo = DB::connection()->getPdo();
-            $service = new AfiliacionDimensionService($pdo);
+            $service = app(AfiliacionDimensionService::class);
             return [
                 'categorias' => $service->getCategoriaOptions('Todas las categorías'),
                 'empresas'   => $service->getEmpresaOptions('Todas las empresas'),

@@ -179,7 +179,7 @@ class AgendaReadController
         if ($applyUserDoctorDefault && $filters['doctor'] === '') {
             $filters['doctor'] = $this->resolveUserDoctorKeyFromCatalog($doctorCatalog);
         }
-        $afiliacionDimensions = new AfiliacionDimensionService(DB::connection()->getPdo());
+        $afiliacionDimensions = app(AfiliacionDimensionService::class);
         $afiliacionContext = $afiliacionDimensions->buildContext("COALESCE(NULLIF(TRIM(pp.afiliacion), ''), '')", 'aca');
 
         $sql = "SELECT
