@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -646,9 +647,14 @@ class ControlCenterService
         ]);
 
         $instance = DB::table('control_center_instances')->where('slug', $validated['instance_slug'])->first();
-        abort_if($instance === null, 404);
+        if ($instance === null) {
+            $this->logTelemetryTokenDiagnostic($validated['instance_slug'], null, null, false, 'recordTelemetryHeartbeat:instance_not_found_before_404');
+            abort(404);
+        }
         $token = $request->bearerToken();
-        if (!$this->validTelemetryToken($token, $instance->telemetry_token_hash ?? null)) {
+        $tokenIsValid = $this->validTelemetryToken($token, $instance->telemetry_token_hash ?? null);
+        if (!$tokenIsValid) {
+            $this->logTelemetryTokenDiagnostic($validated['instance_slug'], $instance, $token, $tokenIsValid, 'recordTelemetryHeartbeat:invalid_token_before_abort_401');
             abort(401, 'Token de telemetria invalido.');
         }
 
@@ -1448,11 +1454,45 @@ class ControlCenterService
 
     private function validTelemetryToken(?string $token, ?string $hash): bool
     {
-        return is_string($token)
+        $valid = is_string($token)
             && $token !== ''
             && is_string($hash)
             && $hash !== ''
             && hash_equals($hash, hash('sha256', $token));
+
+        if ((bool) config('app.debug')) {
+            Log::debug('Control Center telemetry token validation', [
+                'condition' => 'validTelemetryToken:return',
+                'stored_hash_is_null' => $hash === null,
+                'stored_hash_prefix' => is_string($hash) && $hash !== '' ? substr($hash, 0, 8) : null,
+                'calculated_hash_prefix' => is_string($token) && $token !== '' ? substr(hash('sha256', $token), 0, 8) : null,
+                'hash_equals_result' => $valid,
+            ]);
+        }
+
+        return $valid;
+    }
+
+    private function logTelemetryTokenDiagnostic(string $instanceSlug, ?object $instance, ?string $token, bool $hashEqualsResult, string $condition): void
+    {
+        if (!(bool) config('app.debug')) {
+            return;
+        }
+
+        $storedHash = $instance?->telemetry_token_hash ?? null;
+        $calculatedHash = is_string($token) && $token !== '' ? hash('sha256', $token) : null;
+
+        Log::debug('Control Center telemetry heartbeat auth diagnostic', [
+            'condition' => $condition,
+            'instance_slug_received' => $instanceSlug,
+            'instance_found' => $instance !== null,
+            'instance_id' => $instance?->id,
+            'instance_slug_found' => $instance?->slug,
+            'telemetry_token_hash_is_null' => $storedHash === null,
+            'stored_hash_prefix' => is_string($storedHash) && $storedHash !== '' ? substr($storedHash, 0, 8) : null,
+            'calculated_hash_prefix' => $calculatedHash === null ? null : substr($calculatedHash, 0, 8),
+            'hash_equals_result' => $hashEqualsResult,
+        ]);
     }
 
     private function ensureService(string $key, string $name, string $source): int

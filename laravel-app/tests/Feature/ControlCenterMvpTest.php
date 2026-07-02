@@ -7,6 +7,7 @@ use App\Modules\Shared\Support\LegacySessionAuth;
 use App\Modules\ControlCenter\Services\ControlCenterService;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
@@ -444,6 +445,58 @@ class ControlCenterMvpTest extends TestCase
         ], [
             'Authorization' => 'Bearer wrong-token',
         ])->assertUnauthorized();
+    }
+
+    public function test_signed_telemetry_logs_debug_diagnostics_before_invalid_token_abort(): void
+    {
+        config(['app.debug' => true]);
+        Log::spy();
+
+        DB::table('control_center_instances')->where('slug', 'cive-production')->update([
+            'telemetry_token_hash' => hash('sha256', 'secret-token'),
+        ]);
+
+        $this->postJson('/v2/control-center/telemetry/heartbeat', [
+            'instance_slug' => 'cive-production',
+            'checked_at' => '2026-07-01T10:05:00Z',
+        ], [
+            'Authorization' => 'Bearer wrong-token',
+        ])->assertUnauthorized();
+
+        Log::shouldHaveReceived('debug')->with('Control Center telemetry token validation', \Mockery::on(fn (array $context): bool => $context['condition'] === 'validTelemetryToken:return'
+            && $context['stored_hash_is_null'] === false
+            && $context['stored_hash_prefix'] === substr(hash('sha256', 'secret-token'), 0, 8)
+            && $context['calculated_hash_prefix'] === substr(hash('sha256', 'wrong-token'), 0, 8)
+            && $context['hash_equals_result'] === false));
+
+        Log::shouldHaveReceived('debug')->with('Control Center telemetry heartbeat auth diagnostic', \Mockery::on(fn (array $context): bool => $context['condition'] === 'recordTelemetryHeartbeat:invalid_token_before_abort_401'
+            && $context['instance_slug_received'] === 'cive-production'
+            && $context['instance_found'] === true
+            && (int) $context['instance_id'] === 1
+            && $context['instance_slug_found'] === 'cive-production'
+            && $context['telemetry_token_hash_is_null'] === false
+            && $context['stored_hash_prefix'] === substr(hash('sha256', 'secret-token'), 0, 8)
+            && $context['calculated_hash_prefix'] === substr(hash('sha256', 'wrong-token'), 0, 8)
+            && $context['hash_equals_result'] === false));
+    }
+
+    public function test_signed_telemetry_does_not_log_diagnostics_when_app_debug_is_false(): void
+    {
+        config(['app.debug' => false]);
+        Log::spy();
+
+        DB::table('control_center_instances')->where('slug', 'cive-production')->update([
+            'telemetry_token_hash' => hash('sha256', 'secret-token'),
+        ]);
+
+        $this->postJson('/v2/control-center/telemetry/heartbeat', [
+            'instance_slug' => 'cive-production',
+            'checked_at' => '2026-07-01T10:05:00Z',
+        ], [
+            'Authorization' => 'Bearer wrong-token',
+        ])->assertUnauthorized();
+
+        Log::shouldNotHaveReceived('debug');
     }
 
     public function test_record_deployment_service_is_idempotent_and_audited(): void
