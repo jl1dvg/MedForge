@@ -16,7 +16,7 @@ class InstanceTelemetryAgentService
     public function send(?string $endpoint = null, ?string $token = null, ?string $instanceSlug = null, ?string $appVersion = null, bool $debugHttp = false, ?array $payload = null): array
     {
         $endpoint = $this->required($endpoint ?? config('control_center.telemetry_endpoint'), 'CONTROL_CENTER_TELEMETRY_ENDPOINT');
-        $token = $this->required($token ?? config('control_center.telemetry_token'), 'CONTROL_CENTER_TELEMETRY_TOKEN');
+        $token = $this->required($token ?? config('control_center.telemetry_token'), 'CONTROL_CENTER_INSTANCE_TOKEN');
         $instanceSlug = $this->required($instanceSlug ?? config('control_center.instance_slug'), 'CONTROL_CENTER_INSTANCE_SLUG');
         $payload ??= $this->payload($instanceSlug, $appVersion ?? config('control_center.app_version'));
         $headers = $this->headersForToken($token);

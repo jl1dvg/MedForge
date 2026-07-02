@@ -33,7 +33,7 @@ class ControlCenterSendTelemetryCommand extends Command
         $this->line('headers_contain_authorization: ' . ($token !== '' ? 'yes' : 'no'));
 
         if ($token === '') {
-            $this->error('Configura CONTROL_CENTER_TELEMETRY_TOKEN para enviar telemetria Control Center.');
+            $this->error('Configura CONTROL_CENTER_INSTANCE_TOKEN para enviar telemetria Control Center.');
 
             return self::FAILURE;
         }
