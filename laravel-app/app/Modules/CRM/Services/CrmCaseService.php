@@ -267,7 +267,7 @@ class CrmCaseService
             return [];
         }
 
-        return (new CodesCatalogService())->quickSearch($query, $limit, $affiliation);
+        return app(CodesCatalogService::class)->quickSearch($query, $limit, $affiliation);
     }
 
     /**
@@ -279,6 +279,8 @@ class CrmCaseService
             return [];
         }
 
+        // Migración PDO→Container: CodesPackageService aún exige PDO crudo en
+        // su firma — se migra con el módulo Codes. Este getPdo() cae en esa ronda.
         $packages = new CodesPackageService(DB::connection()->getPdo());
 
         return $packages->list([
@@ -551,16 +553,19 @@ class CrmCaseService
 
     private function solicitudesReadService(): SolicitudesReadParityService
     {
-        return new SolicitudesReadParityService();
+        return app(SolicitudesReadParityService::class);
     }
 
     private function solicitudesCommunicationService(): SolicitudesCommunicationService
     {
-        return new SolicitudesCommunicationService($this->solicitudesReadService());
+        return app(SolicitudesCommunicationService::class);
     }
 
     private function solicitudesWriteService(): SolicitudesWriteParityService
     {
+        // Migración PDO→Container: SolicitudesWriteParityService aún exige PDO
+        // crudo en su firma — se migra con el módulo Solicitudes (orden 9 del
+        // plan). Este getPdo() cae en esa ronda.
         return new SolicitudesWriteParityService(DB::connection()->getPdo(), $this->solicitudesReadService());
     }
 
@@ -645,7 +650,7 @@ class CrmCaseService
             $proposalNumber = (string) $proposalId;
         }
 
-        $proposalService = new CrmProposalService();
+        $proposalService = app(CrmProposalService::class);
         $proposal = $proposalService->find($proposalId);
         $publicUrl = $proposal['public_url'] ?? ('/v2/crm/proposals/' . $proposalId);
         $communicationService = $this->solicitudesCommunicationService();
@@ -1229,7 +1234,7 @@ class CrmCaseService
             return [];
         }
 
-        $proposalService = new CrmProposalService();
+        $proposalService = app(CrmProposalService::class);
 
         return $query->orderBy(Schema::hasColumn('crm_proposals', 'created_at') ? 'created_at' : 'id', 'desc')
             ->get()

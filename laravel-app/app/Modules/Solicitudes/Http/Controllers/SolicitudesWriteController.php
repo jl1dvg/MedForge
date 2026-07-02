@@ -471,7 +471,7 @@ class SolicitudesWriteController
 
         if ($proposalId > 0 && in_array($sendBy, ['email', 'whatsapp'], true)) {
             try {
-                $proposalService = new CrmProposalService();
+                $proposalService = app(CrmProposalService::class);
                 $proposal = $proposalService->find($proposalId);
                 $publicUrl = $proposal['public_url'] ?? ('/v2/crm/proposals/' . $proposalId);
 
