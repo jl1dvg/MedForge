@@ -57,7 +57,7 @@ class SolicitudesReadParityService
 
     public function __construct(?SolicitudesStateMachineService $stateMachine = null)
     {
-        $this->afiliacionDimensions = new AfiliacionDimensionService(DB::connection()->getPdo());
+        $this->afiliacionDimensions = app(AfiliacionDimensionService::class);
         $this->stateMachine = $stateMachine ?? new SolicitudesStateMachineService();
     }
 

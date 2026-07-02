@@ -53,7 +53,7 @@ class ExamenesParityService
         $this->leadConfig = new LeadConfigurationService($this->db);
         $this->pusherConfig = new PusherConfigService($this->db);
         $this->crmService = new ExamenCrmService($this->db);
-        $this->afiliacionDimensions = new AfiliacionDimensionService($this->db);
+        $this->afiliacionDimensions = app(AfiliacionDimensionService::class);
         $this->whatsappWriter = new ConversationWriteService();
         $this->mailLogService = new ExamenMailLogService($this->db);
     }

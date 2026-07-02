@@ -17,7 +17,7 @@ class BillingDashboardDataService
     {
         $this->db = $db ?? DB::connection()->getPdo();
         $this->leakageService = $leakageService ?? new BillingLeakageService($this->db);
-        $this->afiliacionDimensions = new AfiliacionDimensionService($this->db);
+        $this->afiliacionDimensions = app(AfiliacionDimensionService::class);
     }
 
     /**

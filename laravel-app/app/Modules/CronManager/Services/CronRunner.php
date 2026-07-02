@@ -36,7 +36,9 @@ class CronRunner
 
     public function __construct(private PDO $pdo)
     {
-        $this->repository = new CronTaskRepository($pdo);
+        // CronTaskRepository ya no recibe PDO manualmente: se resuelve por el
+        // container, que internamente usa la misma conexión activa de Laravel.
+        $this->repository = app(CronTaskRepository::class);
     }
 
     /**

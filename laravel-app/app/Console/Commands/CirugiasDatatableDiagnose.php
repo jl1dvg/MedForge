@@ -6,7 +6,6 @@ namespace App\Console\Commands;
 
 use App\Modules\Cirugias\Services\CirugiaService;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
 
 class CirugiasDatatableDiagnose extends Command
 {
@@ -17,7 +16,7 @@ class CirugiasDatatableDiagnose extends Command
 
     protected $description = '[DIAGNÓSTICO] Simula /v2/cirugias/datatable y muestra conteos, muestra de filas y distribución de tabs React.';
 
-    public function handle(): int
+    public function handle(CirugiaService $service): int
     {
         $desde = $this->option('desde') ?: now()->subDays(90)->format('Y-m-d');
         $hasta = $this->option('hasta') ?: now()->format('Y-m-d');
@@ -25,10 +24,6 @@ class CirugiasDatatableDiagnose extends Command
 
         $this->info("Simulando /v2/cirugias/datatable  [{$desde} → {$hasta}]");
         $this->line('');
-
-        /** @var \PDO $pdo */
-        $pdo = DB::connection()->getPdo();
-        $service = new CirugiaService($pdo);
 
         try {
             $result = $service->obtenerCirugiasPaginadas(

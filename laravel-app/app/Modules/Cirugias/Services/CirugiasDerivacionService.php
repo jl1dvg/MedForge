@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Cirugias\Services;
 
 use DateTimeImmutable;
+use Illuminate\Database\ConnectionInterface;
 use PDO;
 use RuntimeException;
 use Throwable;
@@ -17,10 +18,13 @@ class CirugiasDerivacionService
     /** @var array<string, bool> */
     private array $columnExistsCache = [];
 
+    private readonly PDO $db;
+
     public function __construct(
-        private readonly PDO $db,
+        ConnectionInterface $connection,
         private readonly string $projectRoot,
     ) {
+        $this->db = $connection->getPdo();
     }
 
     public function getLastError(): ?string

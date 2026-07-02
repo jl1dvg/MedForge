@@ -16,20 +16,15 @@ use Illuminate\Support\Facades\DB;
 
 class CronManagerController
 {
-    private ?CronTaskRepository $repository = null;
     private CronScheduleRepository $scheduleRepository;
 
-    public function __construct()
+    public function __construct(private readonly CronTaskRepository $repository)
     {
         $this->scheduleRepository = new CronScheduleRepository();
     }
 
     private function getRepository(): CronTaskRepository
     {
-        if ($this->repository === null) {
-            $this->repository = new CronTaskRepository(DB::connection()->getPdo());
-        }
-
         return $this->repository;
     }
 

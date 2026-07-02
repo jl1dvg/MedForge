@@ -3,6 +3,7 @@
 namespace App\Modules\Cirugias\Services;
 
 use App\Modules\Cirugias\Models\Cirugia;
+use Illuminate\Database\ConnectionInterface;
 use PDO;
 
 class CirugiaService
@@ -27,8 +28,11 @@ class CirugiaService
     /** @var array<string, bool> */
     private array $columnExistsCache = [];
 
-    public function __construct(private PDO $db)
+    private PDO $db;
+
+    public function __construct(ConnectionInterface $connection)
     {
+        $this->db = $connection->getPdo();
     }
 
     public function getLastError(): ?string

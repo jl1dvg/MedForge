@@ -6,14 +6,24 @@ namespace App\Modules\CronManager\Repositories;
 
 use DateInterval;
 use DateTimeImmutable;
+use Illuminate\Database\ConnectionInterface;
 use PDO;
 
+/**
+ * Resuelta por el Service Container de Laravel. No recibe PDO directamente:
+ * obtiene el handle PDO de la conexión activa de Laravel (misma base de datos,
+ * mismas credenciales que DB::connection()) para poder seguir usando
+ * prepare()/execute()/fetchAll(PDO::FETCH_ASSOC) sin reescribir el SQL.
+ */
 class CronTaskRepository
 {
     private bool $schemaEnsured = false;
 
-    public function __construct(private PDO $pdo)
+    private PDO $pdo;
+
+    public function __construct(ConnectionInterface $connection)
     {
+        $this->pdo = $connection->getPdo();
         $this->ensureSchema();
     }
 

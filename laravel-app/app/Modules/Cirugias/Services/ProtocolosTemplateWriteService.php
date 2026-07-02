@@ -4,13 +4,17 @@ declare(strict_types=1);
 
 namespace App\Modules\Cirugias\Services;
 
+use Illuminate\Database\ConnectionInterface;
 use PDO;
 use Throwable;
 
 class ProtocolosTemplateWriteService
 {
-    public function __construct(private readonly PDO $db)
+    private readonly PDO $db;
+
+    public function __construct(ConnectionInterface $connection)
     {
+        $this->db = $connection->getPdo();
     }
 
     public function existsProtocolId(string $id): bool

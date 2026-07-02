@@ -58,7 +58,7 @@ class BillingParticularesReportService
     public function __construct(PDO $db)
     {
         $this->db = $db;
-        $this->afiliacionDimensions = new AfiliacionDimensionService($db);
+        $this->afiliacionDimensions = app(AfiliacionDimensionService::class);
     }
 
     /**

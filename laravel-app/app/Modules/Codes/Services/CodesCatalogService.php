@@ -421,7 +421,7 @@ class CodesCatalogService
                 return [];
             }
 
-            $service = new AfiliacionDimensionService(DB::connection()->getPdo());
+            $service = app(AfiliacionDimensionService::class);
             $tipoSeguro = $service->normalizeCategoriaFilter($tipoSeguro);
             $empresaSeguro = $service->normalizeEmpresaFilter($empresaSeguro);
 

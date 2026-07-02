@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 namespace App\Modules\Cirugias\Services;
 
+use Illuminate\Database\ConnectionInterface;
 use PDO;
 
 class ProtocolosTemplateReadService
 {
-    public function __construct(private readonly PDO $db)
+    private readonly PDO $db;
+
+    public function __construct(ConnectionInterface $connection)
     {
+        $this->db = $connection->getPdo();
     }
 
     public function obtenerProcedimientosAgrupados(): array
