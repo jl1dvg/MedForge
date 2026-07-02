@@ -44,6 +44,35 @@ class CirugiasDashboardService
         return $timings;
     }
 
+    /**
+     * TEMP-DIAG: instrumentación de bloques internos de
+     * getTopDoctoresSolicitudesRealizadas(). Apagada por defecto — el
+     * reporte ejecutivo en producción NO ejecuta ninguna query extra a
+     * menos que se active explícitamente desde un comando de diagnóstico.
+     * Las queries de medición son de solo lectura (COUNT), duplican texto
+     * SQL ya existente en el método y no alteran la consulta real ni su
+     * resultado. Eliminar junto con getTopDoctoresSolicitudesRealizadas
+     * al cerrar el diagnóstico.
+     */
+    private static bool $diagBlockTimingEnabled = false;
+
+    /** @var array<string,float> */
+    private static array $diagBlockTimings = [];
+
+    /** TEMP-DIAG */
+    public static function enableDiagBlockTiming(): void
+    {
+        self::$diagBlockTimingEnabled = true;
+    }
+
+    /** TEMP-DIAG */
+    public static function getResetDiagBlockTimings(): array
+    {
+        $timings = self::$diagBlockTimings;
+        self::$diagBlockTimings = [];
+        return $timings;
+    }
+
     public function __construct(ConnectionInterface $connection)
     {
         $this->db = $connection->getPdo();
@@ -1130,6 +1159,168 @@ class CirugiasDashboardService
         $sql = str_replace('%SEGURO_FILTER_SQL%', $this->seguroFilterSql($seguroKeyExpr), $sql);
         $sql = str_replace('%SEDE_FILTER_CONDITION%', $sedeFilterCondition, $sql);
 
+        // TEMP-DIAG: instrumentación por bloques, apagada por defecto (ver
+        // enableDiagBlockTiming()). No participa en la consulta real de
+        // abajo — son queries adicionales de solo lectura (COUNT) que
+        // duplican texto SQL ya presente en este método para medir el
+        // costo de cada derived table / join por separado.
+        if (self::$diagBlockTimingEnabled) {
+            $diagBindings = array_merge([
+                ':inicio' => $start,
+                ':fin' => $end,
+                ':afiliacion_filter' => $afiliacionFilterValue,
+                ':afiliacion_filter_match' => $afiliacionFilterValue,
+                ':afiliacion_categoria_filter' => $afiliacionCategoriaFilterValue,
+                ':afiliacion_categoria_filter_match' => $afiliacionCategoriaFilterValue,
+                ':sede_filter' => $sedeFilterValue,
+                ':sede_filter_match' => $sedeFilterValue,
+            ], $this->seguroFilterBindings());
+
+            $runDiagCount = function (string $label, string $countSql, array $bindings) {
+                $t0 = microtime(true);
+                $s = $this->db->prepare($countSql);
+                foreach ($bindings as $key => $value) {
+                    $s->bindValue($key, $value);
+                }
+                $s->execute();
+                $n = (int) $s->fetchColumn();
+                self::$diagBlockTimings[$label] = microtime(true) - $t0;
+                self::$diagBlockTimings["{$label}_filas"] = $n;
+            };
+
+            // Bloque 1: pp (procedimiento_proyectado agrupado por form_id), sola.
+            if ($hasProcedimientoDoctor) {
+                $runDiagCount('1_pp_doctor_alone', <<<'SQL'
+                    SELECT COUNT(*) FROM (
+                        SELECT form_id, MAX(NULLIF(TRIM(doctor), '')) AS doctor
+                        FROM procedimiento_proyectado
+                        WHERE COALESCE(sigcenter_present, 1) = 1
+                        GROUP BY form_id
+                    ) x
+                    SQL, []);
+            }
+
+            // Bloque 2: pp_sede_agg (derived table de sede), sola — solo existe
+            // si $sedeJoin no es vacío (procedimiento_proyectado con hc_number).
+            if ($sedeJoin !== '') {
+                $sedeExprDiag = $this->sedeExpr('pp_sede_raw');
+                $runDiagCount('2_pp_sede_agg_alone', <<<SQL
+                    SELECT COUNT(*) FROM (
+                        SELECT
+                            CONVERT(pp_sede_raw.form_id USING utf8mb4) COLLATE utf8mb4_unicode_ci AS form_id,
+                            MAX({$sedeExprDiag}) AS sede_norm
+                        FROM procedimiento_proyectado pp_sede_raw
+                        WHERE COALESCE(pp_sede_raw.sigcenter_present, 1) = 1
+                        GROUP BY pp_sede_raw.form_id
+                    ) x
+                    SQL, []);
+            }
+
+            // Bloque 3: meta (solicitud_crm_meta agrupado por solicitud_id), sola.
+            $runDiagCount('3_meta_alone', <<<'SQL'
+                SELECT COUNT(*) FROM (
+                    SELECT solicitud_id
+                    FROM solicitud_crm_meta
+                    WHERE meta_key = 'cirugia_confirmada_form_id'
+                      AND meta_value IS NOT NULL
+                      AND TRIM(meta_value) <> ''
+                    GROUP BY solicitud_id
+                ) x
+                SQL, []);
+
+            // Bloque 4: "base" completa — sp + pp + pp_sede_agg + consulta_data +
+            // patient_data + afiliacion_categoria_map + WHERE, SIN el INNER JOIN
+            // a meta ni el GROUP BY final. Aísla el costo de los joins + filtro
+            // de fecha. Es literalmente el mismo texto que %PP_JOIN%/%SEDE_JOIN%/
+            // etc. ya usados arriba para $sql, solo envuelto en COUNT(*).
+            $baseSqlDiag = <<<'SQL'
+                SELECT COUNT(*) FROM (
+                    SELECT DISTINCT
+                        sp.id,
+                        %DOCTOR_EXPR% AS doctor
+                    FROM solicitud_procedimiento sp
+                    %PP_JOIN%
+                    %SEDE_JOIN%
+                    LEFT JOIN consulta_data cd
+                        ON CONVERT(cd.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                         = CONVERT(sp.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                       AND cd.form_id = sp.form_id
+                    LEFT JOIN patient_data p
+                        ON CONVERT(p.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                         = CONVERT(sp.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                    %AFILIACION_CATEGORIA_JOIN%
+                    WHERE COALESCE(cd.fecha, sp.fecha) BETWEEN :inicio AND :fin
+                      AND sp.procedimiento IS NOT NULL
+                      AND TRIM(sp.procedimiento) <> ''
+                      AND TRIM(sp.procedimiento) <> 'SELECCIONE'
+                      AND (:afiliacion_filter = '' OR %AFILIACION_KEY_EXPR% = :afiliacion_filter_match)
+                      AND (:afiliacion_categoria_filter = '' OR %AFILIACION_CATEGORIA_EXPR% = :afiliacion_categoria_filter_match)
+                      %SEGURO_FILTER_SQL%
+                      AND %SEDE_FILTER_CONDITION%
+                ) x
+                SQL;
+            $baseSqlDiag = str_replace('%AFILIACION_KEY_EXPR%', $afiliacionKeyExpr, $baseSqlDiag);
+            $baseSqlDiag = str_replace('%AFILIACION_CATEGORIA_JOIN%', $categoriaContext['join'], $baseSqlDiag);
+            $baseSqlDiag = str_replace('%AFILIACION_CATEGORIA_EXPR%', $categoriaContext['expr'], $baseSqlDiag);
+            $baseSqlDiag = str_replace('%DOCTOR_EXPR%', $doctorExpr, $baseSqlDiag);
+            $baseSqlDiag = str_replace('%PP_JOIN%', $ppJoin, $baseSqlDiag);
+            $baseSqlDiag = str_replace('%SEDE_JOIN%', $sedeJoin, $baseSqlDiag);
+            $baseSqlDiag = str_replace('%SEGURO_FILTER_SQL%', $this->seguroFilterSql($seguroKeyExpr), $baseSqlDiag);
+            $baseSqlDiag = str_replace('%SEDE_FILTER_CONDITION%', $sedeFilterCondition, $baseSqlDiag);
+            $runDiagCount('4_base_con_joins_alone', $baseSqlDiag, $diagBindings);
+
+            // Bloque 5: base INNER JOIN meta, sin GROUP BY/ORDER BY/LIMIT final —
+            // aísla el costo del INNER JOIN de cierre contra solicitud_crm_meta.
+            $baseJoinMetaSqlDiag = <<<'SQL'
+                SELECT COUNT(*) FROM (
+                    SELECT base.id
+                    FROM (
+                        SELECT DISTINCT
+                            sp.id
+                        FROM solicitud_procedimiento sp
+                        %PP_JOIN%
+                        %SEDE_JOIN%
+                        LEFT JOIN consulta_data cd
+                            ON CONVERT(cd.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                             = CONVERT(sp.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                           AND cd.form_id = sp.form_id
+                        LEFT JOIN patient_data p
+                            ON CONVERT(p.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                             = CONVERT(sp.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                        %AFILIACION_CATEGORIA_JOIN%
+                        WHERE COALESCE(cd.fecha, sp.fecha) BETWEEN :inicio AND :fin
+                          AND sp.procedimiento IS NOT NULL
+                          AND TRIM(sp.procedimiento) <> ''
+                          AND TRIM(sp.procedimiento) <> 'SELECCIONE'
+                          AND (:afiliacion_filter = '' OR %AFILIACION_KEY_EXPR% = :afiliacion_filter_match)
+                          AND (:afiliacion_categoria_filter = '' OR %AFILIACION_CATEGORIA_EXPR% = :afiliacion_categoria_filter_match)
+                          %SEGURO_FILTER_SQL%
+                          AND %SEDE_FILTER_CONDITION%
+                    ) base
+                    INNER JOIN (
+                        SELECT solicitud_id
+                        FROM solicitud_crm_meta
+                        WHERE meta_key = 'cirugia_confirmada_form_id'
+                          AND meta_value IS NOT NULL
+                          AND TRIM(meta_value) <> ''
+                        GROUP BY solicitud_id
+                    ) meta
+                        ON meta.solicitud_id = base.id
+                ) x
+                SQL;
+            $baseJoinMetaSqlDiag = str_replace('%AFILIACION_KEY_EXPR%', $afiliacionKeyExpr, $baseJoinMetaSqlDiag);
+            $baseJoinMetaSqlDiag = str_replace('%AFILIACION_CATEGORIA_JOIN%', $categoriaContext['join'], $baseJoinMetaSqlDiag);
+            $baseJoinMetaSqlDiag = str_replace('%AFILIACION_CATEGORIA_EXPR%', $categoriaContext['expr'], $baseJoinMetaSqlDiag);
+            $baseJoinMetaSqlDiag = str_replace('%PP_JOIN%', $ppJoin, $baseJoinMetaSqlDiag);
+            $baseJoinMetaSqlDiag = str_replace('%SEDE_JOIN%', $sedeJoin, $baseJoinMetaSqlDiag);
+            $baseJoinMetaSqlDiag = str_replace('%SEGURO_FILTER_SQL%', $this->seguroFilterSql($seguroKeyExpr), $baseJoinMetaSqlDiag);
+            $baseJoinMetaSqlDiag = str_replace('%SEDE_FILTER_CONDITION%', $sedeFilterCondition, $baseJoinMetaSqlDiag);
+            $runDiagCount('5_base_join_meta_alone', $baseJoinMetaSqlDiag, $diagBindings);
+        }
+
+        // --- Consulta real (sin cambios) -------------------------------
+        $__diagFullT0 = self::$diagBlockTimingEnabled ? microtime(true) : null; // TEMP-DIAG
+
         $stmt = $this->db->prepare($sql);
         $stmt->bindValue(':inicio', $start);
         $stmt->bindValue(':fin', $end);
@@ -1149,6 +1340,11 @@ class CirugiasDashboardService
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
             $labels[] = $row['doctor'] ?: 'Sin asignar';
             $totals[] = (int) $row['total'];
+        }
+
+        if ($__diagFullT0 !== null) { // TEMP-DIAG
+            self::$diagBlockTimings['6_query_completa_real'] = microtime(true) - $__diagFullT0;
+            self::$diagBlockTimings['6_query_completa_real_filas'] = count($labels);
         }
 
         return ['labels' => $labels, 'totals' => $totals];
