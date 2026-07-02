@@ -21,9 +21,11 @@ class InstanceTelemetryAgentService
         $payload = $this->payload($instanceSlug, $appVersion ?? config('control_center.app_version'));
 
         $response = Http::timeout(max(3, (int) config('control_center.telemetry_timeout', 10)))
-            ->withToken($token)
-            ->acceptJson()
             ->asJson()
+            ->withHeaders([
+                'Authorization' => 'Bearer ' . $token,
+                'Accept' => 'application/json',
+            ])
             ->post($endpoint, $payload);
 
         return [
@@ -43,21 +45,41 @@ class InstanceTelemetryAgentService
     {
         $now = Carbon::now(config('app.timezone', 'America/Guayaquil'));
 
+        $dbOk = $this->checkDatabase();
+        $queueOk = $this->checkQueueConfig();
+        $cacheOk = $this->checkCache();
+        $storageOk = $this->checkStorage();
+        $schedulerOk = $this->checkSchedulerConfig();
+
         return [
             'instance_slug' => $instanceSlug,
             'app_version' => $appVersion ?: null,
             'environment' => app()->environment(),
             'php_version' => PHP_VERSION,
             'laravel_version' => app()->version(),
-            'db_ok' => $this->checkDatabase(),
-            'queue_ok' => $this->checkQueueConfig(),
-            'cache_ok' => $this->checkCache(),
-            'storage_ok' => $this->checkStorage(),
-            'scheduler_ok' => $this->checkSchedulerConfig(),
+            'db_ok' => $dbOk,
+            'queue_ok' => $queueOk,
+            'cache_ok' => $cacheOk,
+            'storage_ok' => $storageOk,
+            'scheduler_ok' => $schedulerOk,
+            'telemetry_status' => $this->telemetryStatus($dbOk, $queueOk, $cacheOk, $storageOk, $schedulerOk),
             'last_backup_at' => config('control_center.last_backup_at') ?: null,
             'checked_at' => $now->toAtomString(),
             'usage' => $this->usageMetrics($now),
         ];
+    }
+
+    private function telemetryStatus(bool $dbOk, bool $queueOk, bool $cacheOk, bool $storageOk, bool $schedulerOk): string
+    {
+        if ($dbOk && $queueOk && $cacheOk && $storageOk && $schedulerOk) {
+            return 'healthy';
+        }
+
+        if (!$dbOk || !$storageOk) {
+            return 'error';
+        }
+
+        return 'degraded';
     }
 
     private function checkDatabase(): bool
