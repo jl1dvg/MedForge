@@ -1525,8 +1525,7 @@ class CirugiasDashboardService
                     = CONVERT(sp.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
                     AND cd.form_id = sp.form_id
                 LEFT JOIN patient_data p
-                    ON CONVERT(p.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
-                     = CONVERT(sp.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                    ON p.hc_number = sp.hc_number
                 %AFILIACION_CATEGORIA_JOIN%
                 WHERE COALESCE(cd.fecha, sp.fecha) BETWEEN :inicio_solicitud AND :fin_solicitud
                   AND sp.procedimiento IS NOT NULL
@@ -1578,7 +1577,7 @@ class CirugiasDashboardService
         $sql = str_replace('%SEDE_FILTER_CONDITION%', $sedeFilterCondition, $sql);
 
         $stmt = $this->db->prepare($sql);
-        $stmt->execute(array_merge([
+        $executeBindings = array_merge([
             ':inicio_solicitud' => $start,
             ':fin_solicitud' => $end,
             ':afiliacion_filter' => $afiliacionFilterValue,
@@ -1587,7 +1586,16 @@ class CirugiasDashboardService
             ':afiliacion_categoria_filter_match' => $afiliacionCategoriaFilterValue,
             ':sede_filter' => $sedeFilterValue,
             ':sede_filter_match' => $sedeFilterValue,
-        ], $this->seguroFilterBindings()));
+        ], $this->seguroFilterBindings());
+
+        if (self::$diagCaptureEnabled) { // TEMP-DIAG: copia exacta del SQL final + bindings reales
+            self::$diagCapturedQuery = [
+                'sql' => $stmt->queryString,
+                'bindings' => $executeBindings,
+            ];
+        }
+
+        $stmt->execute($executeBindings);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
         if ($rows === []) {
