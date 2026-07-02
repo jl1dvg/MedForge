@@ -208,20 +208,31 @@ class ControlCenterMvpTest extends TestCase
             'legal_name' => 'Vision Real S.A.',
             'ruc' => '1799999999001',
             'city' => 'Quito',
+            'country' => 'Ecuador',
+            'admin_contact_name' => 'Ana Admin',
+            'admin_contact_email' => 'admin@visionreal.test',
+            'admin_contact_phone' => '+593 99 999 9999',
+            'technical_contact_name' => 'Tito Tech',
+            'technical_contact_email' => 'tech@visionreal.test',
+            'internal_notes' => 'Cliente creado desde UI',
             'source' => 'manual',
         ]);
 
         $create->assertCreated()
             ->assertJsonPath('data.organization.slug', 'vision-real')
+            ->assertJsonPath('data.organization.country', 'Ecuador')
+            ->assertJsonPath('data.organization.admin_contact.email', 'admin@visionreal.test')
             ->assertJsonPath('data.organization.data_quality.source', 'manual');
 
         $id = $create->json('data.organization.id');
 
         $this->actingAsLegacyUser($user)->patchJson("/v2/control-center/organizations/{$id}", [
             'name' => 'Vision Real Ecuador',
+            'technical_contact_email' => 'soporte@visionreal.test',
             'source' => 'real',
         ])->assertOk()
             ->assertJsonPath('data.organization.name', 'Vision Real Ecuador')
+            ->assertJsonPath('data.organization.technical_contact.email', 'soporte@visionreal.test')
             ->assertJsonPath('data.organization.data_quality.source', 'real');
 
         $this->assertDatabaseHas('control_center_audit_logs', [
@@ -234,6 +245,136 @@ class ControlCenterMvpTest extends TestCase
             'event_type' => 'organization',
             'action' => 'organization.updated',
         ]);
+    }
+
+    public function test_control_center_admin_can_create_and_update_instance_with_initial_state_and_audit(): void
+    {
+        $user = $this->createUser(['control_center.view', 'control_center.clients.manage']);
+        $organizationId = DB::table('control_center_organizations')->where('slug', 'cive')->value('id');
+
+        $create = $this->actingAsLegacyUser($user)->postJson('/v2/control-center/instances', [
+            'organization_id' => $organizationId,
+            'slug' => 'dra-alvarez-production',
+            'name' => 'Dra. Alvarez Produccion',
+            'environment' => 'production',
+            'domain' => 'draalvarez.medforge.ec',
+            'admin_url' => 'https://draalvarez.medforge.ec/admin',
+            'server_label' => 'uiserver',
+            'database_host' => 'localhost',
+            'database_name' => 'medforge_draalvarez',
+            'timezone' => 'America/Guayaquil',
+            'current_version' => '2026.07.1',
+            'release_channel' => 'stable',
+            'status' => 'maintenance',
+            'notes' => 'Pendiente validacion de DNS',
+            'generate_telemetry_token' => true,
+            'source' => 'manual',
+        ]);
+
+        $create->assertCreated()
+            ->assertJsonPath('data.instance.slug', 'dra-alvarez-production')
+            ->assertJsonPath('data.instance.status', 'maintenance')
+            ->assertJsonPath('data.instance.timezone', 'America/Guayaquil')
+            ->assertJsonPath('data.telemetry_token_visible_once', true);
+
+        $instanceId = $create->json('data.instance.id');
+        $token = (string) $create->json('data.telemetry_token');
+        $this->assertNotSame('', $token);
+
+        $this->assertDatabaseHas('control_center_operational_states', [
+            'instance_id' => $instanceId,
+            'state' => 'maintenance',
+            'reason' => 'Estado inicial de instancia',
+        ]);
+        $this->assertDatabaseHas('control_center_audit_logs', [
+            'instance_id' => $instanceId,
+            'event_type' => 'state',
+            'action' => 'state.initialized',
+        ]);
+        $this->assertDatabaseHas('control_center_audit_logs', [
+            'instance_id' => $instanceId,
+            'event_type' => 'instance',
+            'action' => 'instance.created',
+        ]);
+        $this->assertSame(hash('sha256', $token), DB::table('control_center_instances')->where('id', $instanceId)->value('telemetry_token_hash'));
+
+        $this->actingAsLegacyUser($user)->patchJson("/v2/control-center/instances/{$instanceId}", [
+            'domain' => 'dra-alvarez.medforge.ec',
+            'server_label' => 'uiserver-2',
+            'database_name' => 'medforge_dra_alvarez',
+            'timezone' => 'America/Lima',
+            'status' => 'production',
+            'notes' => 'DNS validado',
+        ])->assertOk()
+            ->assertJsonPath('data.instance.server_label', 'uiserver-2')
+            ->assertJsonPath('data.instance.timezone', 'America/Lima')
+            ->assertJsonPath('data.instance.status', 'production');
+
+        $this->assertDatabaseHas('control_center_operational_states', [
+            'instance_id' => $instanceId,
+            'state' => 'production',
+            'reason' => 'Estado actualizado desde edicion de instancia',
+        ]);
+        $this->assertDatabaseHas('control_center_audit_logs', [
+            'instance_id' => $instanceId,
+            'event_type' => 'instance',
+            'action' => 'instance.updated',
+        ]);
+    }
+
+    public function test_control_center_admin_can_rotate_telemetry_token_once_with_audit(): void
+    {
+        $user = $this->createUser(['control_center.view', 'control_center.clients.manage']);
+        $instanceId = DB::table('control_center_instances')->where('slug', 'cive-production')->value('id');
+
+        $response = $this->actingAsLegacyUser($user)->postJson("/v2/control-center/instances/{$instanceId}/rotate-telemetry-token", [
+            'reason' => 'Onboarding agente staging',
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.instance.slug', 'cive-production')
+            ->assertJsonPath('data.telemetry_token_visible_once', true);
+
+        $token = (string) $response->json('data.telemetry_token');
+        $this->assertStringStartsWith('mfcc_', $token);
+        $this->assertSame(hash('sha256', $token), DB::table('control_center_instances')->where('id', $instanceId)->value('telemetry_token_hash'));
+
+        $this->assertDatabaseHas('control_center_audit_logs', [
+            'instance_id' => $instanceId,
+            'event_type' => 'security',
+            'action' => 'telemetry_token.rotated',
+        ]);
+    }
+
+    public function test_control_center_onboarding_writes_require_clients_manage_permission(): void
+    {
+        $user = $this->createUser(['control_center.view']);
+        $instanceId = DB::table('control_center_instances')->where('slug', 'cive-production')->value('id');
+
+        $this->actingAsLegacyUser($user)->postJson('/v2/control-center/organizations', [
+            'slug' => 'blocked-org',
+            'name' => 'Blocked Org',
+        ])->assertForbidden();
+
+        $this->actingAsLegacyUser($user)->postJson('/v2/control-center/instances', [
+            'organization_id' => 1,
+            'slug' => 'blocked-instance',
+            'name' => 'Blocked Instance',
+        ])->assertForbidden();
+
+        $this->actingAsLegacyUser($user)
+            ->postJson("/v2/control-center/instances/{$instanceId}/rotate-telemetry-token")
+            ->assertForbidden();
+    }
+
+    public function test_control_center_frontend_does_not_ship_active_mock_clients_or_placeholder_onboarding(): void
+    {
+        $source = file_get_contents(resource_path('js/control-center/main.jsx'));
+
+        $this->assertStringContainsString('let CC_CLIENTS = [];', $source);
+        $this->assertStringContainsString('No existen organizaciones registradas', $source);
+        $this->assertStringContainsString('Nueva organización', $source);
+        $this->assertStringNotContainsString('CreateOrganizationPlaceholder', $source);
     }
 
     public function test_signed_instance_telemetry_updates_services_usage_version_and_audit(): void

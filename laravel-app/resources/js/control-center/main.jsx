@@ -46,6 +46,7 @@ let CC_PLANS = {
    These must stay empty until hydrated from /v2/control-center.
    Staging/production must never render demo organizations from React. */
 let CC_CLIENTS = [];
+let CC_ORGANIZATIONS = [];
 let CC_FEATURES = [];
 let CC_SERVICE_DEFS = [];
 let SVC = { ok: "operativo", deg: "degradado", err: "error", pause: "pausado", none: "no_config" };
@@ -344,26 +345,232 @@ function EmptyState({ icon = "mdi-database-off-outline", title, description, act
   );
 }
 
-function CreateOrganizationPlaceholder({ onClose }) {
+const emptyOrganization = {
+  name: "",
+  legal_name: "",
+  ruc: "",
+  city: "",
+  country: "Ecuador",
+  admin_contact_name: "",
+  admin_contact_email: "",
+  admin_contact_phone: "",
+  technical_contact_name: "",
+  technical_contact_email: "",
+  internal_notes: "",
+};
+
+const emptyInstance = {
+  name: "",
+  slug: "",
+  environment: "production",
+  domain: "",
+  admin_url: "",
+  server_label: "",
+  database_host: "",
+  database_name: "",
+  timezone: "America/Guayaquil",
+  current_version: "",
+  release_channel: "stable",
+  status: "production",
+  notes: "",
+  generate_telemetry_token: true,
+};
+
+function slugify(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function organizationFormFrom(org) {
+  if (!org) return emptyOrganization;
+  return {
+    name: org.name || "",
+    legal_name: org.legal_name || "",
+    ruc: org.ruc || "",
+    city: org.city || "",
+    country: org.country || "Ecuador",
+    admin_contact_name: org.admin_contact?.name || "",
+    admin_contact_email: org.admin_contact?.email || "",
+    admin_contact_phone: org.admin_contact?.phone || "",
+    technical_contact_name: org.technical_contact?.name || "",
+    technical_contact_email: org.technical_contact?.email || "",
+    internal_notes: org.internal_notes || "",
+  };
+}
+
+function instanceFormFrom(instance, organizationId) {
+  if (!instance) return { ...emptyInstance, organization_id: organizationId || "" };
+  return {
+    organization_id: instance.organization_id || organizationId || "",
+    name: instance.name || "",
+    slug: instance.slug || "",
+    environment: instance.environment || "production",
+    domain: instance.domain || "",
+    admin_url: instance.admin_url || "",
+    server_label: instance.server_label || "",
+    database_host: instance.database_host || "",
+    database_name: instance.database_name || "",
+    timezone: instance.timezone || "America/Guayaquil",
+    current_version: instance.current_version || "",
+    release_channel: instance.release_channel || "stable",
+    status: instance.status || "production",
+    notes: instance.notes || "",
+    generate_telemetry_token: false,
+  };
+}
+
+function Field({ label, children }) {
+  return <div className="cc-field"><label>{label}</label>{children}</div>;
+}
+
+function OrganizationFormDrawer({ organization, onClose, onSaved }) {
+  const isEdit = Boolean(organization?.id);
+  const [form, setForm] = useState(() => organizationFormFrom(organization));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const set = (key, value) => setForm(current => ({ ...current, [key]: value }));
+  const submit = async () => {
+    setSaving(true);
+    setError("");
+    try {
+      const payload = {
+        ...form,
+        slug: organization?.slug || slugify(form.name),
+        commercial_name: form.name,
+        initials: (form.name || "MF").slice(0, 2).toUpperCase(),
+        source: "manual",
+      };
+      await saveOrganization(organization?.id, payload);
+      await onSaved();
+      onClose();
+    } catch (err) {
+      setError(err.message || "No se pudo guardar la organización.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <Drawer
-      title="Crear organización"
-      subtitle="Flujo pendiente de implementación"
+      title={isEdit ? "Editar organización" : "Nueva organización"}
+      subtitle="Datos comerciales, administrativos y técnicos"
       onClose={onClose}
-      footer={<button className="cc-btn primary" onClick={onClose}>Entendido</button>}
+      footer={<React.Fragment>
+        <button className="cc-btn line" onClick={onClose}>Cancelar</button>
+        <button className="cc-btn primary" onClick={submit} disabled={saving || !form.name}>{saving ? "Guardando…" : "Guardar organización"}</button>
+      </React.Fragment>}
     >
-      <div className="cc-alert info" style={{ marginBottom: 18 }}>
-        <i className="mdi mdi-domain-plus"></i>
-        <div>
-          <p className="t">CRUD de organizaciones pendiente</p>
-          <p className="d">El Control Center ya está preparado para consumir organizaciones reales desde el backend. La creación manual se implementará como flujo dedicado sin usar datos demo.</p>
-        </div>
+      {error && <div className="cc-alert danger" style={{ marginBottom: 14 }}><i className="mdi mdi-alert-circle-outline"></i><div><p className="t">No se pudo guardar</p><p className="d">{error}</p></div></div>}
+      <div className="cc-grid g2">
+        <Field label="Nombre comercial"><input value={form.name} onChange={e => set("name", e.target.value)} placeholder="CIVE" /></Field>
+        <Field label="Razón social"><input value={form.legal_name} onChange={e => set("legal_name", e.target.value)} placeholder="Centro Integral Visual…" /></Field>
+        <Field label="RUC"><input value={form.ruc} onChange={e => set("ruc", e.target.value)} /></Field>
+        <Field label="Ciudad"><input value={form.city} onChange={e => set("city", e.target.value)} /></Field>
+        <Field label="País"><input value={form.country} onChange={e => set("country", e.target.value)} /></Field>
+        <Field label="Teléfono administrativo"><input value={form.admin_contact_phone} onChange={e => set("admin_contact_phone", e.target.value)} /></Field>
+        <Field label="Contacto administrativo"><input value={form.admin_contact_name} onChange={e => set("admin_contact_name", e.target.value)} /></Field>
+        <Field label="Email administrativo"><input value={form.admin_contact_email} onChange={e => set("admin_contact_email", e.target.value)} type="email" /></Field>
+        <Field label="Contacto técnico"><input value={form.technical_contact_name} onChange={e => set("technical_contact_name", e.target.value)} /></Field>
+        <Field label="Email técnico"><input value={form.technical_contact_email} onChange={e => set("technical_contact_email", e.target.value)} type="email" /></Field>
       </div>
-      <dl className="cc-defs">
-        <div className="row"><dt>Fuente de verdad</dt><dd>Backend /v2/control-center</dd></div>
-        <div className="row"><dt>Resultado actual</dt><dd>No se insertan registros desde React.</dd></div>
-        <div className="row"><dt>Próximo paso</dt><dd>Formulario con organización, instancia inicial, plan y dominio.</dd></div>
-      </dl>
+      <Field label="Notas internas"><textarea rows="4" value={form.internal_notes} onChange={e => set("internal_notes", e.target.value)} /></Field>
+    </Drawer>
+  );
+}
+
+function InstanceFormDrawer({ instance, organizationId, onClose, onSaved, onToken }) {
+  const isEdit = Boolean(instance?.id);
+  const [form, setForm] = useState(() => instanceFormFrom(instance, organizationId));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const set = (key, value) => setForm(current => {
+    const next = { ...current, [key]: value };
+    if (key === "name" && !isEdit && !current.slug) next.slug = slugify(value);
+    return next;
+  });
+  const submit = async () => {
+    setSaving(true);
+    setError("");
+    try {
+      const response = await saveInstance(instance?.id, {
+        ...form,
+        organization_id: Number(form.organization_id || organizationId),
+        source: "manual",
+      });
+      await onSaved(response.instance?.id || instance?.id);
+      if (response.telemetry_token) onToken(response);
+      onClose();
+    } catch (err) {
+      setError(err.message || "No se pudo guardar la instancia.");
+    } finally {
+      setSaving(false);
+    }
+  };
+  const rotate = async () => {
+    if (!instance?.id || !window.confirm("El token actual dejará de funcionar. El nuevo token se mostrará una sola vez.")) return;
+    setSaving(true);
+    setError("");
+    try {
+      const response = await rotateTelemetryToken(instance.id);
+      await onSaved(instance.id);
+      onToken(response);
+    } catch (err) {
+      setError(err.message || "No se pudo rotar el token.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Drawer
+      title={isEdit ? "Editar instancia" : "Nueva instancia"}
+      subtitle="Instalación concreta de MedForge"
+      onClose={onClose}
+      footer={<React.Fragment>
+        {isEdit && <button className="cc-btn ghost" onClick={rotate} disabled={saving}><i className="mdi mdi-key-change"></i>Rotar token</button>}
+        <button className="cc-btn line" onClick={onClose}>Cancelar</button>
+        <button className="cc-btn primary" onClick={submit} disabled={saving || !form.name || !form.slug}>{saving ? "Guardando…" : "Guardar instancia"}</button>
+      </React.Fragment>}
+    >
+      {error && <div className="cc-alert danger" style={{ marginBottom: 14 }}><i className="mdi mdi-alert-circle-outline"></i><div><p className="t">No se pudo guardar</p><p className="d">{error}</p></div></div>}
+      <div className="cc-grid g2">
+        <Field label="Organización">
+          <select value={form.organization_id || organizationId || ""} onChange={e => set("organization_id", e.target.value)} disabled={isEdit}>
+            <option value="">Seleccionar</option>
+            {CC_ORGANIZATIONS.map(org => <option key={org.id} value={org.id}>{org.name}</option>)}
+          </select>
+        </Field>
+        <Field label="Nombre de instancia"><input value={form.name} onChange={e => set("name", e.target.value)} placeholder="CIVE Producción" /></Field>
+        <Field label="Slug"><input value={form.slug} onChange={e => set("slug", slugify(e.target.value))} placeholder="cive-production" /></Field>
+        <Field label="Ambiente"><select value={form.environment} onChange={e => set("environment", e.target.value)}><option value="production">production</option><option value="staging">staging</option><option value="demo">demo</option><option value="training">training</option></select></Field>
+        <Field label="Dominio / URL"><input value={form.domain} onChange={e => set("domain", e.target.value)} placeholder="cive.medforge.ec" /></Field>
+        <Field label="Admin URL"><input value={form.admin_url} onChange={e => set("admin_url", e.target.value)} placeholder="https://…" /></Field>
+        <Field label="Server label"><input value={form.server_label} onChange={e => set("server_label", e.target.value)} /></Field>
+        <Field label="Database host"><input value={form.database_host} onChange={e => set("database_host", e.target.value)} /></Field>
+        <Field label="Database name"><input value={form.database_name} onChange={e => set("database_name", e.target.value)} /></Field>
+        <Field label="Timezone"><input value={form.timezone} onChange={e => set("timezone", e.target.value)} /></Field>
+        <Field label="Versión actual"><input value={form.current_version} onChange={e => set("current_version", e.target.value)} placeholder="2026.07.1" /></Field>
+        <Field label="Release channel"><select value={form.release_channel} onChange={e => set("release_channel", e.target.value)}><option value="stable">stable</option><option value="beta">beta</option><option value="experimental">experimental</option></select></Field>
+        <Field label="Estado inicial / general"><select value={form.status} onChange={e => set("status", e.target.value)}><option value="production">production</option><option value="maintenance">maintenance</option><option value="readonly">readonly</option><option value="suspended">suspended</option></select></Field>
+        {!isEdit && <Field label="Token de telemetría"><label className="cc-check"><input type="checkbox" checked={form.generate_telemetry_token} onChange={e => set("generate_telemetry_token", e.target.checked)} />Generar token al crear</label></Field>}
+      </div>
+      <Field label="Notas"><textarea rows="4" value={form.notes} onChange={e => set("notes", e.target.value)} /></Field>
+    </Drawer>
+  );
+}
+
+function TelemetryTokenDrawer({ result, onClose }) {
+  return (
+    <Drawer title="Token de telemetría" subtitle="Se muestra una sola vez" onClose={onClose} footer={<button className="cc-btn primary" onClick={onClose}>Listo</button>}>
+      <div className="cc-alert warn" style={{ marginBottom: 16 }}>
+        <i className="mdi mdi-shield-key-outline"></i>
+        <div><p className="t">Copia este token ahora</p><p className="d">El Control Center guarda solo el hash. Después de cerrar este panel no se podrá volver a ver completo.</p></div>
+      </div>
+      <pre className="cc-code" style={{ whiteSpace: "pre-wrap", wordBreak: "break-all" }}>{result?.telemetry_token}</pre>
     </Drawer>
   );
 }
@@ -567,7 +774,7 @@ function ScreenOverview({ onOpenClient, onNav, env, onCreateOrganization }) {
 
 /* MedForge Control Center — Clientes (listado + filtros) */
 
-function ScreenClientes({ onOpenClient, onCreateOrganization }) {
+function ScreenClientes({ onOpenClient, onCreateOrganization, onCreateInstance }) {
   const [fEstado, setFEstado] = useState("todos");
   const [fPlan, setFPlan] = useState("todos");
   const [fCiudad, setFCiudad] = useState("todas");
@@ -591,18 +798,27 @@ function ScreenClientes({ onOpenClient, onCreateOrganization }) {
         sub="Todas las organizaciones que operan sobre MedForge. Filtra por estado, plan, ciudad o vencimiento."
         actions={<React.Fragment>
           <button className="cc-btn ghost sm" disabled title="Pendiente Fase 2"><i className="mdi mdi-file-excel-box"></i>Exportar</button>
-          <button className="cc-btn primary sm" onClick={onCreateOrganization}><i className="mdi mdi-plus"></i>Crear organización</button>
+          <button className="cc-btn primary sm" onClick={onCreateOrganization}><i className="mdi mdi-plus"></i>Nueva organización</button>
         </React.Fragment>}
       />
 
-      <SectionNotice section="instances" empty={CC_CLIENTS.length === 0} />
-      {CC_CLIENTS.length === 0 && (
+      <SectionNotice section="instances" empty={CC_CLIENTS.length === 0 && CC_ORGANIZATIONS.length > 0} />
+      {CC_ORGANIZATIONS.length === 0 && (
         <EmptyState
           icon="mdi-domain-plus"
           title="No existen organizaciones registradas."
           description="Este Control Center aún no tiene ninguna organización configurada. No se muestran datos demo en staging ni producción."
           actionLabel="Crear organización"
           onAction={onCreateOrganization}
+        />
+      )}
+      {CC_ORGANIZATIONS.length > 0 && CC_CLIENTS.length === 0 && (
+        <EmptyState
+          icon="mdi-server-plus"
+          title="Esta organización aún no tiene instancias."
+          description="Crea una instalación concreta de MedForge para definir dominio, ambiente, servidor, base de datos, estado operativo y token de telemetría."
+          actionLabel="Crear instancia"
+          onAction={() => onCreateInstance(CC_ORGANIZATIONS[0])}
         />
       )}
 
@@ -898,7 +1114,7 @@ function TabResumen({ client }) {
   );
 }
 
-function ClientDetail({ clientId, onBack, onNav, onDataChanged }) {
+function ClientDetail({ clientId, onBack, onNav, onDataChanged, onEditOrganization, onCreateInstance, onEditInstance }) {
   const base = CC_CLIENTS.find(c => c.id === clientId);
   const [estado, setEstado] = useState(base?.estado || "produccion");
   const [history, setHistory] = useState(CC_STATE_HISTORY[clientId] || []);
@@ -953,6 +1169,9 @@ function ClientDetail({ clientId, onBack, onNav, onDataChanged }) {
         actions={<React.Fragment>
           <button className="cc-btn line sm" onClick={onBack}><i className="mdi mdi-arrow-left"></i>Volver</button>
           <button className="cc-btn ghost sm"><i className="mdi mdi-open-in-new"></i>Abrir instancia</button>
+          <button className="cc-btn line sm" onClick={() => onEditOrganization(c.rawOrganization)}><i className="mdi mdi-domain-edit"></i>Editar organización</button>
+          <button className="cc-btn line sm" onClick={() => onCreateInstance(c.rawOrganization)}><i className="mdi mdi-server-plus"></i>Nueva instancia</button>
+          <button className="cc-btn line sm" onClick={() => onEditInstance(c.rawInstance)}><i className="mdi mdi-server-edit"></i>Editar instancia</button>
           <button className="cc-btn primary sm" onClick={() => { setTab("estado"); setDrawer(true); }}><i className="mdi mdi-swap-horizontal"></i>Cambiar estado</button>
         </React.Fragment>}
       />
@@ -1547,6 +1766,27 @@ async function ccRequest(path, options = {}) {
   return payload.data;
 }
 
+async function saveOrganization(id, payload) {
+  return ccRequest(id ? `/v2/control-center/organizations/${id}` : "/v2/control-center/organizations", {
+    method: id ? "PATCH" : "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+async function saveInstance(id, payload) {
+  return ccRequest(id ? `/v2/control-center/instances/${id}` : "/v2/control-center/instances", {
+    method: id ? "PATCH" : "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+async function rotateTelemetryToken(id) {
+  return ccRequest(`/v2/control-center/instances/${id}/rotate-telemetry-token`, {
+    method: "POST",
+    body: JSON.stringify({ reason: "Rotación desde Control Center" }),
+  });
+}
+
 function normalizeCollection(payload) {
   if (Array.isArray(payload)) return payload;
   if (Array.isArray(payload?.data)) return payload.data;
@@ -1656,6 +1896,8 @@ function clientFromInstance(instance, org, usageRows, deployments) {
     id: String(instance.id),
     instanceId: instance.id,
     organizationId: instance.organization_id,
+    rawInstance: instance,
+    rawOrganization: org || null,
     slug: instance.slug,
     nombre: instance.name || org?.name || 'Instancia',
     razon: org?.legal_name || org?.commercial_name || org?.name || instance.organization_name || '—',
@@ -1680,8 +1922,8 @@ function clientFromInstance(instance, org, usageRows, deployments) {
     ultimoBackup: dateTimeShort(instance.last_backup_at, '—'),
     tickets: uiState === 'suspendido' ? 12 : uiState === 'lectura' ? 8 : uiState === 'mantenimiento' ? 5 : 2,
     riesgo: uiState === 'suspendido' ? 'crítico' : uiState === 'lectura' ? 'alto' : uiState === 'mantenimiento' ? 'medio' : 'bajo',
-    contactoAdmin: { n: org?.name || instance.organization_name || 'Equipo cliente', c: '—', t: '—' },
-    contactoTec: { n: 'Equipo MedForge', c: 'soporte@medforge.app', t: '—' },
+    contactoAdmin: { n: org?.admin_contact?.name || org?.name || instance.organization_name || 'Equipo cliente', c: org?.admin_contact?.email || '—', t: org?.admin_contact?.phone || '—' },
+    contactoTec: { n: org?.technical_contact?.name || 'Equipo MedForge', c: org?.technical_contact?.email || 'soporte@medforge.app', t: '—' },
     placeholderFields: ['inicio', 'vence', 'tickets', 'contactos'].concat(org?.ruc ? [] : ['ruc']).concat(instance.last_backup_at ? [] : ['ultimoBackup']),
     dataQuality: instance.data_quality || org?.data_quality || { source: 'pending', source_label: 'Pendiente de integracion' },
     iaTokens: tokens,
@@ -1705,6 +1947,7 @@ function hydrateControlCenterData(payload) {
   const usageRows = payload.usage || [];
   const auditRows = payload.audit?.length ? payload.audit : normalizeCollection(overview.audit);
   CC_OVERVIEW_SUMMARY = overview.summary || {};
+  CC_ORGANIZATIONS = orgs;
   CC_USAGE_TOTALS = {
     aiTokens: usageTotal(usageRows, ['ai_tokens', 'ia_tokens']),
     aiCost: usageCost(usageRows, ['ai_tokens', 'ia_tokens']),
@@ -1810,6 +2053,7 @@ function hydrateControlCenterData(payload) {
 
 function resetControlCenterData() {
   CC_CLIENTS = [];
+  CC_ORGANIZATIONS = [];
   CC_FEATURES = [];
   CC_SERVICE_DEFS = [];
   CC_SERVICE_STATE = {};
@@ -1931,7 +2175,9 @@ function App() {
   const [theme, setTheme] = useState("dark");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [showCreateOrganization, setShowCreateOrganization] = useState(false);
+  const [orgDrawer, setOrgDrawer] = useState(null);
+  const [instanceDrawer, setInstanceDrawer] = useState(null);
+  const [tokenResult, setTokenResult] = useState(null);
   const [, bump] = useState(0);
 
   const reload = async (keepDetailId = detailId) => {
@@ -1959,7 +2205,10 @@ function App() {
 
   const openClient = (id) => { setDetailId(String(id)); window.scrollTo(0, 0); };
   const go = (r) => { setRoute(r); setDetailId(null); };
-  const openCreateOrganization = () => setShowCreateOrganization(true);
+  const openCreateOrganization = () => setOrgDrawer({ mode: "create", organization: null });
+  const openEditOrganization = (organization) => setOrgDrawer({ mode: "edit", organization });
+  const openCreateInstance = (organization) => setInstanceDrawer({ mode: "create", organizationId: organization?.id || null, instance: null });
+  const openEditInstance = (instance) => setInstanceDrawer({ mode: "edit", organizationId: instance?.organization_id || null, instance });
   CC_NAV[0].items[1].pill = String(CC_CLIENTS.length || '');
   CC_NAV[1].items[0].pill = String(CC_CLIENTS.filter(c => c.estado !== 'produccion').length || '');
   CC_NAV[1].items[2].pill = String(Object.values(CC_SERVICE_STATE).flatMap(x => Object.values(x)).filter(x => ['deg','err'].includes(x)).length || '');
@@ -1968,11 +2217,11 @@ function App() {
   if (loading) {
     content = <div className="cc-page fade-in"><PageHead title="Control Center" sub="Cargando datos operativos…" /><Card><div className="muted">Preparando consola.</div></Card></div>;
   } else if (detailId) {
-    content = <ClientDetail clientId={detailId} onBack={() => setDetailId(null)} onNav={go} onDataChanged={reload} />;
+    content = <ClientDetail clientId={detailId} onBack={() => setDetailId(null)} onNav={go} onDataChanged={reload} onEditOrganization={openEditOrganization} onCreateInstance={openCreateInstance} onEditInstance={openEditInstance} />;
   } else {
     content = {
       overview:  <ScreenOverview onOpenClient={openClient} onNav={go} env={env} onCreateOrganization={openCreateOrganization} />,
-      clientes:  <ScreenClientes onOpenClient={openClient} onCreateOrganization={openCreateOrganization} />,
+      clientes:  <ScreenClientes onOpenClient={openClient} onCreateOrganization={openCreateOrganization} onCreateInstance={openCreateInstance} />,
       licencias: <ScreenLicencias />,
       estado:    <ScreenEstadoGlobal onOpenClient={openClient} onCreateOrganization={openCreateOrganization} />,
       features:  <ScreenFeatures selectedClient={selectedClient || CC_CLIENTS[0]?.id} onPickClient={setSelectedClient} onDataChanged={reload} />,
@@ -2036,7 +2285,9 @@ function App() {
         {error && <div className="cc-alert danger" style={{ marginBottom: 18 }}><i className="mdi mdi-alert-circle-outline"></i><div><p className="t">No se pudo cargar la consola</p><p className="d">{error}</p></div></div>}
         {content}
       </main>
-      {showCreateOrganization && <CreateOrganizationPlaceholder onClose={() => setShowCreateOrganization(false)} />}
+      {orgDrawer && <OrganizationFormDrawer organization={orgDrawer.organization} onClose={() => setOrgDrawer(null)} onSaved={() => reload()} />}
+      {instanceDrawer && <InstanceFormDrawer instance={instanceDrawer.instance} organizationId={instanceDrawer.organizationId} onClose={() => setInstanceDrawer(null)} onSaved={(nextDetailId) => reload(nextDetailId || detailId)} onToken={setTokenResult} />}
+      {tokenResult && <TelemetryTokenDrawer result={tokenResult} onClose={() => setTokenResult(null)} />}
     </div>
   );
 }

@@ -23,6 +23,7 @@ Route::middleware(['app.auth', 'app.permission:control_center.clients.manage'])-
     Route::patch('/v2/control-center/organizations/{id}', [ControlCenterApiController::class, 'updateOrganization'])->whereNumber('id');
     Route::post('/v2/control-center/instances', [ControlCenterApiController::class, 'createInstance']);
     Route::patch('/v2/control-center/instances/{id}', [ControlCenterApiController::class, 'updateInstance'])->whereNumber('id');
+    Route::post('/v2/control-center/instances/{id}/rotate-telemetry-token', [ControlCenterApiController::class, 'rotateTelemetryToken'])->whereNumber('id');
     Route::post('/v2/control-center/services', [ControlCenterApiController::class, 'createService']);
     Route::patch('/v2/control-center/services/{id}', [ControlCenterApiController::class, 'updateService'])->whereNumber('id');
 });
